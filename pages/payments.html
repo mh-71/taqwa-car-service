@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payments — Taqwa Automobile Service Center</title>
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+</head>
+<body data-page="payments" data-root="../">
+
+  <div id="page-content">
+
+    <p class="page-subtitle">Every payment collected — against an invoice or as an advance before one exists — with Invoice balances kept in sync automatically.</p>
+
+    <section class="stats-grid" id="payStats" aria-label="Payments summary"></section>
+
+    <div class="toolbar">
+      <input type="search" class="input toolbar__search" id="paySearch"
+             placeholder="Search payment, customer, invoice, job card…" aria-label="Search payments">
+      <select class="select" id="payStatus" aria-label="Filter by status">
+        <option value="all">All statuses</option>
+        <option>Active</option><option>Void</option>
+      </select>
+      <select class="select" id="payMethod" aria-label="Filter by method">
+        <option value="all">All methods</option>
+        <option>Cash</option><option>Card</option><option>Mobile Banking</option><option>Bank Transfer</option>
+      </select>
+      <select class="select" id="payType" aria-label="Filter by type">
+        <option value="all">All types</option>
+        <option value="invoice">Invoice-linked</option>
+        <option value="advance">Advance only</option>
+      </select>
+      <input type="date" class="input" id="payDate" aria-label="Filter by date">
+      <select class="select" id="paySort" aria-label="Sort payments">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="id">Payment ID</option>
+        <option value="customer">Customer A–Z</option>
+        <option value="amount-desc">Amount high–low</option>
+      </select>
+      <span class="toolbar__count" id="payCount"></span>
+      <span class="spacer"></span>
+      <button class="btn btn--primary" id="addPaymentBtn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Record Payment
+      </button>
+    </div>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Payment #</th><th>Date</th><th>Customer</th><th>Invoice</th><th>Job Card</th>
+              <th class="num">Amount</th><th>Method</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="payTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Print-only area, populated by payments.js before window.print() -->
+  <div id="printArea" class="print-area" aria-hidden="true"></div>
+
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/payments.js"></script>
+</body>
+</html>

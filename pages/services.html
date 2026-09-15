@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Services — Taqwa Automobile Service Center</title>
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+</head>
+<body data-page="services" data-root="../">
+
+  <div id="page-content">
+
+    <p class="page-subtitle">Manage your service catalog — these services will be selectable on job cards and invoices.</p>
+
+    <!-- Summary cards -->
+    <section class="stats-grid stats-grid--4" id="svcStats" aria-label="Service catalog summary"></section>
+
+    <div class="toolbar">
+      <input type="search" class="input toolbar__search" id="svcSearch"
+             placeholder="Search name, category, ID…" aria-label="Search services">
+      <select class="select" id="svcCategory" aria-label="Filter by category">
+        <option value="all">All categories</option>
+      </select>
+      <select class="select" id="svcStatus" aria-label="Filter by status">
+        <option value="all">All statuses</option>
+        <option>Active</option>
+        <option>Inactive</option>
+      </select>
+      <select class="select" id="svcSort" aria-label="Sort services">
+        <option value="name-asc">Name A–Z</option>
+        <option value="name-desc">Name Z–A</option>
+        <option value="category-asc">Category A–Z</option>
+        <option value="price-asc">Price low–high</option>
+        <option value="price-desc">Price high–low</option>
+        <option value="time-asc">Time short–long</option>
+        <option value="time-desc">Time long–short</option>
+        <option value="added-desc">Newest first</option>
+        <option value="added-asc">Oldest first</option>
+      </select>
+      <span class="toolbar__count" id="svcCount"></span>
+      <span class="spacer"></span>
+      <button class="btn btn--primary" id="addServiceBtn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Service
+      </button>
+    </div>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th><th>Service</th><th>Category</th><th>Description</th>
+              <th class="num">Est. Time</th><th class="num">Price</th>
+              <th>Status</th><th>Added</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="svcTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/services.js"></script>
+</body>
+</html>

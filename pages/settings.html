@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Taqwa Automobile Service Center</title>
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+</head>
+<body data-page="settings" data-root="../">
+
+  <div id="page-content">
+
+    <p class="page-subtitle">Workshop information, invoice defaults, appearance, and data management.</p>
+
+    <!-- ---------- Business Information ---------- -->
+    <section class="card">
+      <div class="card__head"><h2>Business Information</h2></div>
+      <div class="card__body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="st-name">Business Name</label>
+            <input class="input" id="st-name">
+            <div class="field__error" data-err="businessName"></div>
+          </div>
+          <div class="field">
+            <label for="st-phone">Phone</label>
+            <input class="input" id="st-phone">
+            <div class="field__error" data-err="phone"></div>
+          </div>
+          <div class="field span-2">
+            <label for="st-address">Address</label>
+            <input class="input" id="st-address">
+            <div class="field__error" data-err="address"></div>
+          </div>
+          <div class="field">
+            <label for="st-email">Email (optional)</label>
+            <input class="input" id="st-email" type="email">
+            <div class="field__error" data-err="email"></div>
+          </div>
+          <div class="field">
+            <label for="st-website">Website (optional)</label>
+            <input class="input" id="st-website" placeholder="https://…">
+            <div class="field__error" data-err="website"></div>
+          </div>
+          <div class="field">
+            <label for="st-taxid">Tax / VAT Number (optional)</label>
+            <input class="input" id="st-taxid">
+          </div>
+          <div class="field span-2">
+            <label for="st-desc">Business Description / Notes (optional)</label>
+            <textarea class="input" id="st-desc" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- Invoice & Tax ---------- -->
+    <section class="card">
+      <div class="card__head"><h2>Invoice &amp; Tax</h2></div>
+      <div class="card__body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="st-taxrate">Default Tax Rate (%)</label>
+            <input class="input" id="st-taxrate" type="number" min="0" max="100" step="0.5">
+            <div class="field__error" data-err="taxRate"></div>
+            <p class="muted-note">Applied as the default on new Job Cards only. Existing Job Cards and Invoices keep their own historical tax value.</p>
+          </div>
+          <div class="field">
+            <label for="st-currency">Currency Symbol</label>
+            <input class="input" id="st-currency" maxlength="5">
+            <div class="field__error" data-err="currency"></div>
+          </div>
+          <div class="field span-2">
+            <label for="st-footer">Invoice / Receipt Footer</label>
+            <textarea class="input" id="st-footer" rows="2"></textarea>
+          </div>
+          <div class="field span-2">
+            <label for="st-terms">Payment Terms / Note (optional)</label>
+            <input class="input" id="st-terms" placeholder="e.g. Payment due within 7 days">
+          </div>
+        </div>
+        <p class="muted-note">Invoice numbering (INV-0001…) is not configurable here — it's a fixed system convention, so it can never conflict with existing invoice IDs.</p>
+      </div>
+    </section>
+
+    <!-- ---------- Workshop Defaults ---------- -->
+    <section class="card">
+      <div class="card__head"><h2>Workshop Defaults</h2></div>
+      <div class="card__body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="st-duration">Default Appointment Duration (minutes)</label>
+            <input class="input" id="st-duration" type="number" min="1" step="5">
+            <div class="field__error" data-err="defaultAppointmentDuration"></div>
+          </div>
+          <div class="field">
+            <label for="st-open">Opening Time</label>
+            <input class="input" id="st-open" type="time">
+            <div class="field__error" data-err="openingTime"></div>
+          </div>
+          <div class="field">
+            <label for="st-close">Closing Time</label>
+            <input class="input" id="st-close" type="time">
+            <div class="field__error" data-err="closingTime"></div>
+          </div>
+          <div class="field span-2">
+            <label>Working Days</label>
+            <div class="check-row">
+              <label><input type="checkbox" id="wd-Mon"> Mon</label>
+              <label><input type="checkbox" id="wd-Tue"> Tue</label>
+              <label><input type="checkbox" id="wd-Wed"> Wed</label>
+              <label><input type="checkbox" id="wd-Thu"> Thu</label>
+              <label><input type="checkbox" id="wd-Fri"> Fri</label>
+              <label><input type="checkbox" id="wd-Sat"> Sat</label>
+              <label><input type="checkbox" id="wd-Sun"> Sun</label>
+            </div>
+          </div>
+        </div>
+        <p class="muted-note">These are reference info for your team — they are not yet enforced by the Appointments scheduler or Job Cards.</p>
+      </div>
+    </section>
+
+    <!-- ---------- Appearance ---------- -->
+    <section class="card">
+      <div class="card__head"><h2>Appearance</h2></div>
+      <div class="card__body">
+        <div class="check-row">
+          <label><input type="radio" name="theme" value="light"> Light</label>
+          <label><input type="radio" name="theme" value="dark"> Dark</label>
+          <label><input type="radio" name="theme" value="system"> System</label>
+        </div>
+        <p class="muted-note">Applies immediately — this is the same theme used everywhere in the app, including the sidebar toggle.</p>
+      </div>
+    </section>
+
+    <!-- ---------- Data Management ---------- -->
+    <section class="card">
+      <div class="card__head"><h2>Data Management</h2></div>
+      <div class="card__body">
+        <div class="row-actions row-actions--wrap">
+          <button class="btn btn--ghost" id="exportDataBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>
+            Export Data
+          </button>
+          <button class="btn btn--ghost" id="resetDataBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm5 13.6L15.6 17 12 13.4 8.4 17 7 15.6 10.6 12 7 8.4 8.4 7 12 10.6 15.6 7 17 8.4 13.4 12 17 15.6z"/></svg>
+            Reset to Seed Data
+          </button>
+        </div>
+        <p class="muted-note">Export downloads all current data as a JSON file. Import is not offered — safely validating an arbitrary uploaded file against every collection's structure before overwriting live data isn't something this app can do safely without a lot more validation work, so it's left out rather than shipped half-safe.</p>
+      </div>
+    </section>
+
+    <div class="row-actions" style="margin-top:4px">
+      <button class="btn btn--ghost" id="cancelSettingsBtn">Discard Changes</button>
+      <button class="btn btn--primary" id="saveSettingsBtn">Save Settings</button>
+    </div>
+
+  </div>
+
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/settings.js"></script>
+</body>
+</html>

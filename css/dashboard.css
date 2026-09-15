@@ -1,0 +1,152 @@
+/* ============================================================
+   dashboard.css — Dashboard stats, chart, panels
+   ============================================================ */
+
+/* ---------- stat cards ---------- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.stat__icon {
+  width: 44px; height: 44px;
+  flex: none;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+}
+.stat__icon--amber { background: var(--amber-soft); color: var(--amber-deep); }
+.stat__icon--good  { background: var(--good-soft);  color: var(--good); }
+.stat__icon--info  { background: var(--info-soft);  color: var(--info); }
+.stat__icon--warn  { background: var(--warn-soft);  color: var(--warn); }
+.stat__icon--bad   { background: var(--bad-soft);   color: var(--bad); }
+
+.stat__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stat__label { font-size: .75rem; color: var(--text-3); }
+
+/* ---------- dashboard grid ---------- */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dash-full { margin-bottom: 16px; }
+
+/* ---------- revenue chart (pure CSS bars) ---------- */
+.rev-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4%;
+  height: 200px;
+  padding: 8px 4px 0;
+}
+
+.rev-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.rev-col__bar-wrap {
+  width: 100%;
+  max-width: 46px;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+}
+
+.rev-col__bar {
+  width: 100%;
+  min-height: 3px;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, var(--amber), var(--amber-deep));
+  position: relative;
+  transition: height .5s ease;
+}
+.rev-col__bar:hover { filter: brightness(1.08); }
+
+.rev-col__bar[data-amount]:hover::after {
+  content: attr(data-amount);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink-800);
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.rev-col__label {
+  font-size: .72rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.rev-col--today .rev-col__label { color: var(--amber-deep); font-weight: 700; }
+
+.rev-summary {
+  display: flex;
+  gap: 24px;
+  padding: 0 18px 4px;
+  font-size: .8rem;
+  color: var(--text-2);
+}
+.rev-summary strong { font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* ---------- appointment list ---------- */
+.appt-list { list-style: none; margin: 0; padding: 0; }
+.appt-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.appt-item:last-child { border-bottom: 0; }
+
+.appt-time {
+  flex: none;
+  width: 66px;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--amber-deep);
+  font-variant-numeric: tabular-nums;
+}
+.appt-info { flex: 1; min-width: 0; }
+.appt-info strong { display: block; font-size: .84rem; }
+.appt-info span {
+  display: block;
+  font-size: .74rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

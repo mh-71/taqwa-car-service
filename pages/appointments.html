@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appointments — Taqwa Automobile Service Center</title>
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+</head>
+<body data-page="appointments" data-root="../">
+
+  <div id="page-content">
+
+    <p class="page-subtitle">Schedule and manage customer appointments — completed appointments will connect to job cards.</p>
+
+    <section class="stats-grid" id="aptStats" aria-label="Appointments summary"></section>
+
+    <div class="toolbar">
+      <input type="search" class="input toolbar__search" id="aptSearch"
+             placeholder="Search customer, vehicle, service…" aria-label="Search appointments">
+      <select class="select" id="aptQuick" aria-label="Quick date filter">
+        <option value="all">All dates</option>
+        <option value="today">Today</option>
+        <option value="tomorrow">Tomorrow</option>
+        <option value="upcoming">Upcoming</option>
+        <option value="past">Past</option>
+      </select>
+      <input type="date" class="input" id="aptDate" aria-label="Filter by specific date">
+      <select class="select" id="aptStatus" aria-label="Filter by status">
+        <option value="all">All statuses</option>
+        <option>Scheduled</option><option>Confirmed</option><option>In Progress</option>
+        <option>Completed</option><option>Cancelled</option><option>No Show</option>
+      </select>
+      <select class="select" id="aptMechanic" aria-label="Filter by mechanic">
+        <option value="all">All mechanics</option>
+      </select>
+      <select class="select" id="aptSort" aria-label="Sort appointments">
+        <option value="smart">Upcoming first</option>
+        <option value="date-asc">Date ↑</option>
+        <option value="date-desc">Date ↓</option>
+        <option value="customer">Customer A–Z</option>
+        <option value="status">Status</option>
+        <option value="created-desc">Recently created</option>
+      </select>
+      <span class="toolbar__count" id="aptCount"></span>
+      <span class="spacer"></span>
+      <button class="btn btn--primary" id="addAptBtn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        New Appointment
+      </button>
+    </div>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th><th>Date</th><th>Time</th><th>Customer</th><th>Vehicle</th>
+              <th>Service</th><th>Mechanic</th><th class="num">Duration</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="aptTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/appointments.js"></script>
+</body>
+</html>

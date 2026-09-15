@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customers — Taqwa Automobile Service Center</title>
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+</head>
+<body data-page="customers" data-root="../">
+
+  <div id="page-content">
+
+    <!-- Toolbar: search, filter, count, add -->
+    <div class="toolbar">
+      <input type="search" class="input toolbar__search" id="custSearch"
+             placeholder="Search name, phone, ID or email…" aria-label="Search customers">
+      <select class="select" id="custFilter" aria-label="Filter customers">
+        <option value="all">All customers</option>
+        <option value="with-due">With due</option>
+        <option value="with-vehicles">With vehicles</option>
+        <option value="no-vehicles">No vehicles</option>
+      </select>
+      <span class="toolbar__count" id="custCount"></span>
+      <span class="spacer"></span>
+      <button class="btn btn--primary" id="addCustomerBtn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Customer
+      </button>
+    </div>
+
+    <!-- Customer table -->
+    <section class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th><th>Customer</th><th>Phone</th><th>Email</th>
+              <th class="num">Vehicles</th><th class="num">Services</th>
+              <th class="num">Total Due</th><th>Added</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="custTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/customers.js"></script>
+</body>
+</html>

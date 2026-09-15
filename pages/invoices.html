@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoices — Taqwa Automobile Service Center</title>
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+</head>
+<body data-page="invoices" data-root="../">
+
+  <div id="page-content">
+
+    <p class="page-subtitle">Financial records generated from completed Job Cards — services, parts, labour, discount and tax, frozen at the time of billing.</p>
+
+    <section class="stats-grid" id="invcStats" aria-label="Invoices summary"></section>
+
+    <div class="toolbar">
+      <input type="search" class="input toolbar__search" id="invcSearch"
+             placeholder="Search invoice, customer, reg no, job card…" aria-label="Search invoices">
+      <select class="select" id="invcStatus" aria-label="Filter by status">
+        <option value="all">All statuses</option>
+        <option>Unpaid</option><option>Partial</option><option>Paid</option><option>Void</option>
+      </select>
+      <input type="date" class="input" id="invcDate" aria-label="Filter by date">
+      <select class="select" id="invcSort" aria-label="Sort invoices">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="id">Invoice ID</option>
+        <option value="customer">Customer A–Z</option>
+        <option value="total-desc">Total high–low</option>
+        <option value="due-desc">Due high–low</option>
+      </select>
+      <span class="toolbar__count" id="invcCount"></span>
+      <span class="spacer"></span>
+    </div>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Invoice #</th><th>Date</th><th>Customer</th><th>Vehicle</th><th>Job Card</th>
+              <th class="num">Total</th><th class="num">Paid</th><th class="num">Due</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="invcTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Print-only area, populated by invoices.js before window.print() -->
+  <div id="printArea" class="print-area" aria-hidden="true"></div>
+
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/invoices.js"></script>
+</body>
+</html>

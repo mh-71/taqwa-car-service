@@ -1,0 +1,243 @@
+/* ============================================================
+   style.css — Design tokens, base, and shell layout
+   Taqwa Automobile Service Center
+   ============================================================ */
+
+/* ---------- tokens ---------- */
+:root {
+  /* palette — industrial workshop */
+  --ink-900: #16202c;        /* sidebar / darkest */
+  --ink-800: #1b2735;
+  --ink-700: #24344a;
+  --paper:   #f2f4f7;        /* workspace background */
+  --surface: #ffffff;        /* cards */
+  --line:    #dde3ea;
+  --text:    #1c2733;
+  --text-2:  #5b6b7c;
+  --text-3:  #8a97a6;
+
+  --amber:      #e59a17;     /* accent — workshop amber */
+  --amber-deep: #c47f06;
+  --amber-soft: #fdf3df;
+
+  --good:      #1f9d61;  --good-soft: #e3f5ec;
+  --info:      #2b7de0;  --info-soft: #e7f0fc;
+  --warn:      #d97a08;  --warn-soft: #fdf1e0;
+  --bad:       #d8434e;  --bad-soft:  #fceaec;
+
+  --sidebar-w: 248px;
+  --topbar-h: 64px;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow: 0 1px 2px rgba(22, 32, 44, .06), 0 4px 14px rgba(22, 32, 44, .05);
+  --shadow-lift: 0 8px 28px rgba(22, 32, 44, .16);
+
+  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ---------- dark theme ---------- */
+:root[data-theme="dark"] {
+  --paper:   #131b24;
+  --surface: #1b2735;
+  --line:    #2b3a4d;
+  --text:    #e8edf2;
+  --text-2:  #a4b1bf;
+  --text-3:  #6d7c8c;
+
+  --amber-soft: #3a2f14;
+  --good-soft: #15321f;
+  --info-soft: #17293f;
+  --warn-soft: #382a10;
+  --bad-soft:  #3b1c1f;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
+  --shadow-lift: 0 8px 28px rgba(0, 0, 0, .5);
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+
+html { font-size: 16px; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: .9rem;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+body.no-scroll { overflow: hidden; }
+
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; font-weight: 600; }
+p { margin: 0 0 .75em; }
+a { color: var(--info); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- shell layout ---------- */
+.shell { min-height: 100vh; }
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  background: var(--ink-900);
+  color: #c6d0dc;
+  display: flex;
+  flex-direction: column;
+  z-index: 40;
+}
+
+.sidebar__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+
+.brand-logo {
+  width: 132px;
+  height: auto;
+  display: block;
+}
+
+.brand-tag {
+  font-size: .68rem;
+  color: #8b99a9;
+  letter-spacing: .05em;
+}
+
+.nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: #c6d0dc;
+  font-size: .88rem;
+  border-left: 3px solid transparent;
+}
+.nav__link svg { flex: none; opacity: .8; }
+.nav__link:hover { background: rgba(255, 255, 255, .06); color: #fff; text-decoration: none; }
+.nav__link.is-active {
+  background: rgba(229, 154, 23, .13);
+  border-left-color: var(--amber);
+  color: #fff;
+  font-weight: 600;
+}
+.nav__link.is-active svg { color: var(--amber); opacity: 1; }
+
+.sidebar__foot {
+  padding: 14px 18px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  font-size: .76rem;
+  color: #8b99a9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar__foot-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgba(31, 157, 97, .25);
+}
+
+.sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 16, 22, .55);
+  z-index: 35;
+}
+
+/* ---------- main column ---------- */
+.main {
+  margin-left: var(--sidebar-w);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.topbar__menu { display: none; }
+
+.topbar__title h1 { font-size: 1.05rem; }
+.topbar__date { font-size: .74rem; color: var(--text-3); }
+
+.topbar__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.topbar__user { display: flex; align-items: center; gap: 10px; }
+.avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--amber-soft);
+  color: var(--amber-deep);
+  display: grid; place-items: center;
+  font-weight: 600;
+  font-size: .8rem;
+}
+.topbar__user-text { line-height: 1.2; }
+.topbar__user-text strong { display: block; font-size: .82rem; }
+.topbar__user-text span { font-size: .7rem; color: var(--text-3); }
+
+.icon-btn {
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--text-3); }
+
+/* theme toggle icons */
+.ico-moon { display: none; }
+:root[data-theme="dark"] .ico-moon { display: block; }
+:root[data-theme="dark"] .ico-sun { display: none; }
+
+.content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1440px;
+  width: 100%;
+}

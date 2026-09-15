@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mechanics — Taqwa Automobile Service Center</title>
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+</head>
+<body data-page="mechanics" data-root="../">
+
+  <div id="page-content">
+
+    <p class="page-subtitle">Manage workshop technicians and their assignments.</p>
+
+    <section class="stats-grid" id="mecStats" aria-label="Mechanics summary"></section>
+
+    <div class="toolbar">
+      <input type="search" class="input toolbar__search" id="mecSearch"
+             placeholder="Search name, phone, specialization…" aria-label="Search mechanics">
+      <select class="select" id="mecSpec" aria-label="Filter by specialization">
+        <option value="all">All specializations</option>
+      </select>
+      <select class="select" id="mecEmployment" aria-label="Filter by employment type">
+        <option value="all">All employment types</option>
+        <option>Full Time</option><option>Part Time</option>
+        <option>Contract</option><option>Temporary</option>
+      </select>
+      <select class="select" id="mecStatus" aria-label="Filter by status">
+        <option value="all">All statuses</option>
+        <option>Active</option>
+        <option>Inactive</option>
+      </select>
+      <select class="select" id="mecSort" aria-label="Sort mechanics">
+        <option value="name-asc">Name A–Z</option>
+        <option value="name-desc">Name Z–A</option>
+        <option value="spec-asc">Specialization A–Z</option>
+        <option value="exp-desc">Experience high–low</option>
+        <option value="exp-asc">Experience low–high</option>
+        <option value="joined-desc">Joined (newest)</option>
+        <option value="joined-asc">Joined (oldest)</option>
+        <option value="salary-desc">Salary high–low</option>
+        <option value="salary-asc">Salary low–high</option>
+      </select>
+      <span class="toolbar__count" id="mecCount"></span>
+      <span class="spacer"></span>
+      <button class="btn btn--primary" id="addMechanicBtn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Mechanic
+      </button>
+    </div>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th><th>Name</th><th>Phone</th><th>Specialization</th>
+              <th class="num">Experience</th><th>Employment</th><th>Status</th>
+              <th class="num">Active Jobs</th><th class="num">Completed</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="mecTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/mechanics.js"></script>
+</body>
+</html>

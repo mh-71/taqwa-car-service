@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Taqwa Automobile Service Center</title>
+
+  <!-- Apply saved theme before paint to avoid a flash of wrong theme -->
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body data-page="dashboard" data-root="">
+
+  <!-- Page content: app.js moves this into the app shell's content area -->
+  <div id="page-content">
+
+    <!-- Summary stat cards -->
+    <section class="stats-grid" id="statsGrid" aria-label="Business summary"></section>
+
+    <!-- Revenue + today's appointments -->
+    <section class="dash-grid">
+      <div class="card">
+        <div class="card__head">
+          <h2>Revenue Overview</h2>
+          <span class="spacer"></span>
+          <span class="badge badge--neutral">Last 7 days</span>
+        </div>
+        <div class="card__body card__body--flush">
+          <div class="rev-chart" id="revChart"></div>
+          <div class="rev-summary" id="revSummary"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h2>Today's Appointments</h2>
+          <span class="spacer"></span>
+          <a href="pages/appointments.html" class="btn btn--ghost btn--sm">View all</a>
+        </div>
+        <div class="card__body card__body--flush" id="apptList"></div>
+      </div>
+    </section>
+
+    <!-- Recent service jobs -->
+    <section class="card dash-full">
+      <div class="card__head">
+        <h2>Recent Service Jobs</h2>
+        <span class="spacer"></span>
+        <a href="pages/job-cards.html" class="btn btn--ghost btn--sm">View all</a>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Job ID</th><th>Customer</th><th>Vehicle</th><th>Service</th>
+              <th>Mechanic</th><th>Status</th><th class="num">Amount</th><th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="recentJobsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="js/seed-data.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>
