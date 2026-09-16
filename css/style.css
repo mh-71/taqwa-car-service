@@ -193,7 +193,7 @@ a:hover { text-decoration: underline; }
   z-index: 30;
 }
 
-.topbar__menu { display: none; }
+.topbar__menu.icon-btn { display: none; }
 
 .topbar__title h1 { font-size: 1.05rem; }
 .topbar__date { font-size: .74rem; color: var(--text-3); }

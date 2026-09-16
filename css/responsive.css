@@ -19,7 +19,7 @@
   .sidebar.is-open { transform: none; }
 
   .main { margin-left: 0; }
-  .topbar__menu { display: grid; }
+  .topbar__menu.icon-btn { display: grid; }
   .topbar { padding: 0 16px; }
   .content { padding: 16px; }
 }
