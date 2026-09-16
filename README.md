@@ -27,3 +27,7 @@ Run in the browser console:
 ## Backend migration path
 UI code calls `Storage.getData / addData / updateData / deleteData` only.
 Replace those function bodies with fetch() calls later — UI stays unchanged.
+
+
+
+https://mh-71.github.io/taqwa-car-service/
