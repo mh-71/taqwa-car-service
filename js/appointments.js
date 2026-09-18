@@ -34,10 +34,35 @@
 
   const normStatus = s => STATUS_ALIASES[s] || s || 'Scheduled';
 
+  /* ---------- source model ---------- */
+
+  // Where an appointment came from. These four strings are canonical: they are
+  // stored verbatim and are the exact set a future backend/D1 column will
+  // carry, so no separate display label is kept alongside them.
+  //
+  // 'Website' is reserved for bookings submitted through the public site's API.
+  // The management UI never offers it when creating an appointment, because an
+  // appointment typed in here did not arrive via the website -- letting staff
+  // pick it would corrupt the very origin data this field exists to record.
+  // It stays a valid data value, accepted by validation, and remains
+  // selectable while editing a record that already carries it.
+  const SOURCES = ['Website', 'Admin', 'Phone', 'Walk-in'];
+  const MANUAL_SOURCES = ['Admin', 'Phone', 'Walk-in'];
+  const DEFAULT_SOURCE = 'Admin';
+
+  /**
+   * Effective source for display and filtering. Appointments predating this
+   * field (source undefined / null / '') read as 'Admin', resolved at READ
+   * time exactly like normStatus() handles legacy status values -- no stored
+   * record is rewritten. An unrecognised stored value falls back the same way
+   * rather than breaking the UI; writes are rejected by validate() instead.
+   */
+  const normSource = s => (SOURCES.includes(s) ? s : DEFAULT_SOURCE);
+
   /* ---------- state ---------- */
 
   let searchTerm = '';
-  let fQuick = 'all', fDate = '', fStatus = 'all', fMechanic = 'all';
+  let fQuick = 'all', fDate = '', fStatus = 'all', fMechanic = 'all', fSource = 'all';
   let sortBy = 'smart';
 
   /* ---------- safe lookups (never crash on missing refs) ---------- */
@@ -154,6 +179,8 @@
       }
       if (fStatus !== 'all' && status !== fStatus) return false;
       if (fMechanic !== 'all' && a.mechanicId !== fMechanic) return false;
+      // filters on the stored field (normalized), never on rendered text
+      if (fSource !== 'all' && normSource(a.source) !== fSource) return false;
       if (fDate && a.date !== fDate) return false;
       if (fQuick === 'today' && a.date !== today) return false;
       if (fQuick === 'tomorrow' && a.date !== tomorrowStr()) return false;
@@ -207,7 +234,7 @@
     const rows = filteredAppointments();
     const total = Storage.getData('appointments').length;
     const tbody = document.getElementById('aptTableBody');
-    const isFiltered = searchTerm || fQuick !== 'all' || fDate || fStatus !== 'all' || fMechanic !== 'all';
+    const isFiltered = searchTerm || fQuick !== 'all' || fDate || fStatus !== 'all' || fMechanic !== 'all' || fSource !== 'all';
 
     document.getElementById('aptCount').textContent =
       isFiltered ? `${rows.length} of ${total} appointments` : `${total} appointments`;
@@ -218,7 +245,7 @@
       else if (fQuick === 'upcoming') msg = 'No upcoming appointments.';
       else if (isFiltered) msg = 'No appointments match your search or filter.';
       tbody.innerHTML = `
-        <tr><td colspan="10">
+        <tr><td colspan="11">
           <div class="empty">
             <svg viewBox="0 0 24 24" width="44" height="44" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
             <h3>${msg}</h3>
@@ -245,6 +272,7 @@
         <td>${esc(mecName(a.mechanicId))}</td>
         <td class="num">${fmtDuration(a.duration || 60)}</td>
         <td>${badge(status)}</td>
+        <td>${badge(normSource(a.source))}</td>
         <td>
           <div class="row-actions row-actions--wrap">
             ${statusActionButtons(a)}
@@ -303,6 +331,21 @@
       list.map(m => `<option value="${esc(m.id)}"${m.id === selected ? ' selected' : ''}>${esc(m.name)} — ${esc(m.specialization || 'General')}${(m.status || 'Active') !== 'Active' ? ' (inactive)' : ''}</option>`).join('');
   }
 
+  /**
+   * Source options for the form. Always offers the three manual origins; adds
+   * the record's own source when it is something else (an API-created
+   * 'Website' booking), so editing an appointment never silently relabels
+   * where it came from. Same "keep the current value selectable" idiom the
+   * app already uses for inactive mechanics, services and parts.
+   */
+  function sourceOptions(selected) {
+    const current = normSource(selected);
+    const list = MANUAL_SOURCES.includes(current) ? MANUAL_SOURCES : [current, ...MANUAL_SOURCES];
+    return list.map(sc =>
+      `<option value="${esc(sc)}"${sc === current ? ' selected' : ''}>${esc(sc)}${sc === 'Website' ? ' (from website)' : ''}</option>`
+    ).join('');
+  }
+
   function formHtml(a = {}) {
     return `
       <form id="aptForm" novalidate>
@@ -354,6 +397,11 @@
                 .map(s => `<option${s === normStatus(a.status || 'Scheduled') ? ' selected' : ''}>${s}</option>`).join('')}
             </select>
           </div>
+          <div class="field">
+            <label for="af-source">Source</label>
+            <select class="select" id="af-source" name="source">${sourceOptions(a.source)}</select>
+            <div class="field__error" data-err="source"></div>
+          </div>
           <div class="field span-2">
             <label for="af-complaint">Customer Request / Complaint</label>
             <textarea class="textarea" id="af-complaint" name="complaint" rows="2">${esc(a.complaint || '')}</textarea>
@@ -382,7 +430,7 @@
       serviceId: val('serviceId'), mechanicId: val('mechanicId'),
       date: val('date'), time: val('time'),
       duration: Number(val('duration')) || 0,
-      status: val('status'),
+      status: val('status'), source: val('source'),
       complaint: val('complaint'), notes: val('notes')
     };
   }
@@ -411,6 +459,11 @@
     if (!values.date) errors.date = 'Appointment date is required.';
     else if (isNaN(new Date(values.date))) errors.date = 'Enter a valid date.';
     else if (!editing && values.date < today) errors.date = 'New appointments cannot be in the past.';
+
+    // Source must be one of the canonical values -- an arbitrary string is
+    // never accepted, including one arriving from a future API path.
+    if (!values.source) errors.source = 'Select an appointment source.';
+    else if (!SOURCES.includes(values.source)) errors.source = 'Invalid appointment source.';
 
     if (!values.time) errors.time = 'Appointment time is required.';
     if (!values.duration || values.duration <= 0) errors.duration = 'Duration must be greater than 0.';
@@ -617,6 +670,7 @@
           <div class="detail-item"><span>Status</span><strong>${badge(status)}</strong></div>
           <div class="detail-item"><span>Date</span><strong>${fmtDate(a.date)}</strong></div>
           <div class="detail-item"><span>Time</span><strong>${fmtTime(a.time)} · ${fmtDuration(a.duration || 60)}</strong></div>
+          <div class="detail-item"><span>Source</span><strong>${badge(normSource(a.source))}</strong></div>
         </div>
 
         <h3 class="detail-section-title">Customer</h3>
@@ -677,6 +731,7 @@
     document.getElementById('aptDate').addEventListener('change', e => { fDate = e.target.value; renderList(); });
     document.getElementById('aptStatus').addEventListener('change', e => { fStatus = e.target.value; renderList(); });
     document.getElementById('aptMechanic').addEventListener('change', e => { fMechanic = e.target.value; renderList(); });
+    document.getElementById('aptSource').addEventListener('change', e => { fSource = e.target.value; renderList(); });
     document.getElementById('aptSort').addEventListener('change', e => { sortBy = e.target.value; renderList(); });
 
     document.getElementById('aptTableBody').addEventListener('click', e => {

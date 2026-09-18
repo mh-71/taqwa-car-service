@@ -45,6 +45,11 @@
       <select class="select" id="aptMechanic" aria-label="Filter by mechanic">
         <option value="all">All mechanics</option>
       </select>
+      <select class="select" id="aptSource" aria-label="Filter by source">
+        <option value="all">All sources</option>
+        <option>Website</option><option>Admin</option>
+        <option>Phone</option><option>Walk-in</option>
+      </select>
       <select class="select" id="aptSort" aria-label="Sort appointments">
         <option value="smart">Upcoming first</option>
         <option value="date-asc">Date ↑</option>
@@ -67,7 +72,7 @@
           <thead>
             <tr>
               <th>ID</th><th>Date</th><th>Time</th><th>Customer</th><th>Vehicle</th>
-              <th>Service</th><th>Mechanic</th><th class="num">Duration</th><th>Status</th><th>Actions</th>
+              <th>Service</th><th>Mechanic</th><th class="num">Duration</th><th>Status</th><th>Source</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="aptTableBody"></tbody>

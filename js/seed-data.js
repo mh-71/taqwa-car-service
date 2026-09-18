@@ -138,11 +138,11 @@ const SeedData = (() => {
 
     /* ---------- appointments (some today) ---------- */
     const appointments = [
-      { id: 'APT-0001', customerId: 'CUS-0001', vehicleId: 'VEH-0001', serviceId: 'SRV-0007', date: dateOnly(0),  time: '10:00', duration: 30,  mechanicId: 'MEC-0002', complaint: 'Battery draining overnight', notes: '', status: 'Confirmed',   reminderSent: false, jobCardId: null, createdAt: iso(3) },
-      { id: 'APT-0002', customerId: 'CUS-0002', vehicleId: 'VEH-0002', serviceId: 'SRV-0005', date: dateOnly(0),  time: '12:30', duration: 60,  mechanicId: 'MEC-0003', complaint: 'Steering pulls right on highway', notes: '', status: 'Scheduled', reminderSent: false, jobCardId: null, createdAt: iso(2) },
-      { id: 'APT-0003', customerId: 'CUS-0004', vehicleId: 'VEH-0004', serviceId: 'SRV-0010', date: dateOnly(0),  time: '09:00', duration: 120, mechanicId: 'MEC-0001', complaint: 'Full check before long trip', notes: 'Arrived on time', status: 'Confirmed', reminderSent: true, jobCardId: 'JOB-0004', createdAt: iso(4) },
-      { id: 'APT-0004', customerId: 'CUS-0003', vehicleId: 'VEH-0003', serviceId: 'SRV-0004', date: dateOnly(-2), time: '11:00', duration: 90,  mechanicId: 'MEC-0002', complaint: 'AC cooling dropped again', notes: 'Follow-up visit', status: 'Confirmed', reminderSent: false, jobCardId: null, createdAt: iso(1) },
-      { id: 'APT-0005', customerId: 'CUS-0005', vehicleId: 'VEH-0005', serviceId: 'SRV-0001', date: dateOnly(4),  time: '15:00', duration: 45,  mechanicId: 'MEC-0001', complaint: 'Routine oil change', notes: '', status: 'Completed', reminderSent: true, jobCardId: null, createdAt: iso(6) }
+      { id: 'APT-0001', customerId: 'CUS-0001', vehicleId: 'VEH-0001', serviceId: 'SRV-0007', date: dateOnly(0),  time: '10:00', duration: 30,  mechanicId: 'MEC-0002', complaint: 'Battery draining overnight', notes: '', status: 'Confirmed',   reminderSent: false, jobCardId: null, source: 'Phone', createdAt: iso(3) },
+      { id: 'APT-0002', customerId: 'CUS-0002', vehicleId: 'VEH-0002', serviceId: 'SRV-0005', date: dateOnly(0),  time: '12:30', duration: 60,  mechanicId: 'MEC-0003', complaint: 'Steering pulls right on highway', notes: '', status: 'Scheduled', reminderSent: false, jobCardId: null, source: 'Website', createdAt: iso(2) },
+      { id: 'APT-0003', customerId: 'CUS-0004', vehicleId: 'VEH-0004', serviceId: 'SRV-0010', date: dateOnly(0),  time: '09:00', duration: 120, mechanicId: 'MEC-0001', complaint: 'Full check before long trip', notes: 'Arrived on time', status: 'Confirmed', reminderSent: true, jobCardId: 'JOB-0004', source: 'Phone', createdAt: iso(4) },
+      { id: 'APT-0004', customerId: 'CUS-0003', vehicleId: 'VEH-0003', serviceId: 'SRV-0004', date: dateOnly(-2), time: '11:00', duration: 90,  mechanicId: 'MEC-0002', complaint: 'AC cooling dropped again', notes: 'Follow-up visit', status: 'Confirmed', reminderSent: false, jobCardId: null, source: 'Admin', createdAt: iso(1) },
+      { id: 'APT-0005', customerId: 'CUS-0005', vehicleId: 'VEH-0005', serviceId: 'SRV-0001', date: dateOnly(4),  time: '15:00', duration: 45,  mechanicId: 'MEC-0001', complaint: 'Routine oil change', notes: '', status: 'Completed', reminderSent: true, jobCardId: null, source: 'Walk-in', createdAt: iso(6) }
     ];
 
     /* ---------- invoices ---------- */
