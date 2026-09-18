@@ -20,6 +20,7 @@ import { listAppointments, getAppointment } from './routes/appointments.js';
 // the module exports the same two handler shapes regardless.
 import { listJobCards, getJobCard } from './routes/job-cards.js';
 import { listInvoices, getInvoice } from './routes/invoices.js';
+import { listPayments, getPayment } from './routes/payments.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -36,6 +37,7 @@ const COLLECTIONS = {
   appointments: { list: listAppointments, detail: getAppointment },
   'job-cards': { list: listJobCards, detail: getJobCard },
   invoices: { list: listInvoices, detail: getInvoice },
+  payments: { list: listPayments, detail: getPayment },
 };
 
 const ROUTES = [

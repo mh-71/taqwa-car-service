@@ -104,12 +104,21 @@ INSERT INTO invoice_parts (invoice_id, part_id, name, part_no, qty, unit_price, 
 INSERT INTO payments (id, invoice_id, customer_id, job_card_id, date, amount, method, status, notes, created_at) VALUES
   ('PAY-9001','INV-9001','CUS-9002',NULL,'2026-09-25',8295,'Cash','Active','Full settlement','2026-09-25T09:00:00'),
   ('PAY-9002',NULL,'CUS-9001','JOB-9001','2026-09-23',3000,'Bank Transfer','Active','Released when INV-9002 was voided','2026-09-23T13:00:00'),
-  ('PAY-9003','INV-9001','CUS-9002',NULL,'2026-09-25',500,'Card','Void','Keyed twice','2026-09-25T09:30:00');
+  ('PAY-9003','INV-9001','CUS-9002',NULL,'2026-09-25',500,'Card','Void','Keyed twice','2026-09-25T09:30:00'),
+  -- A pure advance: no invoice and no job card, and NULL notes so the ''
+  -- fallback is exercised.
+  ('PAY-9004',NULL,'CUS-9001',NULL,'2026-09-20',1500,'Mobile Banking','Active',NULL,'2026-09-20T10:00:00'),
+  -- Updated after creation, and a decimal amount.
+  ('PAY-9005','INV-9003','CUS-9001',NULL,'2026-09-19',150.25,'Card','Active','Part settlement','2026-09-19T10:00:00');
 
 -- job_cards.invoice_id and invoices.job_card_id point at each other, so the
 -- back-reference is set after both rows exist rather than relying on the
 -- deferred constraint inside a single statement batch.
 UPDATE job_cards SET invoice_id = 'INV-9001' WHERE id = 'JOB-9001';
+
+-- PAY-9005 is the one payment with an updated_at, set separately because the
+-- insert above does not list that column.
+UPDATE payments SET updated_at = '2026-09-26T11:00:00' WHERE id = 'PAY-9005';
 
 -- appointments.job_card_id and job_cards.appointment_id point at each other, so
 -- the back-reference is set after both rows exist rather than relying on the

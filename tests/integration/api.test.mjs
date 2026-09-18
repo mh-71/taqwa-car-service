@@ -24,7 +24,7 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 17 routes', routes.length === 17, routes);
+  t('advertises 19 routes', routes.length === 19, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
@@ -34,6 +34,7 @@ sec('1. Health');
   t('advertises appointments routes', routes.includes('GET /api/appointments') && routes.includes('GET /api/appointments/:id'));
   t('advertises job-cards routes', routes.includes('GET /api/job-cards') && routes.includes('GET /api/job-cards/:id'));
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
+  t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
 }
 
 sec('2. GET /api/services — list');
@@ -1121,12 +1122,203 @@ sec('10f. GET /api/invoices — stored money, billed snapshots, no payment looku
   }
 }
 
+sec('10g. GET /api/payments — stored cash facts, and a GET that changes nothing');
+{
+  // ---- the critical read-only check: snapshot the invoice BEFORE any
+  // payments request, then again after, and require them identical. This is
+  // the one collection whose write paths rewrite another table.
+  const invBefore = (await get('/api/invoices/INV-9001')).body.data;
+  const beforeSnapshot = { paid: invBefore.paid, due: invBefore.due, status: invBefore.status };
+
+  const r = await get('/api/payments');
+  t('200', r.status === 200, r.status);
+  t('count 5', r.body?.count === 5, r.body?.count);
+  t('total 5', r.body?.total === 5, r.body?.total);
+  t('meta keys match the other collections',
+    JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
+    Object.keys(r.body));
+  t('newest first by created_at',
+    JSON.stringify(r.body.data.map(p => p.id)) ===
+      JSON.stringify(['PAY-9003','PAY-9001','PAY-9002','PAY-9004','PAY-9005']),
+    r.body.data.map(p => p.id));
+
+  const byId = Object.fromEntries(r.body.data.map(p => [p.id, p]));
+
+  // ---- exact field mapping ----
+  const linked = byId['PAY-9001'];
+  t('linked payment record shape', JSON.stringify(linked) === JSON.stringify({
+    id:'PAY-9001', invoiceId:'INV-9001', customerId:'CUS-9002', jobCardId:null,
+    date:'2026-09-25', amount:8295, method:'Cash', status:'Active',
+    notes:'Full settlement', createdAt:'2026-09-25T09:00:00' }), linked);
+  t('camelCase keys only', Object.keys(linked).every(k => !k.includes('_')), Object.keys(linked));
+  t('date is stored text, not shifted', linked.date === '2026-09-25', linked.date);
+  t('updatedAt omitted when never updated', !('updatedAt' in linked), Object.keys(linked));
+
+  const updated = byId['PAY-9005'];
+  t('updatedAt present when set', updated.updatedAt === '2026-09-26T11:00:00', updated.updatedAt);
+  t('a decimal amount survives the round trip', updated.amount === 150.25, updated.amount);
+  t('amount is a number over the wire', typeof updated.amount === 'number', typeof updated.amount);
+
+  // ---- the four reference combinations ----
+  t('1. invoiceId set + jobCardId set — none in this fixture set, checked via PAY-9002 inverse',
+    byId['PAY-9002'].jobCardId === 'JOB-9001');
+  t('2. invoiceId set + jobCardId null',
+    linked.invoiceId === 'INV-9001' && linked.jobCardId === null,
+    { i: linked.invoiceId, j: linked.jobCardId });
+  t('3. invoiceId null + jobCardId set',
+    byId['PAY-9002'].invoiceId === null && byId['PAY-9002'].jobCardId === 'JOB-9001',
+    { i: byId['PAY-9002'].invoiceId, j: byId['PAY-9002'].jobCardId });
+  t('4. invoiceId null + jobCardId null',
+    byId['PAY-9004'].invoiceId === null && byId['PAY-9004'].jobCardId === null,
+    { i: byId['PAY-9004'].invoiceId, j: byId['PAY-9004'].jobCardId });
+  t('a null reference is null, not ""',
+    byId['PAY-9004'].invoiceId === null && byId['PAY-9004'].jobCardId === null);
+  t('NULL notes -> ""', byId['PAY-9004'].notes === '', byId['PAY-9004'].notes);
+
+  // ---- the three lookalike states ----
+  const released = byId['PAY-9002'];
+  t('a released advance has invoiceId null and stays Active',
+    released.invoiceId === null && released.status === 'Active',
+    { i: released.invoiceId, s: released.status });
+  t('a released advance keeps the inherited job card', released.jobCardId === 'JOB-9001');
+  t('a released advance keeps its amount', released.amount === 3000, released.amount);
+
+  const voided = byId['PAY-9003'];
+  t('a voided payment reports status Void', voided.status === 'Void', voided.status);
+  t('a voided payment KEEPS its invoiceId', voided.invoiceId === 'INV-9001', voided.invoiceId);
+  t('a voided payment keeps its amount', voided.amount === 500, voided.amount);
+  t('a voided payment keeps its date, method and notes',
+    voided.date === '2026-09-25' && voided.method === 'Card' && voided.notes === 'Keyed twice');
+  t('void and released-advance are different states over the wire',
+    voided.invoiceId !== null && released.invoiceId === null,
+    { voided: voided.invoiceId, released: released.invoiceId });
+
+  // ---- methods and statuses ----
+  const methods = new Set(r.body.data.map(p => p.method));
+  t('Cash round-trips', methods.has('Cash'));
+  t('Card round-trips', methods.has('Card'));
+  t('Bank Transfer round-trips', methods.has('Bank Transfer'));
+  t('Mobile Banking round-trips', methods.has('Mobile Banking'));
+  t('both statuses present',
+    r.body.data.some(p => p.status === 'Active') && r.body.data.some(p => p.status === 'Void'));
+
+  // ---- nothing derived, nothing embedded ----
+  const keys = new Set(r.body.data.flatMap(p => Object.keys(p)));
+  t('no isAdvance / paymentType / releasedFromInvoice invented',
+    !['isAdvance','advance','paymentType','releasedFromInvoice'].some(k => keys.has(k)), [...keys]);
+  t('no livePaid / due / invoiceStatus invented',
+    !['livePaid','due','invoiceStatus','invoiceTotal','paid'].some(k => keys.has(k)), [...keys]);
+  t('no invoice / customer / job card object embedded',
+    !['invoice','customer','customerName','jobCard','vehicle'].some(k => keys.has(k)), [...keys]);
+  t('exactly the stored fields and nothing else',
+    [...keys].every(k => ['id','invoiceId','customerId','jobCardId','date','amount',
+      'method','status','notes','createdAt','updatedAt'].includes(k)), [...keys]);
+
+  // ---- pagination ----
+  const p1 = await get('/api/payments?limit=2');
+  t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
+  t('total still 5', p1.body?.total === 5, p1.body?.total);
+  const p2 = await get('/api/payments?limit=2&offset=2');
+  t('offset=2 returns the next page',
+    JSON.stringify(p2.body.data.map(p => p.id)) === JSON.stringify(['PAY-9002','PAY-9004']),
+    p2.body.data.map(p => p.id));
+  t('pages do not overlap', !p2.body.data.some(p => p1.body.data.find(x => x.id === p.id)));
+  const p3 = await get('/api/payments?offset=99');
+  t('offset past end -> empty array, still 200', p3.status === 200 && p3.body.data.length === 0);
+  const p4 = await get('/api/payments?limit=1000');
+  t('limit=1000 succeeds', p4.status === 200, p4.status);
+  t('and returns every payment', p4.body?.count === 5, p4.body?.count);
+  for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
+                          ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
+    const bad = await get('/api/payments?' + q);
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_parameter', { q, status: bad.status });
+  }
+
+  // ---- detail ----
+  const d = await get('/api/payments/PAY-9001');
+  t('detail 200', d.status === 200, d.status);
+  t('detail matches the list record', JSON.stringify(d.body.data) === JSON.stringify(linked));
+  t('no list meta on detail', d.body.count === undefined && d.body.limit === undefined);
+  const dAdvance = await get('/api/payments/PAY-9004');
+  t('pure advance detail keeps both references null',
+    dAdvance.body?.data?.invoiceId === null && dAdvance.body?.data?.jobCardId === null);
+  const dVoid = await get('/api/payments/PAY-9003');
+  t('voided detail keeps its invoice link', dVoid.body?.data?.invoiceId === 'INV-9001');
+
+  const d404 = await get('/api/payments/PAY-8888');
+  t('unknown id -> 404', d404.status === 404, d404.status);
+  t('404 message names a payment',
+    d404.body?.error?.message === 'No payment with that id.', d404.body?.error?.message);
+  for (const other of ['INV-9001','JOB-9001','CUS-9001','VEH-9001','PRT-9001','APT-9001','SRV-9001','MEC-9001']) {
+    const x = await get('/api/payments/' + other);
+    t(`${other} on the payments route -> 404, not 400`, x.status === 404, x.status);
+  }
+  const pOnInv = await get('/api/invoices/PAY-9001');
+  t('payment id on the invoices route -> 404',
+    pOnInv.status === 404 && pOnInv.body?.error?.message === 'No invoice with that id.');
+
+  for (const [id, why] of [['nonsense','no prefix shape'], ['PAY-','no number'], ['-9001','no prefix'],
+                           ['PAYMENTS-9001','prefix too long'], ['P-1','prefix too short']]) {
+    const bad = await get('/api/payments/' + encodeURIComponent(id));
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_id', { id, status: bad.status });
+  }
+  const dSlash = await get('/api/payments/');
+  t('trailing slash -> 400', dSlash.status === 400 && dSlash.body?.error?.code === 'invalid_id');
+  const dEsc = await fetch(BASE + '/api/payments/%zz');
+  t('malformed percent-escape -> 400', dEsc.status === 400, dEsc.status);
+
+  // Injections aimed at both the payment and the invoice it feeds.
+  const injVoid = await get('/api/payments/' + encodeURIComponent("PAY-9001'; UPDATE payments SET status='Void' --"));
+  t('status-rewriting injection rejected -> 400', injVoid.status === 400, injVoid.status);
+  const injAmount = await get('/api/payments/' + encodeURIComponent("PAY-9001'; UPDATE payments SET amount=0 --"));
+  t('amount-rewriting injection rejected -> 400', injAmount.status === 400, injAmount.status);
+  const injInv = await get('/api/payments/' + encodeURIComponent("PAY-9001'; UPDATE invoices SET paid=0 --"));
+  t('invoice-rewriting injection rejected -> 400', injInv.status === 400, injInv.status);
+  const afterInj = await get('/api/payments/PAY-9001');
+  t('payment survived the injection attempts',
+    afterInj.body?.data?.amount === 8295 && afterInj.body?.data?.status === 'Active',
+    { amount: afterInj.body?.data?.amount, status: afterInj.body?.data?.status });
+  const allAfter = await get('/api/payments');
+  t('payments table intact after injection attempts', allAfter.body?.total === 5, allAfter.body?.total);
+
+  for (const m of ['POST','PUT','DELETE','PATCH']) {
+    const rl = await get('/api/payments', { method: m });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    const rd = await get('/api/payments/PAY-9001', { method: m });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+  }
+
+  // ---- and now the invoice again: nothing above may have moved it ----
+  const invAfter = (await get('/api/invoices/INV-9001')).body.data;
+  t('GET /api/payments did not change the invoice paid',
+    invAfter.paid === beforeSnapshot.paid, { before: beforeSnapshot.paid, after: invAfter.paid });
+  t('GET /api/payments did not change the invoice due',
+    invAfter.due === beforeSnapshot.due, { before: beforeSnapshot.due, after: invAfter.due });
+  t('GET /api/payments did not change the invoice status',
+    invAfter.status === beforeSnapshot.status, { before: beforeSnapshot.status, after: invAfter.status });
+  t('the whole invoice record is byte-identical before and after',
+    JSON.stringify(invAfter) === JSON.stringify(invBefore),
+    { before: invBefore, after: invAfter });
+  // INV-9001 carries an Active 8295 and a Void 500; a route that recomputed
+  // would have written 8295 either way, so check the voided invoice too, whose
+  // stored 3000/1935 disagree with its (zero) linked payments.
+  const voidedInv = (await get('/api/invoices/INV-9002')).body.data;
+  t('the voided invoice still reports its frozen figures after reading payments',
+    voidedInv.paid === 3000 && voidedInv.due === 1935 && voidedInv.status === 'Void',
+    { paid: voidedInv.paid, due: voidedInv.due, status: voidedInv.status });
+  // And the payments themselves are unchanged by having been read.
+  const payAfter = await get('/api/payments');
+  t('reading payments did not change any payment',
+    JSON.stringify(payAfter.body.data) === JSON.stringify(r.body.data),
+    'payment rows differ after a read');
+}
+
 sec('11. Collections stay separate over the wire');
 {
-  const [s, c, v, m, p, a, j, inv] = await Promise.all([
+  const [s, c, v, m, p, a, j, inv, pay] = await Promise.all([
     get('/api/services'), get('/api/customers'), get('/api/vehicles'),
     get('/api/mechanics'), get('/api/parts'), get('/api/appointments'),
-    get('/api/job-cards'), get('/api/invoices')]);
+    get('/api/job-cards'), get('/api/invoices'), get('/api/payments')]);
   t('services returns only SRV ids', s.body.data.every(x => x.id.startsWith('SRV-')));
   t('customers returns only CUS ids', c.body.data.every(x => x.id.startsWith('CUS-')));
   t('vehicles returns only VEH ids', v.body.data.every(x => x.id.startsWith('VEH-')));
@@ -1159,6 +1351,12 @@ sec('11. Collections stay separate over the wire');
       .some(x => 'services' in x || 'partsUsed' in x));
   t('invoice rows carry no stock, salary or complaint',
     !inv.body.data.some(x => 'stock' in x || 'salary' in x || 'complaint' in x));
+  t('payments returns only PAY ids', pay.body.data.every(x => x.id.startsWith('PAY-')));
+  t('only payments carry amount and method',
+    ![...s.body.data, ...c.body.data, ...v.body.data, ...m.body.data, ...p.body.data,
+      ...a.body.data, ...j.body.data, ...inv.body.data].some(x => 'amount' in x || 'method' in x));
+  t('payment rows carry no totals or child line arrays',
+    !pay.body.data.some(x => 'total' in x || 'services' in x || 'partsUsed' in x));
   t('salary never appears outside mechanics',
     ![...s.body.data, ...c.body.data, ...v.body.data].some(x => 'salary' in x || 'commissionRate' in x));
 }

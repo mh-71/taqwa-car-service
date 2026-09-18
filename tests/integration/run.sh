@@ -151,7 +151,7 @@ SEEDED=1
 d1_file "$HERE/fixtures/seed.sql" | grep -q '"success": true' || { echo "Seeding failed" >&2; exit 1; }
 echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointments,"
   echo "  4 job cards (4 service lines, 2 part lines),"
-  echo "  4 invoices (4 service lines, 2 part lines), 3 payments"
+  echo "  4 invoices (4 service lines, 2 part lines), 5 payments"
 
 # ------------------------------------------------------------------ run
 say "Running tests/integration/api.test.mjs"
