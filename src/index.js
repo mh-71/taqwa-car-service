@@ -35,6 +35,7 @@ import {
 // ledger and an appointment link together.
 import {
   listJobCards, getJobCard, createJobCard, updateJobCard, deleteJobCard,
+  setJobCardStatus,
 } from './routes/job-cards.js';
 import { listInvoices, getInvoice } from './routes/invoices.js';
 import { listPayments, getPayment } from './routes/payments.js';
@@ -63,6 +64,13 @@ import { getSettings } from './routes/settings.js';
  * appointments as of C-3 and job cards as of C-5; invoices and payments
  * are still read-only because their writes carry business logic that
  * belongs in their own phases.
+ *
+ * `actions` is the one exception to "a collection is a list and a detail":
+ * a named POST under a record, for a business operation that is not a
+ * field change. C-6 adds the first and only one, because a job card's
+ * status is a transition with its own rules, its own inventory effects
+ * and its own appointment sync -- PUT refuses it deliberately, so there
+ * is exactly one state machine rather than two.
  */
 const COLLECTIONS = {
   customers: {
@@ -92,6 +100,7 @@ const COLLECTIONS = {
   'job-cards': {
     list: listJobCards, detail: getJobCard,
     create: createJobCard, update: updateJobCard, remove: deleteJobCard,
+    actions: { status: setJobCardStatus },
   },
   invoices: { list: listInvoices, detail: getInvoice },
   payments: { list: listPayments, detail: getPayment },
@@ -121,6 +130,9 @@ const ROUTES = [
   ...Object.entries(COLLECTIONS).flatMap(([name, c]) => [
     ...listMethods(c).map((m) => `${m} /api/${name}`),
     ...detailMethods(c).map((m) => `${m} /api/${name}/:id`),
+    // An action is always a POST: it performs something, rather than
+    // reading or replacing a field.
+    ...Object.keys(c.actions ?? {}).map((a) => `POST /api/${name}/:id/${a}`),
   ]),
   // One entry, not two: a singleton has nothing to address. Listed last so
   // the advertised order stays the order the routes shipped in.
@@ -223,6 +235,19 @@ export default {
           id = decodeURIComponent(rawId);
         } catch {
           return fail('invalid_id', 'Record id is not valid URL encoding.', 400);
+        }
+
+        // A named action under a record, e.g. /api/job-cards/JOB-0007/status.
+        // Only an action the collection declares is routed; any other deep
+        // path falls through to the id validator exactly as it did before,
+        // so an unknown one stays a 400 rather than becoming a 404.
+        const slash = id.indexOf('/');
+        if (slash !== -1) {
+          const action = collection.actions?.[id.slice(slash + 1)];
+          if (action) {
+            if (request.method !== 'POST') return methodNotAllowed(['POST']);
+            return action(request, env, id.slice(0, slash));
+          }
         }
 
         if (request.method === 'GET') return collection.detail(request, env, id);

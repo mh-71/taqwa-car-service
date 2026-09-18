@@ -35,12 +35,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 49 routes', routes.length === 49, routes);
+  t('advertises 50 routes', routes.length === 50, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('24 GET, 9 POST, 8 PUT, 8 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 9, PUT: 8, DELETE: 8 }), byMethod);
+    t('24 GET, 10 POST, 8 PUT, 8 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 10, PUT: 8, DELETE: 8 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -53,6 +53,9 @@ sec('1. Health');
   t('advertises job-cards writes',
     ['POST /api/job-cards', 'PUT /api/job-cards/:id', 'DELETE /api/job-cards/:id']
       .every((r2) => routes.includes(r2)), routes);
+  t('advertises the one action route, and only as a POST',
+    routes.includes('POST /api/job-cards/:id/status')
+      && routes.filter((r2) => /\/:id\/[a-z-]+$/.test(r2)).length === 1, routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -2902,6 +2905,518 @@ sec('16. Job card writes: parent, lines, inventory and the appointment link, aga
       (await ledgerFor('JOB-9003')).every((x) => x.referenceType === 'job-card'
         && x.referenceId === 'JOB-9003' && ['job-card-use', 'return'].includes(x.type)),
       await ledgerFor('JOB-9003'));
+  }
+
+  // cleanup.sql's sweep removes the rows this section created, in FK order,
+  // and resets the counters the ids came from.
+}
+
+sec('17. Job card status transitions: the state machine, inventory and the appointment, against real D1');
+{
+  // The transition table as job-cards.js:46-56 states it. The invalid cases
+  // below are derived from it rather than listed, so a table that drifted from
+  // the route's own copy fails here loudly.
+  const TRANSITIONS = {
+    'Received': ['Inspection', 'Cancelled'],
+    'Inspection': ['In Progress', 'Waiting for Approval', 'Cancelled'],
+    'Waiting for Approval': ['In Progress', 'Cancelled'],
+    'In Progress': ['Waiting for Parts', 'Waiting for Approval', 'Completed', 'Cancelled'],
+    'Waiting for Parts': ['In Progress'],
+    'Completed': ['Delivered'],
+    'Delivered': [],
+    'Cancelled': [],
+  };
+  const JOB_STATUSES = Object.keys(TRANSITIONS);
+
+  const cust = await send('POST', '/api/customers', { name: 'C-6 Status Customer', phone: '01966-000001' });
+  const C = cust.body?.data?.id;
+  const veh = await send('POST', '/api/vehicles',
+    { customerId: C, regNo: 'DHA-C6-01', brand: 'Toyota', model: 'Probe' });
+  const V = veh.body?.data?.id;
+  const mech = await send('POST', '/api/mechanics',
+    { name: 'C-6 Status Mechanic', phone: '01966-000002', specialization: 'Engine' });
+  const M = mech.body?.data?.id;
+  const svc = await send('POST', '/api/services',
+    { name: 'C-6 Status Service', category: 'Engine', price: 1200 });
+  const S = svc.body?.data?.id;
+  t('the section has its own customer, vehicle, mechanic and service',
+    [C, V, M, S].every(Boolean), { C, V, M, S });
+
+  const newPart = async (name, partNo, stock) => {
+    const p = await send('POST', '/api/parts',
+      { name, partNo, category: 'Filters', unit: 'pc',
+        purchasePrice: 100, sellingPrice: 200, minStock: 0 });
+    t(`a part for ${name} -> 201`, p.status === 201, p.body);
+    const id = p.body?.data?.id;
+    if (stock > 0) {
+      const m = await send('POST', '/api/inventory-transactions',
+        { partId: id, type: 'initial-stock', quantity: stock });
+      t(`   ...stocked to ${stock}`, m.status === 201, m.body);
+    }
+    return id;
+  };
+  const stockOf = async (id) => (await get(`/api/parts/${id}`)).body?.data?.stock;
+  const partLine = (id, name, qty) => ({ partId: id, name, partNo: 'x', qty, unitPrice: 100 });
+  const newJob = async (partsUsed = [], extra = {}) => {
+    const r = await send('POST', '/api/job-cards', {
+      customerId: C, vehicleId: V, mechanicId: M,
+      date: '2026-09-18', complaint: 'C-6: status walk',
+      services: [{ serviceId: S, name: 'C-6 Status Service (as sold)', qty: 1, unitPrice: 1200 }],
+      partsUsed, ...extra,
+    });
+    return r.body?.data?.id;
+  };
+  const setStatus = (id, status) => send('POST', `/api/job-cards/${id}/status`, { status });
+  const statusOf = async (id) => (await get(`/api/job-cards/${id}`)).body?.data?.status;
+  // The ledger route returns newest first; a job card's movements read as a
+  // story here, so they are turned back into chronological order.
+  const ledgerFor = async (jobId, partId) => {
+    const r = await get('/api/inventory-transactions?limit=1000');
+    return (r.body?.data ?? [])
+      .filter((x) => x.referenceType === 'job-card' && x.referenceId === jobId
+        && (partId === undefined || x.partId === partId))
+      .sort((x, y) => (x.createdAt || '').localeCompare(y.createdAt || '') || x.id.localeCompare(y.id));
+  };
+  const issuedFor = async (jobId, partId) => (await ledgerFor(jobId, partId)).reduce(
+    (s, x) => s + (x.type === 'job-card-use' ? x.quantity : x.type === 'return' ? -x.quantity : 0), 0);
+
+  /* ---- 17a. the whole lifecycle, in order ---- */
+  {
+    const P = await newPart('C-6 Lifecycle Part', 'c6-life', 20);
+    const J = await newJob([partLine(P, 'C-6 Lifecycle Part', 5)]);
+    t('a new job card starts Received', (await statusOf(J)) === 'Received', await statusOf(J));
+    t('   ...and creating it moved no stock', (await stockOf(P)) === 20, await stockOf(P));
+
+    const insp = await setStatus(J, 'Inspection');
+    t('Received -> Inspection -> 200', insp.status === 200, insp.body);
+    t('   ...the record comes back with the new status', insp.body?.data?.status === 'Inspection');
+    t('   ...in the same shape a GET returns',
+      JSON.stringify((await get(`/api/job-cards/${J}`)).body?.data) === JSON.stringify(insp.body?.data));
+    t('   ...and still moved no stock', (await stockOf(P)) === 20, await stockOf(P));
+    t('   ...completedAt and actualDelivery are still empty',
+      insp.body?.data?.completedAt === '' && insp.body?.data?.actualDelivery === '', insp.body?.data);
+
+    const start = await setStatus(J, 'In Progress');
+    t('Inspection -> In Progress -> 200', start.status === 200, start.body);
+    t('   ...issues the part line in full', (await stockOf(P)) === 15, await stockOf(P));
+    const rows = await ledgerFor(J, P);
+    t('   ...writing exactly one ledger row', rows.length === 1, rows);
+    t('   ...as job-card-use against this job card',
+      rows[0]?.type === 'job-card-use' && rows[0]?.referenceType === 'job-card'
+        && rows[0]?.referenceId === J, rows[0]);
+    t('   ...with the engine\'s own note', rows[0]?.notes === `Used on ${J}`, rows[0]);
+    t('   ...snapshotting 20 -> 15', rows[0]?.prevStock === 20 && rows[0]?.newStock === 15, rows[0]);
+    t('   ...and no unit cost, as move() records none', rows[0]?.unitCost === null, rows[0]);
+
+    const wait = await setStatus(J, 'Waiting for Parts');
+    t('In Progress -> Waiting for Parts -> 200', wait.status === 200, wait.body);
+    t('   ...returns nothing — what was issued stays issued',
+      (await stockOf(P)) === 15 && (await ledgerFor(J, P)).length === 1, await stockOf(P));
+
+    const resume = await setStatus(J, 'In Progress');
+    t('Waiting for Parts -> In Progress -> 200', resume.status === 200, resume.body);
+    t('   ...deducts nothing a second time', (await stockOf(P)) === 15, await stockOf(P));
+    t('   ...and writes no second ledger row', (await ledgerFor(J, P)).length === 1);
+
+    const done = await setStatus(J, 'Completed');
+    t('In Progress -> Completed -> 200', done.status === 200, done.body);
+    t('   ...stamps completedAt', /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(done.body?.data?.completedAt || ''),
+      done.body?.data?.completedAt);
+    t('   ...and leaves actualDelivery empty', done.body?.data?.actualDelivery === '', done.body?.data);
+    t('   ...and moves no stock', (await stockOf(P)) === 15, await stockOf(P));
+
+    const delivered = await setStatus(J, 'Delivered');
+    t('Completed -> Delivered -> 200', delivered.status === 200, delivered.body);
+    t('   ...stamps actualDelivery as a calendar day',
+      /^\d{4}-\d{2}-\d{2}$/.test(delivered.body?.data?.actualDelivery || ''),
+      delivered.body?.data?.actualDelivery);
+    t('   ...in the workshop\'s timezone, not the Worker\'s UTC one',
+      delivered.body?.data?.actualDelivery === new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(new Date()), delivered.body?.data?.actualDelivery);
+    t('   ...and keeps the completedAt it already had',
+      delivered.body?.data?.completedAt === done.body?.data?.completedAt, delivered.body?.data);
+
+    const past = await setStatus(J, 'Cancelled');
+    t('a Delivered job card cannot move again -> 409', past.status === 409, past.body);
+    t('   ...reason', past.body?.error?.reason === 'job_card_terminal', past.body?.error);
+    t('   ...reporting an empty allowed list',
+      JSON.stringify(past.body?.error?.allowed) === '[]', past.body?.error);
+    t('   ...and its stock is untouched', (await stockOf(P)) === 15, await stockOf(P));
+
+    // C-5's delete guards still apply to what a transition produced.
+    const del = await send('DELETE', `/api/job-cards/${J}`);
+    t('a Delivered job card still cannot be deleted -> 409', del.status === 409, del.body);
+    t('   ...reason', del.body?.error?.reason === 'job_card_completed', del.body?.error);
+  }
+
+  /* ---- 17b. every transition the table does not list ---- */
+  {
+    const J = await newJob();
+    let refused = 0, wrongly = [];
+    for (const to of JOB_STATUSES) {
+      if (TRANSITIONS.Received.includes(to)) continue;
+      const r = await setStatus(J, to);
+      if (r.status === 409 && (await statusOf(J)) === 'Received') refused += 1;
+      else wrongly.push({ to, status: r.status, body: r.body });
+    }
+    t('a Received job card refuses every move the table does not list',
+      refused === JOB_STATUSES.length - TRANSITIONS.Received.length, wrongly);
+    const same = await setStatus(J, 'Received');
+    t('   ...including a request for the status it already has -> 409', same.status === 409, same.body);
+    t('   ...with its own reason', same.body?.error?.reason === 'same_status', same.body?.error);
+    t('   ...and the client\'s own wording',
+      same.body?.error?.message === 'Cannot change Received job card to Received.', same.body?.error);
+    const skip = await setStatus(J, 'Completed');
+    t('   ...a skipped step reports what IS reachable',
+      JSON.stringify(skip.body?.error?.allowed) === JSON.stringify(['Inspection', 'Cancelled']),
+      skip.body?.error);
+    await send('DELETE', `/api/job-cards/${J}`);
+  }
+  {
+    // PUT still refuses a status change, so there is exactly one state machine.
+    const J = await newJob();
+    const viaPut = await send('PUT', `/api/job-cards/${J}`, { status: 'Inspection' });
+    t('PUT still refuses a status change -> 409', viaPut.status === 409, viaPut.body);
+    t('   ...reason', viaPut.body?.error?.reason === 'status_change_not_supported', viaPut.body?.error);
+    t('   ...and the job card did not move', (await statusOf(J)) === 'Received');
+    await send('DELETE', `/api/job-cards/${J}`);
+  }
+
+  /* ---- 17c. the request itself ---- */
+  {
+    const J = await newJob();
+    for (const [why, body] of [
+      ['a missing status', {}],
+      ['a null status', { status: null }],
+      ['an empty status', { status: '' }],
+      ['a status of the wrong type', { status: 7 }],
+      ['an unknown status', { status: 'Nonsense' }],
+      ['a lower-case status', { status: 'inspection' }],
+      ['a client-supplied completedAt', { status: 'Inspection', completedAt: '2020-01-01T00:00:00Z' }],
+      ['a client-supplied actualDelivery', { status: 'Inspection', actualDelivery: '2020-01-01' }],
+      ['a client-supplied paid', { status: 'Inspection', paid: 1 }],
+      ['a client-supplied prevStock', { status: 'Inspection', prevStock: 1 }],
+    ]) {
+      const r = await send('POST', `/api/job-cards/${J}/status`, body);
+      t(`${why} -> 422`, r.status === 422, { status: r.status, body: r.body });
+    }
+    const bad = await send('POST', `/api/job-cards/${J}/status`, 'not json');
+    t('a malformed body -> 400', bad.status === 400, bad.status);
+    const ghost = await send('POST', '/api/job-cards/JOB-7777/status', { status: 'Inspection' });
+    t('an unknown job card -> 404', ghost.status === 404, ghost.status);
+    const badId = await send('POST', '/api/job-cards/nope/status', { status: 'Inspection' });
+    t('a malformed job card id -> 400', badId.status === 400, badId.status);
+    for (const m of ['GET', 'PUT', 'DELETE', 'PATCH']) {
+      const r = await get(`/api/job-cards/${J}/status`, { method: m });
+      t(`${m} on the status path -> 405 + Allow: POST`,
+        r.status === 405 && r.allow === 'POST', { status: r.status, allow: r.allow });
+    }
+    const unknownAction = await send('POST', `/api/job-cards/${J}/invoice`, {});
+    t('an action the router does not declare is not routed',
+      unknownAction.status === 400 || unknownAction.status === 405, unknownAction.status);
+    t('   ...and the job card never moved', (await statusOf(J)) === 'Received');
+    await send('DELETE', `/api/job-cards/${J}`);
+  }
+
+  /* ---- 17d. insufficient stock stops the whole transition ---- */
+  {
+    const P = await newPart('C-6 Short Part', 'c6-short', 3);
+    const J = await newJob([partLine(P, 'C-6 Short Part', 9)]);
+    await setStatus(J, 'Inspection');
+    const before = (await get(`/api/job-cards/${J}`)).body?.data;
+    const r = await setStatus(J, 'In Progress');
+    t('entering In Progress without the stock -> 409', r.status === 409, r.body);
+    t('   ...reason', r.body?.error?.reason === 'insufficient_stock', r.body?.error);
+    t('   ...with the client\'s own wording',
+      r.body?.error?.message === 'Insufficient stock for C-6 Short Part. Available: 3, Required: 9.',
+      r.body?.error?.message);
+    t('   ...naming the line', r.body?.error?.shortages?.[0]?.name === 'C-6 Short Part', r.body?.error);
+    t('   ...the status did not move', (await statusOf(J)) === 'Inspection', await statusOf(J));
+    t('   ...the stock did not move', (await stockOf(P)) === 3, await stockOf(P));
+    t('   ...no ledger row was written', (await ledgerFor(J)).length === 0, await ledgerFor(J));
+    t('   ...and nothing at all about the job card changed',
+      JSON.stringify((await get(`/api/job-cards/${J}`)).body?.data) === JSON.stringify(before),
+      { before, after: (await get(`/api/job-cards/${J}`)).body?.data });
+
+    // Waiting for Parts is exactly where the client tells you to put it.
+    const parked = await setStatus(J, 'Cancelled');
+    t('   ...and it can still be cancelled', parked.status === 200, parked.body);
+    t('   ...returning nothing, because nothing was issued',
+      (await stockOf(P)) === 3 && (await ledgerFor(J)).length === 0, await stockOf(P));
+  }
+
+  /* ---- 17e. multiple parts: one short fails all of them ---- */
+  {
+    const A = await newPart('C-6 Multi Part A', 'c6-mA', 10);
+    const B = await newPart('C-6 Multi Part B', 'c6-mB', 5);
+    const J = await newJob([
+      partLine(A, 'C-6 Multi Part A', 8),
+      partLine(B, 'C-6 Multi Part B', 7),
+    ]);
+    await setStatus(J, 'Inspection');
+    const r = await setStatus(J, 'In Progress');
+    t('one short part of two -> 409', r.status === 409, r.body);
+    t('   ...naming the short one', r.body?.error?.shortages?.[0]?.name === 'C-6 Multi Part B',
+      r.body?.error);
+    t('   ...the part that WAS available did not move', (await stockOf(A)) === 10, await stockOf(A));
+    t('   ...nor did the short one', (await stockOf(B)) === 5, await stockOf(B));
+    t('   ...no ledger row exists for either', (await ledgerFor(J)).length === 0, await ledgerFor(J));
+    t('   ...and the status did not move', (await statusOf(J)) === 'Inspection', await statusOf(J));
+
+    // Give it the stock it needs, and all three parts move together.
+    await send('POST', '/api/inventory-transactions', { partId: B, type: 'purchase', quantity: 5 });
+    const ok2 = await setStatus(J, 'In Progress');
+    t('once the stock is there, both parts issue together -> 200', ok2.status === 200, ok2.body);
+    t('   ...part A is 10 -> 2', (await stockOf(A)) === 2, await stockOf(A));
+    t('   ...part B is 10 -> 3', (await stockOf(B)) === 3, await stockOf(B));
+    t('   ...with one ledger row each', (await ledgerFor(J)).length === 2, await ledgerFor(J));
+
+    /* ---- 17f. cancelling returns exactly what is outstanding ---- */
+    // C-5's edit reduces part A to 3 while the job is In Progress, so the
+    // ledger and the line disagree with what was first issued.
+    const reduced = await send('PUT', `/api/job-cards/${J}`, {
+      partsUsed: [partLine(A, 'C-6 Multi Part A', 3), partLine(B, 'C-6 Multi Part B', 7)],
+    });
+    t('reducing part A to 3 returns the difference -> 200', reduced.status === 200, reduced.body);
+    t('   ...so 3 are outstanding on A', (await issuedFor(J, A)) === 3, await issuedFor(J, A));
+    t('   ...and 7 on B', (await issuedFor(J, B)) === 7, await issuedFor(J, B));
+    const aBefore = await stockOf(A);
+    const bBefore = await stockOf(B);
+
+    const cancelled = await setStatus(J, 'Cancelled');
+    t('cancelling -> 200', cancelled.status === 200, cancelled.body);
+    t('   ...returns THREE of part A, not the eight first issued',
+      (await stockOf(A)) === aBefore + 3, { before: aBefore, after: await stockOf(A) });
+    t('   ...and seven of part B', (await stockOf(B)) === bBefore + 7,
+      { before: bBefore, after: await stockOf(B) });
+    t('   ...leaving nothing outstanding on either',
+      (await issuedFor(J, A)) === 0 && (await issuedFor(J, B)) === 0,
+      { a: await issuedFor(J, A), b: await issuedFor(J, B) });
+    // Both engines write `return` rows, so they are told apart by their note:
+    // C-5's reconciliation says "Adjusted", a cancellation says "Returned".
+    const returns = (await ledgerFor(J)).filter((x) => x.type === 'return');
+    const cancelReturns = returns.filter((x) => x.notes === `Returned — ${J} cancelled`);
+    t('   ...the cancellation wrote one return per outstanding part',
+      cancelReturns.length === 2, returns.map((x) => [x.partId, x.notes]));
+    t('   ...and C-5\'s earlier reconciliation kept its own note',
+      returns.filter((x) => x.notes === `Adjusted on ${J} (qty change)`).length === 1,
+      returns.map((x) => x.notes));
+    t('   ...and its stock is back where it started', (await stockOf(A)) === 10, await stockOf(A));
+
+    const again = await setStatus(J, 'Cancelled');
+    t('cancelling a second time -> 409', again.status === 409, again.body);
+    t('   ...and returns nothing twice', (await stockOf(A)) === 10, await stockOf(A));
+    t('   ...leaving the ledger as it was',
+      (await ledgerFor(J)).filter((x) => x.notes === `Returned — ${J} cancelled`).length === 2,
+      (await ledgerFor(J)).map((x) => x.notes));
+  }
+
+  /* ---- 17g. repeating a transition never moves stock twice ---- */
+  {
+    const P = await newPart('C-6 Repeat Part', 'c6-rep', 20);
+    const J = await newJob([partLine(P, 'C-6 Repeat Part', 4)]);
+    await setStatus(J, 'Inspection');
+    const first = await setStatus(J, 'In Progress');
+    t('the first In Progress request succeeds', first.status === 200, first.body);
+    t('   ...deducting 4', (await stockOf(P)) === 16, await stockOf(P));
+    const second = await setStatus(J, 'In Progress');
+    t('the second is refused -> 409', second.status === 409, second.body);
+    t('   ...as a same-status request', second.body?.error?.reason === 'same_status', second.body?.error);
+    t('   ...and deducts nothing', (await stockOf(P)) === 16, await stockOf(P));
+    t('   ...leaving exactly one ledger row', (await ledgerFor(J, P)).length === 1, await ledgerFor(J, P));
+  }
+
+  /* ---- 17h. the appointment follows, one way only ---- */
+  {
+    const appt = await send('POST', '/api/appointments', {
+      customerId: C, vehicleId: V, serviceId: S, date: '2099-07-01', time: '10:00',
+      duration: 60, source: 'Facebook',
+    });
+    t('an appointment for the sync tests -> 201', appt.status === 201, appt.body);
+    const A = appt.body?.data?.id;
+    const J = await newJob([], { appointmentId: A });
+    t('   ...linked to a new job card', (await get(`/api/appointments/${A}`)).body?.data?.jobCardId === J);
+    t('   ...whose creation left its status alone',
+      (await get(`/api/appointments/${A}`)).body?.data?.status === 'Scheduled');
+
+    await setStatus(J, 'Inspection');
+    t('Received -> Inspection leaves the appointment alone',
+      (await get(`/api/appointments/${A}`)).body?.data?.status === 'Scheduled',
+      (await get(`/api/appointments/${A}`)).body?.data);
+
+    await setStatus(J, 'In Progress');
+    const started = (await get(`/api/appointments/${A}`)).body?.data;
+    t('Inspection -> In Progress moves the appointment to In Progress',
+      started.status === 'In Progress', started);
+    t('   ...even though its own transition table would not allow Scheduled -> In Progress',
+      started.status === 'In Progress');
+    t('   ...its source is untouched', started.source === 'Facebook', started);
+    t('   ...its job card link is untouched', started.jobCardId === J, started);
+    t('   ...and its updated_at was refreshed', !!started.updatedAt, started);
+
+    await setStatus(J, 'Waiting for Parts');
+    t('In Progress -> Waiting for Parts leaves the appointment alone',
+      (await get(`/api/appointments/${A}`)).body?.data?.status === 'In Progress');
+    await setStatus(J, 'In Progress');
+    await setStatus(J, 'Completed');
+    const completed = (await get(`/api/appointments/${A}`)).body?.data;
+    t('In Progress -> Completed completes the appointment', completed.status === 'Completed', completed);
+    t('   ...source still untouched', completed.source === 'Facebook', completed);
+    t('   ...and the link still intact', completed.jobCardId === J, completed);
+
+    // The appointment is terminal now, so nothing moves it again.
+    await setStatus(J, 'Delivered');
+    t('Completed -> Delivered leaves the finished appointment alone',
+      (await get(`/api/appointments/${A}`)).body?.data?.status === 'Completed');
+
+    // And nothing ever flows back: changing the appointment does not move the
+    // job card. A Completed appointment is terminal, so this is a 409 from
+    // C-3's own rules -- the point is that the job card is unaffected either way.
+    const back = await send('PUT', `/api/appointments/${A}`, { status: 'Cancelled' });
+    t('an appointment cannot be dragged out of Completed -> 409', back.status === 409, back.body);
+    t('   ...and the job card is still Delivered', (await statusOf(J)) === 'Delivered');
+  }
+  {
+    // A cancelled job card leaves its appointment exactly where it was.
+    const appt = await send('POST', '/api/appointments', {
+      customerId: C, vehicleId: V, serviceId: S, date: '2099-07-02', time: '10:00',
+      duration: 60, source: 'Website',
+    });
+    const A = appt.body?.data?.id;
+    const J = await newJob([], { appointmentId: A });
+    await setStatus(J, 'Cancelled');
+    const after = (await get(`/api/appointments/${A}`)).body?.data;
+    t('cancelling a job card does NOT cancel its appointment', after.status === 'Scheduled', after);
+    t('   ...and does not unlink it either', after.jobCardId === J, after);
+    t('   ...nor touch its source', after.source === 'Website', after);
+  }
+  {
+    // An unrelated appointment is never touched by another job card's transition.
+    const appt = await send('POST', '/api/appointments', {
+      customerId: C, vehicleId: V, serviceId: S, date: '2099-07-03', time: '10:00',
+      duration: 60, source: 'Phone',
+    });
+    const A = appt.body?.data?.id;
+    const J = await newJob();
+    await setStatus(J, 'Inspection');
+    await setStatus(J, 'In Progress');
+    const untouched = (await get(`/api/appointments/${A}`)).body?.data;
+    t('an unlinked job card\'s transition touches no appointment',
+      untouched.status === 'Scheduled' && untouched.jobCardId === null, untouched);
+    await setStatus(J, 'Cancelled');
+    await send('DELETE', `/api/appointments/${A}`);
+  }
+
+  /* ---- 17i. concurrency ---- */
+  {
+    // A. the SAME job card, two simultaneous transitions into In Progress.
+    const P = await newPart('C-6 Race Part', 'c6-race', 20);
+    const J = await newJob([partLine(P, 'C-6 Race Part', 6)]);
+    await setStatus(J, 'Inspection');
+    const [r1, r2] = await Promise.all([setStatus(J, 'In Progress'), setStatus(J, 'In Progress')]);
+    const codes = [r1.status, r2.status].sort();
+    t('two simultaneous In Progress requests: exactly one succeeds',
+      codes.filter((c) => c === 200).length === 1, { r1: r1.status, r2: r2.status });
+    t('   ...and exactly one is refused', codes.filter((c) => c === 409).length === 1, codes);
+    t('   ...neither is a 5xx', !codes.some((c) => c >= 500), codes);
+    t('   ...the refusal names a state the caller can act on',
+      ['concurrent_modification', 'same_status'].includes(
+        [r1, r2].find((r) => r.status === 409)?.body?.error?.reason),
+      [r1.body?.error, r2.body?.error]);
+    t('   ...the job card is In Progress', (await statusOf(J)) === 'In Progress', await statusOf(J));
+    t('   ...stock moved by exactly 6, never 12', (await stockOf(P)) === 14, await stockOf(P));
+    t('   ...and exactly one ledger row exists', (await ledgerFor(J, P)).length === 1, await ledgerFor(J, P));
+
+    // D. a cancellation race on the same job card.
+    const [c1, c2] = await Promise.all([setStatus(J, 'Cancelled'), setStatus(J, 'Cancelled')]);
+    t('two simultaneous cancellations: exactly one succeeds',
+      [c1.status, c2.status].filter((c) => c === 200).length === 1,
+      { c1: c1.status, c2: c2.status });
+    t('   ...neither is a 5xx', ![c1.status, c2.status].some((c) => c >= 500), [c1.status, c2.status]);
+    t('   ...the six units come back once', (await stockOf(P)) === 20, await stockOf(P));
+    t('   ...with exactly one return row',
+      (await ledgerFor(J, P)).filter((x) => x.type === 'return').length === 1, await ledgerFor(J, P));
+    t('   ...and nothing is outstanding', (await issuedFor(J, P)) === 0, await issuedFor(J, P));
+  }
+  {
+    // B. two job cards, 8 + 7 against a stock of 10.
+    const L = await newPart('C-6 Limited Part', 'c6-lim6', 10);
+    const JA = await newJob([partLine(L, 'C-6 Limited Part', 8)]);
+    const JB = await newJob([partLine(L, 'C-6 Limited Part', 7)]);
+    await Promise.all([setStatus(JA, 'Inspection'), setStatus(JB, 'Inspection')]);
+    const [a, b] = await Promise.all([setStatus(JA, 'In Progress'), setStatus(JB, 'In Progress')]);
+    const left = await stockOf(L);
+    t('two job cards, 8 + 7 against a stock of 10: one succeeds',
+      [a.status, b.status].filter((c) => c === 200).length === 1, { a: a.status, b: b.status });
+    t('   ...and one is refused for stock',
+      [a, b].find((r) => r.status === 409)?.body?.error?.reason === 'insufficient_stock',
+      [a.body?.error, b.body?.error]);
+    t('   ...stock is 2 or 3, and never negative', left === 2 || left === 3, left);
+    t('   ...only the winner moved to In Progress',
+      [await statusOf(JA), await statusOf(JB)].filter((s) => s === 'In Progress').length === 1,
+      [await statusOf(JA), await statusOf(JB)]);
+    t('   ...and the ledger accounts for every unit that left',
+      (await issuedFor(JA, L)) + (await issuedFor(JB, L)) === 10 - left,
+      { a: await issuedFor(JA, L), b: await issuedFor(JB, L), left });
+
+    // C. two job cards taking exactly what is there.
+    const E = await newPart('C-6 Exact Part', 'c6-ex6', 10);
+    const JC = await newJob([partLine(E, 'C-6 Exact Part', 5)]);
+    const JD = await newJob([partLine(E, 'C-6 Exact Part', 5)]);
+    await Promise.all([setStatus(JC, 'Inspection'), setStatus(JD, 'Inspection')]);
+    const [c, d] = await Promise.all([setStatus(JC, 'In Progress'), setStatus(JD, 'In Progress')]);
+    t('two job cards taking 5 each from a stock of 10: both succeed',
+      c.status === 200 && d.status === 200, { c: c.status, d: d.status });
+    t('   ...and the stock is exactly zero', (await stockOf(E)) === 0, await stockOf(E));
+    t('   ...with five issued to each',
+      (await issuedFor(JC, E)) === 5 && (await issuedFor(JD, E)) === 5,
+      { c: await issuedFor(JC, E), d: await issuedFor(JD, E) });
+  }
+  {
+    // E. a twelve-way burst on one scarce part.
+    const B = await newPart('C-6 Burst Part', 'c6-burst', 5);
+    const jobs = [];
+    for (let i = 0; i < 12; i += 1) jobs.push(await newJob([partLine(B, 'C-6 Burst Part', 1)]));
+    await Promise.all(jobs.map((j) => setStatus(j, 'Inspection')));
+    const results = await Promise.all(jobs.map((j) => setStatus(j, 'In Progress')));
+    const won = results.filter((r) => r.status === 200).length;
+    const lost = results.filter((r) => r.status === 409).length;
+    t('twelve job cards racing for five units: five succeed', won === 5, { won, lost });
+    t('   ...seven are refused', lost === 7, { won, lost });
+    t('   ...none is a 5xx', !results.some((r) => r.status >= 500), results.map((r) => r.status));
+    t('   ...every refusal is a stock conflict',
+      results.filter((r) => r.status === 409)
+        .every((r) => r.body?.error?.reason === 'insufficient_stock'),
+      results.filter((r) => r.status === 409).map((r) => r.body?.error?.reason));
+    t('   ...the stock is exactly zero, never negative', (await stockOf(B)) === 0, await stockOf(B));
+    t('   ...exactly five job cards are In Progress',
+      (await Promise.all(jobs.map(statusOf))).filter((s) => s === 'In Progress').length === 5,
+      await Promise.all(jobs.map(statusOf)));
+
+    /* ---- 17j. the ledger explains the balance, row by row ---- */
+    const rows = (await get('/api/inventory-transactions?limit=1000')).body?.data
+      ?.filter((x) => x.partId === B)
+      ?.sort((x, y) => (x.createdAt || '').localeCompare(y.createdAt || '') || x.id.localeCompare(y.id));
+    t('every burst ledger row is internally consistent (prev + delta === new)',
+      rows.every((x) => {
+        const delta = ['purchase', 'adjustment-in', 'return', 'initial-stock'].includes(x.type)
+          ? x.quantity : -x.quantity;
+        return Math.abs((x.prevStock + delta) - x.newStock) < 1e-9;
+      }), rows);
+    t('   ...the rows chain end to end with no lost update',
+      rows.every((x, i) => i === 0 || x.prevStock === rows[i - 1].newStock),
+      rows.map((x) => [x.id, x.prevStock, x.newStock]));
+    t('   ...the last snapshot equals the live balance',
+      rows[rows.length - 1].newStock === (await stockOf(B)),
+      { last: rows[rows.length - 1], live: await stockOf(B) });
+    t('   ...no snapshot is ever negative', rows.every((x) => x.prevStock >= 0 && x.newStock >= 0));
+    t('   ...and there are exactly six: the stocking, plus one per winner',
+      rows.length === 6, rows.length);
+    t('every job-card row the burst wrote names its own job card',
+      rows.filter((x) => x.referenceType === 'job-card')
+        .every((x) => jobs.includes(x.referenceId) && x.type === 'job-card-use'),
+      rows.filter((x) => x.referenceType === 'job-card').map((x) => [x.referenceId, x.type]));
   }
 
   // cleanup.sql's sweep removes the rows this section created, in FK order,

@@ -56,7 +56,7 @@ import {
 } from '../lib/http.js';
 import {
   readJsonBody, readString, readNumber, readEnum, readDate,
-  nowIso, allocateId, constraintFailure,
+  nowIso, todayInDhaka, allocateId, constraintFailure,
 } from '../lib/write.js';
 import { fieldSet } from '../lib/collection-write.js';
 
@@ -1492,4 +1492,525 @@ export async function deleteJobCard(request, env, rawId) {
   }
 
   return ok({ id: id.value, deleted: true });
+}
+
+/* ============================================================
+   C-6 — the status transition
+   ------------------------------------------------------------
+   POST /api/job-cards/:id/status, and the ONLY place a job card's
+   status moves. C-5's PUT refuses a status change on purpose, so
+   there is exactly one state machine in this API and it is the one
+   below.
+
+   This is a port of changeStatus() (job-cards.js:964-1036). One
+   request can move the job card's status, its completedAt or
+   actualDelivery, parts.stock, the inventory ledger and the linked
+   appointment's status. All of it goes in ONE env.DB.batch().
+
+   ---- the four things that make this safe ----
+
+   1. THE STATUS UPDATE IS THE GATE. It carries
+      `AND status = <expected>`, so two concurrent requests cannot
+      both perform the same transition -- one matches the row, the
+      other matches nothing. meta.changes says which happened.
+
+   2. EVERY DEPENDENT STATEMENT IS CONDITIONAL ON THAT GATE.
+      Statements in a batch share one transaction, so the ones
+      after it re-read the job card's status and do nothing unless
+      the transition actually landed. A status update that changes
+      no rows can therefore never be followed by a stock movement.
+
+   3. THE DEDUCTION CARRIES hasJobDeduction() ITSELF. The ledger
+      INSERT's `NOT EXISTS (... job-card-use ... this job ... this
+      part)` is utils.js:241-245 written in SQL -- the same rule
+      that makes In Progress <-> Waiting for Parts ping-pong safe
+      in the browser. The stock UPDATE beside it applies only if
+      that INSERT wrote its row, so the two can never disagree.
+
+   4. A RETURN RE-VERIFIES THE BALANCE IT PLANNED AGAINST, and
+      yields a NULL quantity if it moved -- which the column's NOT
+      NULL turns into a rolled-back batch rather than a wrong
+      return. The status change goes back with it.
+   ============================================================ */
+
+/**
+ * The transition table, copied from job-cards.js:46-56.
+ *
+ * This is the whole state machine and nothing is derived from it: a status is
+ * reachable only if it is listed here. No entry lists itself, which is what
+ * makes "no change" an invalid transition rather than a silent success --
+ * changeStatus() rejects it at :967 exactly like any other illegal move.
+ */
+const TRANSITIONS = {
+  'Received': ['Inspection', 'Cancelled'],
+  'Inspection': ['In Progress', 'Waiting for Approval', 'Cancelled'],
+  'Waiting for Approval': ['In Progress', 'Cancelled'],
+  'In Progress': ['Waiting for Parts', 'Waiting for Approval', 'Completed', 'Cancelled'],
+  'Waiting for Parts': ['In Progress'],
+  'Completed': ['Delivered'],
+  'Delivered': [],
+  'Cancelled': [],
+};
+
+/* The two statuses that move stock, and nothing else does. :973 issues the
+   job's parts on entering In Progress; :1003 returns them on Cancelled.
+   Waiting for Parts has NO branch in changeStatus(), so entering or leaving it
+   moves nothing -- what was issued stays issued while the job waits. */
+const DEDUCT_ON = 'In Progress';
+const RETURN_ON = 'Cancelled';
+
+/* utils.js:296 and :328 — the notes each movement carries, verbatim, so a row
+   written here is indistinguishable from one the browser wrote. */
+const usedNote = (jobId) => `Used on ${jobId}`;
+const cancelNote = (jobId) => `Returned — ${jobId} cancelled`;
+
+/* :1015 — an appointment that has finished is never moved again. Its own
+   terminal list, not the job card's. */
+const APPOINTMENT_TERMINAL = ['Completed', 'Cancelled', 'No Show'];
+
+/**
+ * :1016-1020 — the one-way status mapping, and the whole of it.
+ *
+ * Work actually starting moves the appointment to In Progress; the job card
+ * being completed completes it. Every other transition leaves the appointment
+ * alone, and nothing ever flows the other way.
+ *
+ * Note what this deliberately does NOT do: it does not consult the
+ * APPOINTMENT's own transition table (appointments.js:26-33), which would not
+ * allow Scheduled -> In Progress or Confirmed -> Completed. changeStatus()
+ * writes the status directly, so the job card overrides that table, and
+ * reproducing the override is the faithful thing to do. C-3's own endpoint
+ * still enforces it for a caller changing an appointment directly.
+ */
+const APPOINTMENT_SYNC = {
+  'In Progress': 'In Progress',
+  'Completed': 'Completed',
+};
+
+/**
+ * Fields the server owns on a status change. Refused by name rather than
+ * ignored, so a caller cannot believe it set a timestamp or a quantity that
+ * the server actually decided.
+ */
+const STATUS_SERVER_OWNED = {
+  completedAt: '`completedAt` is set by the server when a job card is completed.',
+  actualDelivery: '`actualDelivery` is set by the server when a job card is delivered.',
+  paid: '`paid` is not changed by a status transition.',
+  due: '`due` is not changed by a status transition.',
+  subtotal: '`subtotal` is not changed by a status transition.',
+  tax: '`tax` is not changed by a status transition.',
+  total: '`total` is not changed by a status transition.',
+  invoiceId: '`invoiceId` is not changed by a status transition.',
+  appointmentId: '`appointmentId` is set when the job card is created.',
+  quantity: '`quantity` is not a status field. Inventory follows from the transition.',
+  prevStock: '`prevStock` is recorded by the server from the live stock.',
+  newStock: '`newStock` is recorded by the server from the live stock.',
+};
+
+/**
+ * The parent row a transition needs, plus the part lines it may have to issue.
+ *
+ * Deliberately narrower than loadJobCard(): a status change never looks at the
+ * service lines or the money, so it does not read them. The part lines are
+ * read only for the one transition that issues stock.
+ */
+async function loadForTransition(env, id, next) {
+  const row = await env.DB.prepare(
+    `SELECT id, status, appointment_id, completed_at, actual_delivery
+       FROM job_cards WHERE id = ?1 LIMIT 1`
+  ).bind(id).first();
+  if (!row) return null;
+
+  if (next !== DEDUCT_ON) return { row, partLines: [] };
+
+  const { results } = await env.DB.prepare(
+    `SELECT part_id, name, qty FROM job_card_parts
+      WHERE job_card_id = ?1 AND part_id IS NOT NULL
+      ORDER BY line_no, id`
+  ).bind(id).all();
+  return { row, partLines: results ?? [] };
+}
+
+/**
+ * What entering In Progress has to issue — the port of checkJobStock() and
+ * deductForJob() (utils.js:267-301).
+ *
+ * The rule is NOT a delta. deductForJob() asks hasJobDeduction(): has this job
+ * ever been issued this part at all? If it has, the line is skipped entirely,
+ * whatever quantity it now names; if it has not, the line's FULL quantity is
+ * issued. That is what makes In Progress -> Waiting for Parts -> In Progress
+ * safe, and it is why a quantity changed while the job was already issuing is
+ * C-5's reconciliation to settle, not this one's.
+ *
+ * Two lines naming the same part issue ONCE, for the first line's quantity:
+ * move() writes its ledger row immediately, so the second line's
+ * hasJobDeduction() already sees it. Reproduced here by taking the first line
+ * per part and ignoring the rest.
+ *
+ * The shortage check is per LINE and against live stock, and it reports the
+ * LINE's name -- the snapshot, which is what checkJobStock() pushes (:276).
+ *
+ * Returns { plan, shortages }.
+ */
+async function planIssue(env, jobCardId, partLines) {
+  if (partLines.length === 0) return { plan: [], shortages: [] };
+
+  const partIds = [...new Set(partLines.map((l) => l.part_id))];
+  // One query for every part: its live stock, and whether this job has ever
+  // been issued it. Never one lookup per line.
+  const holes = partIds.map((_, i) => `?${i + 2}`).join(', ');
+  const { results } = await env.DB.prepare(
+    `SELECT p.id AS part_id, p.stock,
+            EXISTS (SELECT 1 FROM inventory_transactions t
+                     WHERE t.type           = '${USE}'
+                       AND t.reference_type = '${JOB_REFERENCE}'
+                       AND t.reference_id   = ?1
+                       AND t.part_id        = p.id) AS issued_before
+       FROM parts p
+      WHERE p.id IN (${holes})`
+  ).bind(jobCardId, ...partIds).all();
+
+  const live = new Map((results ?? []).map((r) => [r.part_id, r]));
+
+  const plan = [];
+  const shortages = [];
+  const planned = new Set();
+  for (const line of partLines) {
+    const row = live.get(line.part_id);
+    // :271 — already issued to this job, so neither checked nor deducted.
+    if (row && row.issued_before) continue;
+    const available = row ? Number(row.stock) || 0 : 0;
+    const required = Number(line.qty) || 0;
+    // :277-279 — a missing part counts as zero available, and the message
+    // names the LINE, because that is the name the user typed or chose.
+    if (!row || available < required) {
+      shortages.push({ partId: line.part_id, name: line.name, available, required });
+      continue;
+    }
+    // :293 — the second line for a part finds the first line's row already
+    // written, so only the first one issues.
+    if (planned.has(line.part_id)) continue;
+    planned.add(line.part_id);
+    plan.push({ partId: line.part_id, quantity: required });
+  }
+  return { plan, shortages };
+}
+
+/**
+ * What Cancelled has to give back — the port of returnForJob()
+ * (utils.js:313-333).
+ *
+ * The LEDGER decides, not the job card's lines: each part gets back exactly
+ * what is still outstanding, which is why a job whose quantity was later
+ * reduced returns three rather than the five it once asked for. A part with
+ * nothing outstanding is skipped, so cancelling twice cannot return twice.
+ *
+ * returnForJob() takes the union of the job's current part lines and every
+ * part the ledger has issued it. A line with no ledger history has an
+ * outstanding balance of zero and is skipped, so grouping the ledger alone is
+ * the same set of movements and costs one query with no IN-list.
+ */
+async function planReturn(env, jobCardId) {
+  const { results } = await env.DB.prepare(
+    `SELECT t.part_id,
+            COALESCE(SUM(CASE WHEN t.type = '${USE}'    THEN t.quantity
+                              WHEN t.type = '${RETURN}' THEN -t.quantity
+                              ELSE 0 END), 0) AS outstanding
+       FROM inventory_transactions t
+      WHERE t.reference_type = '${JOB_REFERENCE}' AND t.reference_id = ?1
+      GROUP BY t.part_id
+      ORDER BY t.part_id`
+  ).bind(jobCardId).all();
+
+  return (results ?? [])
+    .filter((r) => Number(r.outstanding) > 0)
+    .map((r) => ({ partId: r.part_id, quantity: Number(r.outstanding) }));
+}
+
+/**
+ * The two statements that issue one part for a job card.
+ *
+ * `landed` is the status the transition is moving TO. Both statements are
+ * conditional on the job card actually holding it, so a status UPDATE that
+ * matched nothing is never followed by a movement.
+ *
+ * Nothing is computed in JavaScript. prev_stock and new_stock are read from
+ * the live row inside the INSERT, and the schema answers every failure:
+ *
+ *   part missing        prev_stock reads NULL -> NOT NULL -> batch aborts
+ *   stock would go < 0  new_stock < 0 and parts.stock >= 0 -> CHECK -> aborts
+ *   already issued      NOT EXISTS matches nothing -> no row, and the stock
+ *                       UPDATE beside it finds no row to point at either
+ */
+function issueStatements(env, { txnId, jobCardId, partId, quantity, landed, at }) {
+  return [
+    env.DB.prepare(
+      `INSERT INTO inventory_transactions
+         (id, part_id, type, quantity, unit_cost, reference_type, reference_id,
+          reason, notes, prev_stock, new_stock, created_at)
+       SELECT ?1, ?2, '${USE}', ?3, NULL, '${JOB_REFERENCE}', ?4, '', ?5,
+              (SELECT stock FROM parts WHERE id = ?2),
+              (SELECT stock FROM parts WHERE id = ?2) - ?3,
+              ?6
+        WHERE (SELECT status FROM job_cards WHERE id = ?4) = ?7
+          AND NOT EXISTS (SELECT 1 FROM inventory_transactions
+                           WHERE type           = '${USE}'
+                             AND reference_type = '${JOB_REFERENCE}'
+                             AND reference_id   = ?4
+                             AND part_id        = ?2)`
+    ).bind(txnId, partId, quantity, jobCardId, usedNote(jobCardId), at, landed),
+    // Tied to its own ledger row rather than repeating the guards: the stock
+    // moves if and only if the movement above was recorded.
+    env.DB.prepare(
+      `UPDATE parts SET stock = stock - ?2, updated_at = ?3
+        WHERE id = ?1
+          AND EXISTS (SELECT 1 FROM inventory_transactions WHERE id = ?4)`
+    ).bind(partId, quantity, at, txnId),
+  ];
+}
+
+/**
+ * The two statements that give one part back when a job card is cancelled.
+ *
+ * The WHERE keeps it conditional on the transition landing, exactly as above.
+ * The quantity is where the two differ: `plannedOutstanding` is the balance
+ * this plan was computed from, and the CASE re-reads it at write time. If
+ * something moved it in between -- a concurrent edit reconciling the same job
+ * -- the quantity is NULL, the column's NOT NULL aborts the batch, and the
+ * status change rolls back with it. Returning a stale amount would put the
+ * ledger and the stock permanently out of step, which no later operation could
+ * repair.
+ */
+function returnStatements(env, { txnId, jobCardId, partId, quantity, landed, at }) {
+  return [
+    env.DB.prepare(
+      `INSERT INTO inventory_transactions
+         (id, part_id, type, quantity, unit_cost, reference_type, reference_id,
+          reason, notes, prev_stock, new_stock, created_at)
+       SELECT ?1, ?2, '${RETURN}',
+              CASE WHEN (SELECT COALESCE(SUM(CASE WHEN type = '${USE}'    THEN quantity
+                                                  WHEN type = '${RETURN}' THEN -quantity
+                                                  ELSE 0 END), 0)
+                           FROM inventory_transactions
+                          WHERE reference_type = '${JOB_REFERENCE}'
+                            AND reference_id   = ?4
+                            AND part_id        = ?2) = ?3
+                   THEN ?3 END,
+              NULL, '${JOB_REFERENCE}', ?4, '', ?5,
+              (SELECT stock FROM parts WHERE id = ?2),
+              (SELECT stock FROM parts WHERE id = ?2) + ?3,
+              ?6
+        WHERE (SELECT status FROM job_cards WHERE id = ?4) = ?7`
+    ).bind(txnId, partId, quantity, jobCardId, cancelNote(jobCardId), at, landed),
+    env.DB.prepare(
+      `UPDATE parts SET stock = stock + ?2, updated_at = ?3
+        WHERE id = ?1
+          AND EXISTS (SELECT 1 FROM inventory_transactions WHERE id = ?4)`
+    ).bind(partId, quantity, at, txnId),
+  ];
+}
+
+/**
+ * A constraint the transition's statements raise on purpose, mapped to the
+ * rule it enforces. Anything else falls through to constraintFailure().
+ */
+function transitionFailure(err) {
+  const message = String((err && err.message) || err || '');
+  if (/CHECK constraint failed:\s*(new_stock|stock)\s*>=\s*0/i.test(message)) {
+    return conflict(
+      'Stock changed while this job card was being updated, and the change would take it below zero.',
+      { reason: 'insufficient_stock' }
+    );
+  }
+  if (/NOT NULL constraint failed: inventory_transactions\.quantity/i.test(message)) {
+    return conflict(
+      'This job card\'s stock was changed by another request. Reload it and try again.',
+      { reason: 'concurrent_modification' }
+    );
+  }
+  if (/NOT NULL constraint failed: inventory_transactions\.(prev|new)_stock/i.test(message)) {
+    return conflict('A part on this job card no longer exists.', { reason: 'part_not_found' });
+  }
+  return null;
+}
+
+/**
+ * POST /api/job-cards/:id/status
+ *
+ * The only backend operation that moves a job card's status.
+ *
+ * ---- what a transition does, and when ----
+ *
+ *   any             the status itself, and updated_at
+ *   -> In Progress  issues every part line this job has never been issued,
+ *                   and moves a linked, unfinished appointment to In Progress
+ *   -> Completed    stamps completed_at, if it is not already stamped, and
+ *                   completes a linked, unfinished appointment
+ *   -> Delivered    stamps actual_delivery with the WORKSHOP's calendar day,
+ *                   if it is not already stamped
+ *   -> Cancelled    returns whatever is still outstanding on the ledger
+ *   -> Waiting for Parts, Inspection, Waiting for Approval
+ *                   the status alone; changeStatus() has no branch for them
+ *
+ * Nothing here touches the money. paid, due, subtotal, tax, total and
+ * invoice_id are not part of a status change in the client either -- an
+ * invoiced job card's status moves like any other, because changeStatus() has
+ * no invoice guard (:964-1036). C-7 and C-8 own those.
+ */
+export async function setJobCardStatus(request, env, rawId) {
+  if (request.method !== 'POST') return methodNotAllowed(['POST']);
+  if (!env.DB) return noDatabase();
+
+  const id = readRecordId(rawId);
+  if (id.error) return fail('invalid_id', id.error, 400);
+
+  const body = await readJsonBody(request);
+  if (body.error) return fail('invalid_body', body.error, 400);
+  const b = body.value;
+
+  const errors = {};
+  for (const [key, message] of Object.entries(STATUS_SERVER_OWNED)) {
+    if (b[key] !== undefined) errors[key] = message;
+  }
+  const next = readEnum(b, 'status', STATUSES, { required: true });
+  if (next.error) errors.status = next.error;
+  if (Object.keys(errors).length) {
+    return unprocessable('Some status fields are not valid.', errors);
+  }
+
+  const loaded = await loadForTransition(env, id.value, next.value);
+  if (!loaded) return fail('not_found', 'No job card with that id.', 404);
+  const current = loaded.row.status;
+
+  // :967 — the whole gate. A status is reachable only if TRANSITIONS lists it,
+  // and no entry lists itself, so "no change" lands here too. The message is
+  // the client's own; the reason distinguishes the three ways to get it.
+  const allowed = TRANSITIONS[current] ?? [];
+  if (!allowed.includes(next.value)) {
+    return conflict(
+      `Cannot change ${current} job card to ${next.value}.`,
+      {
+        reason: current === next.value ? 'same_status'
+          : allowed.length === 0 ? 'job_card_terminal'
+            : 'invalid_status_transition',
+        from: current,
+        to: next.value,
+        allowed,
+      }
+    );
+  }
+
+  // ---- the inventory plan, worked out in full before anything moves --------
+  let issues = [];
+  let returns = [];
+  if (next.value === DEDUCT_ON) {
+    const planned = await planIssue(env, id.value, loaded.partLines);
+    // :976-989 — one short part stops the whole transition, and the job card
+    // does not move. The wording is the client's own dialog.
+    if (planned.shortages.length) {
+      const s = planned.shortages[0];
+      return conflict(
+        `Insufficient stock for ${s.name}. Available: ${s.available}, Required: ${s.required}.`,
+        { reason: 'insufficient_stock', shortages: planned.shortages }
+      );
+    }
+    issues = planned.plan;
+  } else if (next.value === RETURN_ON) {
+    returns = await planReturn(env, id.value);
+  }
+
+  // One id per movement, allocated together rather than one after another.
+  const movements = [...issues, ...returns];
+  let txnIds = [];
+  if (movements.length) {
+    const allocations = await Promise.all(
+      movements.map(() => allocateId(env, 'inventoryTransactions'))
+    );
+    const bad = allocations.find((a) => a.error);
+    if (bad) {
+      console.error('POST /api/job-cards/:id/status could not allocate a ledger id:', bad.error);
+      return fail('database_error', 'Could not change the job card status.', 500);
+    }
+    txnIds = allocations.map((a) => a.id);
+  }
+
+  const at = nowIso();
+  const sets = ['status = ?2', 'updated_at = ?3'];
+  const binds = [id.value, next.value, at];
+
+  // :993 — stamped on entering Completed, and only if it is not already
+  // stamped. An instant, so nowIso(); the column is a timestamp, not a day.
+  if (next.value === 'Completed' && !loaded.row.completed_at) {
+    binds.push(at);
+    sets.push(`completed_at = ?${binds.length}`);
+  }
+  // :994 — todayStr() reads the BROWSER's calendar, which in the shop is
+  // Asia/Dhaka. A Worker runs in UTC, so the zone is named explicitly; this is
+  // audit Finding 2, and the column holds a local calendar day.
+  if (next.value === 'Delivered' && !loaded.row.actual_delivery) {
+    binds.push(todayInDhaka());
+    sets.push(`actual_delivery = ?${binds.length}`);
+  }
+  binds.push(current);
+
+  const statements = [
+    // THE GATE. `AND status = <expected>` is what makes two concurrent
+    // requests settle: one matches the row, the other matches nothing, and
+    // meta.changes below says which this was.
+    env.DB.prepare(
+      `UPDATE job_cards SET ${sets.join(', ')}
+        WHERE id = ?1 AND status = ?${binds.length}`
+    ).bind(...binds),
+  ];
+
+  issues.forEach((m, i) => {
+    statements.push(...issueStatements(env, {
+      txnId: txnIds[i], jobCardId: id.value, partId: m.partId,
+      quantity: m.quantity, landed: next.value, at,
+    }));
+  });
+  returns.forEach((m, i) => {
+    statements.push(...returnStatements(env, {
+      txnId: txnIds[issues.length + i], jobCardId: id.value, partId: m.partId,
+      quantity: m.quantity, landed: next.value, at,
+    }));
+  });
+
+  // :1013-1023 — the appointment follows the job card, never the other way
+  // round, and only for these two transitions. A finished appointment is left
+  // alone, its source is never touched, and its job_card_id is C-5's to set.
+  const apptStatus = APPOINTMENT_SYNC[next.value];
+  if (loaded.row.appointment_id && apptStatus) {
+    const terminal = APPOINTMENT_TERMINAL.map((s) => `'${s}'`).join(', ');
+    statements.push(env.DB.prepare(
+      `UPDATE appointments SET status = ?2, updated_at = ?3
+        WHERE id = ?1
+          AND status NOT IN (${terminal})
+          AND status <> ?2
+          AND (SELECT status FROM job_cards WHERE id = ?4) = ?2`
+    ).bind(loaded.row.appointment_id, apptStatus, at, id.value));
+  }
+
+  let results;
+  try {
+    results = await env.DB.batch(statements);
+  } catch (err) {
+    const mapped = transitionFailure(err);
+    if (mapped) return mapped;
+    const constraint = constraintFailure(err);
+    if (constraint) return constraint;
+    console.error('POST /api/job-cards/:id/status failed:', err);
+    return fail('database_error', 'Could not change the job card status.', 500);
+  }
+
+  // The gate's own answer. Nothing else in the batch can have run, because
+  // every dependent statement re-reads the status this one was meant to set.
+  if ((results[0]?.meta?.changes ?? 0) !== 1) {
+    return conflict(
+      'This job card was changed by another request. Reload it and try again.',
+      { reason: 'concurrent_modification', expected: current }
+    );
+  }
+
+  return respondWith(env, id.value, 200);
 }

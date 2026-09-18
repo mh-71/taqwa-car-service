@@ -378,6 +378,142 @@ export default {
         t('   ...totalling 5 issued for this job card', issued.n === 5, issued);
       }
 
+      /* ---------- F. C-6 — a status transition is all or nothing ---------- */
+      // A status transition moves the job card, stock, the ledger and a linked
+      // appointment in ONE batch. Two things about it cannot be reached
+      // through the API: what happens when a statement fails AFTER the stock
+      // has already moved, and what the dependent statements do when the
+      // status gate itself matches nothing. Both are settled here.
+      {
+        await q(`INSERT INTO parts (id, name, stock, status, created_at)
+                 VALUES ('PRT-9803', 'C-6 Probe Part', 10, 'Active', ?1)`,
+          '2026-01-01T00:00:00Z').run();
+        await q(`INSERT INTO job_cards
+                   (id, customer_id, vehicle_id, mechanic_id, date, status, priority,
+                    complaint, created_at)
+                 VALUES ('JOB-9802', 'CUS-9801', 'VEH-9892', 'MEC-9801', '2026-01-01',
+                         'Inspection', 'normal', 'C-6 probe', ?1)`,
+          '2026-01-01T00:00:00Z').run();
+        await q(`INSERT INTO appointments
+                   (id, customer_id, vehicle_id, service_id, job_card_id, date, time,
+                    duration, status, source, reminder_sent, created_at)
+                 VALUES ('APT-9801', 'CUS-9801', 'VEH-9892', 'SRV-9811', 'JOB-9802',
+                         '2026-01-02', '09:00', 60, 'Confirmed', 'Website', 0, ?1)`,
+          '2026-01-01T00:00:00Z').run();
+
+        const jcStatus = async () => (await q(
+          "SELECT status FROM job_cards WHERE id = 'JOB-9802'").first()).status;
+        const jcStock = async () => (await q(
+          "SELECT stock FROM parts WHERE id = 'PRT-9803'").first()).stock;
+        const jcLedger = async () => (await q(
+          "SELECT count(*) n FROM inventory_transactions WHERE reference_id = 'JOB-9802'").first()).n;
+        const apptStatus = async () => (await q(
+          "SELECT status FROM appointments WHERE id = 'APT-9801'").first()).status;
+        const apptSource = async () => (await q(
+          "SELECT source FROM appointments WHERE id = 'APT-9801'").first()).source;
+
+        // The four statements a "-> In Progress" transition is made of, in the
+        // order the route sends them, built against an expected current status.
+        const transition = (txnId, qty, expected) => [
+          q(`UPDATE job_cards SET status = 'In Progress', updated_at = ?2
+              WHERE id = 'JOB-9802' AND status = ?1`, expected, '2026-01-07T00:00:00Z'),
+          q(`INSERT INTO inventory_transactions
+               (id, part_id, type, quantity, unit_cost, reference_type, reference_id,
+                reason, notes, prev_stock, new_stock, created_at)
+             SELECT ?1, 'PRT-9803', 'job-card-use', ?2, NULL, 'job-card', 'JOB-9802',
+                    '', 'Used on JOB-9802',
+                    (SELECT stock FROM parts WHERE id = 'PRT-9803'),
+                    (SELECT stock FROM parts WHERE id = 'PRT-9803') - ?2,
+                    ?3
+              WHERE (SELECT status FROM job_cards WHERE id = 'JOB-9802') = 'In Progress'
+                AND NOT EXISTS (SELECT 1 FROM inventory_transactions
+                                 WHERE type = 'job-card-use' AND reference_type = 'job-card'
+                                   AND reference_id = 'JOB-9802' AND part_id = 'PRT-9803')`,
+            txnId, qty, '2026-01-07T00:00:00Z'),
+          q(`UPDATE parts SET stock = stock - ?1
+              WHERE id = 'PRT-9803'
+                AND EXISTS (SELECT 1 FROM inventory_transactions WHERE id = ?2)`, qty, txnId),
+          q(`UPDATE appointments SET status = 'In Progress', updated_at = ?1
+              WHERE id = 'APT-9801'
+                AND status NOT IN ('Completed', 'Cancelled', 'No Show')
+                AND status <> 'In Progress'
+                AND (SELECT status FROM job_cards WHERE id = 'JOB-9802') = 'In Progress'`,
+            '2026-01-07T00:00:00Z'),
+        ];
+
+        t('the C-6 probe starts Inspection, stock 10, appointment Confirmed',
+          (await jcStatus()) === 'Inspection' && (await jcStock()) === 10
+          && (await apptStatus()) === 'Confirmed',
+          { status: await jcStatus(), stock: await jcStock(), appt: await apptStatus() });
+
+        // F1 — the status gate matches nothing, so no dependent statement runs.
+        const missed = await env.DB.batch(transition('STK-9821', 3, 'Received'));
+        t('a status update whose expected status is wrong changes no rows',
+          missed[0].meta.changes === 0, missed.map((r) => r.meta.changes));
+        t('   ...and every dependent statement changes nothing either',
+          missed.slice(1).every((r) => r.meta.changes === 0), missed.map((r) => r.meta.changes));
+        t('   ...so the job card did not move', (await jcStatus()) === 'Inspection', await jcStatus());
+        t('   ...no stock moved', (await jcStock()) === 10, await jcStock());
+        t('   ...no ledger row was written', (await jcLedger()) === 0, await jcLedger());
+        t('   ...and the appointment was left alone',
+          (await apptStatus()) === 'Confirmed', await apptStatus());
+        t('   ...the batch still committed cleanly, with nothing to undo',
+          Array.isArray(missed) && missed.every((r) => r.success === true));
+
+        // F2 — a statement failing AFTER the stock has already moved.
+        let threw5 = null;
+        try {
+          await env.DB.batch([
+            ...transition('STK-9822', 3, 'Inspection'),
+            // Stands in for any later statement that violates a constraint.
+            q(`INSERT INTO job_card_services
+                 (job_card_id, service_id, name, qty, unit_price, total, line_no)
+               VALUES ('JOB-9802', 'SRV-0000', 'Ghost', 1, 100, 100, 1)`),
+          ]);
+        } catch (err) { threw5 = String(err.message || err); }
+        t('a transition batch whose last statement fails throws',
+          threw5 !== null && /FOREIGN KEY/i.test(threw5), threw5);
+        t('   ...the status change rolled back', (await jcStatus()) === 'Inspection', await jcStatus());
+        t('   ...the stock movement rolled back', (await jcStock()) === 10, await jcStock());
+        t('   ...the ledger row rolled back', (await jcLedger()) === 0, await jcLedger());
+        t('   ...and the appointment sync rolled back',
+          (await apptStatus()) === 'Confirmed', await apptStatus());
+
+        // F3 — the same batch without the failing statement commits all of it.
+        const landed = await env.DB.batch(transition('STK-9823', 3, 'Inspection'));
+        t('the same transition without it commits every part',
+          landed.every((r) => r.meta.changes === 1), landed.map((r) => r.meta.changes));
+        t('   ...the job card is In Progress', (await jcStatus()) === 'In Progress', await jcStatus());
+        t('   ...stock is 10 -> 7', (await jcStock()) === 7, await jcStock());
+        t('   ...one ledger row exists', (await jcLedger()) === 1, await jcLedger());
+        t('   ...the appointment followed to In Progress',
+          (await apptStatus()) === 'In Progress', await apptStatus());
+        t('   ...and its source was never touched',
+          (await apptSource()) === 'Website', await apptSource());
+        const snap3 = await q(
+          "SELECT prev_stock, new_stock, quantity, notes FROM inventory_transactions WHERE id = 'STK-9823'").first();
+        t('   ...snapshotting 10 -> 7 for a quantity of 3',
+          snap3.prev_stock === 10 && snap3.new_stock === 7 && snap3.quantity === 3, snap3);
+        t('   ...with the engine\'s own note', snap3.notes === 'Used on JOB-9802', snap3.notes);
+
+        // F4 — repeating it deducts nothing: the gate refuses, and the
+        // deduction's own NOT EXISTS would refuse even if the gate had not.
+        const repeat = await env.DB.batch(transition('STK-9824', 3, 'Inspection'));
+        t('repeating the transition changes no rows at all',
+          repeat.every((r) => r.meta.changes === 0), repeat.map((r) => r.meta.changes));
+        t('   ...stock is still 7', (await jcStock()) === 7, await jcStock());
+        t('   ...and there is still exactly one ledger row', (await jcLedger()) === 1, await jcLedger());
+
+        // F5 — and the deduction guard alone stops a second issue, even when
+        // the job card really is In Progress and the gate would pass.
+        const second = await env.DB.batch(transition('STK-9825', 3, 'In Progress'));
+        t('a second issue for a part already issued writes no ledger row',
+          second[1].meta.changes === 0, second.map((r) => r.meta.changes));
+        t('   ...and moves no stock', second[2].meta.changes === 0 && (await jcStock()) === 7,
+          await jcStock());
+        t('   ...leaving exactly one ledger row', (await jcLedger()) === 1, await jcLedger());
+      }
+
       /* ---------- D. the helpers behave the same inside workerd ---------- */
       {
         t('todayInDhaka works in workerd',
@@ -392,6 +528,7 @@ export default {
       /* ---------- cleanup, always ---------- */
       // Foreign-key order: the child lines and the job card go before the
       // customer, vehicle, mechanic and service they point at.
+      await env.DB.prepare("DELETE FROM appointments WHERE id LIKE 'APT-98%'").run();
       await env.DB.prepare("DELETE FROM job_card_services WHERE job_card_id LIKE 'JOB-98%'").run();
       await env.DB.prepare("DELETE FROM job_card_parts WHERE job_card_id LIKE 'JOB-98%'").run();
       await env.DB.prepare("DELETE FROM job_cards WHERE id LIKE 'JOB-98%'").run();
@@ -416,7 +553,8 @@ export default {
       (await q("SELECT count(*) n FROM job_cards WHERE id LIKE 'JOB-98%'").first()).n === 0
       && (await q("SELECT count(*) n FROM job_card_services WHERE job_card_id LIKE 'JOB-98%'").first()).n === 0
       && (await q("SELECT count(*) n FROM customers WHERE id LIKE 'CUS-98%'").first()).n === 0
-      && (await q("SELECT count(*) n FROM mechanics WHERE id LIKE 'MEC-98%'").first()).n === 0);
+      && (await q("SELECT count(*) n FROM mechanics WHERE id LIKE 'MEC-98%'").first()).n === 0
+      && (await q("SELECT count(*) n FROM appointments WHERE id LIKE 'APT-98%'").first()).n === 0);
     t('the services counter was restored',
       (await counter('services')) === before.counter, await counter('services'));
 

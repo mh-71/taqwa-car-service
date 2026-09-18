@@ -27,6 +27,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-appointments-write.test.mjs` | `POST`/`PUT`/`DELETE /api/appointments` — overlap scoped to the same mechanic **or** the same vehicle on the half-open interval, duplicate bookings, status transitions out of a terminal status, and the three delete blockers, none of which is a foreign key |
 | `api-inventory-transactions-write.test.mjs` | `POST /api/inventory-transactions` — that no SELECT of the stock precedes the write, that both batch statements carry the same `stock + delta >= 0` guard, that direction is derived from the type server-side, and that `prevStock`/`newStock` are computed in SQL rather than bound |
 | `api-job-cards-write.test.mjs` | `POST`/`PUT`/`DELETE /api/job-cards` — that totals are recomputed from the lines rather than taken from the body, that a create moves no stock because a new job card is `Received`, that an edit reconciles against the **ledger** and only for the two statuses where stock has already moved, that `prevStock`/`newStock` are read from the live row in SQL, and that status, appointment, invoice, `completedAt` and `actualDelivery` are immutable here |
+| `api-job-cards-status.test.mjs` | `POST /api/job-cards/:id/status` — every transition the source's table lists and every one it does not, same-status and terminal protection, that entering In Progress issues a part line in full but skips one the job has ever been issued, that Waiting for Parts moves nothing, that cancelling returns only what the ledger still shows outstanding, the server-set `completedAt`/`actualDelivery`, and the one-way appointment sync |
 | `write-crud.test.mjs` | `POST`/`PUT`/`DELETE` for the six simple entities — that PUT merges rather than replaces, that `stock` is writable nowhere on parts, that an active expense must be voided before it can be deleted, and that a referenced row's 409 comes from the schema's own foreign key |
 | `write-foundation.test.mjs` | `src/lib/write.js` and the two new `http.js` helpers — body parsing, the four field primitives, id formatting, the 409/422 responses, the constraint→status mapping, and the Asia/Dhaka date rule that audit Finding 2 turns on |
 | `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
@@ -103,6 +104,13 @@ never deployed. Its rows use the `SRV-98xx` / `VEH-989x` / `PRT-98xx` /
 second reason for it: the inventory movement's two-statement batch has to be
 shown rolling back when either half fails, and a route that returns 409
 cleanly can never demonstrate that.
+
+C-6 added a fourth: a status transition's dependent statements are guarded on
+the status gate having matched, and a gate that matches nothing has to be shown
+leaving the stock, the ledger and the appointment alone — which no API response
+can distinguish from a transition that never ran. The probe also forces a
+failure *after* the stock has moved, and shows the deduction's own `NOT EXISTS`
+refusing a second issue even when the gate would have let it through.
 
 C-5 added a third reason: a job card write moves the parent, both line tables,
 `parts.stock` and the ledger in one batch, and the route's own pre-check stops a
