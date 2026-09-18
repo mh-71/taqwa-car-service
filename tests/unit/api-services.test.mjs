@@ -316,18 +316,19 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/health', { DB: stubDB({ rows: [{ name: 'customers' }], total: 9 }) });
   const body = await res.json();
   check('health 200', res.status, 200);
-  check('health lists all seven routes', body.data.routes, [
+  check('health lists every route, in registry order', body.data.routes, [
     'GET /api/health',
     'GET /api/customers', 'GET /api/customers/:id',
     'GET /api/vehicles', 'GET /api/vehicles/:id',
     'GET /api/services', 'GET /api/services/:id',
+    'GET /api/mechanics', 'GET /api/mechanics/:id',
   ]);
 }
 {
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises seven routes', body.error.available.length, 7);
+  check('404 advertises every route', body.error.available.length, 9);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

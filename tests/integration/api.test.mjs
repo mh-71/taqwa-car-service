@@ -1,4 +1,5 @@
-/* Phase B-4 integration: real Worker + real local D1 over HTTP. */
+/* Integration: the real Worker and the real local D1, over HTTP.
+   Covers every collection the router exposes; each phase adds a section. */
 // Same default as before; the override only exists so a future phase can
 // point the same suite at a different local port.
 const BASE = process.env.TAQWA_API_BASE || 'http://127.0.0.1:8787';
@@ -23,11 +24,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 7 routes', routes.length === 7, routes);
+  t('advertises 9 routes', routes.length === 9, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
   t('advertises vehicles routes', routes.includes('GET /api/vehicles') && routes.includes('GET /api/vehicles/:id'));
+  t('advertises mechanics routes', routes.includes('GET /api/mechanics') && routes.includes('GET /api/mechanics/:id'));
 }
 
 sec('2. GET /api/services — list');
@@ -234,27 +236,145 @@ sec('10. Vehicles regression — unchanged by the shared factory');
   t('vehicles 405 unchanged', m405.status === 405 && m405.allow === 'GET');
 }
 
+sec('10b. GET /api/mechanics — the new collection, over real HTTP');
+{
+  const r = await get('/api/mechanics');
+  t('200', r.status === 200, r.status);
+  t('count 3', r.body?.count === 3, r.body?.count);
+  t('total 3', r.body?.total === 3, r.body?.total);
+  t('meta keys match the other collections',
+    JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
+    Object.keys(r.body));
+  t('newest first, id DESC tie-break',
+    JSON.stringify(r.body.data.map(m => m.id)) === JSON.stringify(['MEC-9002','MEC-9001','MEC-9003']),
+    r.body.data.map(m => m.id));
+
+  const byId = Object.fromEntries(r.body.data.map(m => [m.id, m]));
+  const full = byId['MEC-9001'];
+  t('full mechanic record shape', JSON.stringify(full) === JSON.stringify({
+    id:'MEC-9001', name:'B5 Full Mechanic', phone:'01911000001', altPhone:'01911000002',
+    email:'b5@example.test', address:'Uttara, Dhaka', specialization:'Engine & Transmission',
+    experience:12, joiningDate:'2021-03-15', employmentType:'Full Time', salaryType:'Monthly',
+    salary:32000, commissionRate:5.5, availability:'Available', notes:'regression row',
+    status:'Active', createdAt:'2026-09-10T09:00:00', updatedAt:'2026-09-12T10:00:00' }), full);
+  t('camelCase keys only', Object.keys(full).every(k => !k.includes('_')), Object.keys(full));
+  t('commissionRate keeps its decimal', full.commissionRate === 5.5, full.commissionRate);
+
+  const sparse = byId['MEC-9002'];
+  t('NULL text -> ""',
+    sparse.altPhone === '' && sparse.email === '' && sparse.address === ''
+      && sparse.specialization === '' && sparse.joiningDate === '' && sparse.notes === '');
+  t('NULL experience stays null, not 0', sparse.experience === null, sparse.experience);
+  t('NULL salary stays null, not 0', sparse.salary === null, sparse.salary);
+  t('NULL commissionRate stays null, not 0', sparse.commissionRate === null, sparse.commissionRate);
+  t('NULL employmentType -> "", API invents no default', sparse.employmentType === '', sparse.employmentType);
+  t('NULL salaryType -> "", API invents no default', sparse.salaryType === '', sparse.salaryType);
+  t('NULL availability -> "", API invents no default', sparse.availability === '', sparse.availability);
+  t('sparse mechanic omits updatedAt', !('updatedAt' in sparse), Object.keys(sparse));
+
+  const zeroed = byId['MEC-9003'];
+  t('stored 0 experience stays 0', zeroed.experience === 0, zeroed.experience);
+  t('stored 0 salary stays 0', zeroed.salary === 0, zeroed.salary);
+  t('stored 0 commissionRate stays 0', zeroed.commissionRate === 0, zeroed.commissionRate);
+  t('0 is distinguishable from null over the wire',
+    zeroed.salary === 0 && sparse.salary === null, { zero: zeroed.salary, nul: sparse.salary });
+  t('Inactive status preserved', zeroed.status === 'Inactive', zeroed.status);
+
+  const p1 = await get('/api/mechanics?limit=2');
+  t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
+  t('total still 3', p1.body?.total === 3, p1.body?.total);
+  const p2 = await get('/api/mechanics?limit=2&offset=2');
+  t('offset=2 returns the last one', JSON.stringify(p2.body.data.map(m => m.id)) === JSON.stringify(['MEC-9003']),
+    p2.body.data.map(m => m.id));
+  t('pages do not overlap', !p2.body.data.some(m => p1.body.data.find(x => x.id === m.id)));
+  const p3 = await get('/api/mechanics?offset=99');
+  t('offset past end -> empty array, still 200', p3.status === 200 && p3.body.data.length === 0);
+
+  for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
+                          ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
+    const bad = await get('/api/mechanics?' + q);
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_parameter', { q, status: bad.status });
+  }
+
+  const d = await get('/api/mechanics/MEC-9001');
+  t('detail 200', d.status === 200, d.status);
+  t('detail matches the list record', JSON.stringify(d.body.data) === JSON.stringify(full));
+  t('no list meta on detail', d.body.count === undefined && d.body.limit === undefined);
+  const dSparse = await get('/api/mechanics/MEC-9002');
+  t('sparse detail keeps salary null', dSparse.body?.data?.salary === null, dSparse.body?.data?.salary);
+
+  const d404 = await get('/api/mechanics/MEC-8888');
+  t('unknown id -> 404', d404.status === 404, d404.status);
+  t('404 message names a mechanic', d404.body?.error?.message === 'No mechanic with that id.', d404.body?.error?.message);
+  const dCross = await get('/api/mechanics/SRV-9001');
+  t('another collection\'s id -> 404, not 400', dCross.status === 404, dCross.status);
+  t('cross-collection 404 message', dCross.body?.error?.message === 'No mechanic with that id.');
+  const mOnCust = await get('/api/customers/MEC-9001');
+  t('mechanics id on the customers route -> 404', mOnCust.status === 404 && mOnCust.body?.error?.message === 'No customer with that id.');
+
+  for (const [id, why] of [['nonsense','no prefix shape'], ['MEC-','no number'], ['-9001','no prefix'],
+                           ['MECHANICS-9001','prefix too long'], ['M-1','prefix too short']]) {
+    const bad = await get('/api/mechanics/' + encodeURIComponent(id));
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_id', { id, status: bad.status });
+  }
+  const dEmpty = await get('/api/mechanics/');
+  t('trailing slash -> 400', dEmpty.status === 400 && dEmpty.body?.error?.code === 'invalid_id');
+  const dEsc = await fetch(BASE + '/api/mechanics/%zz');
+  t('malformed percent-escape -> 400', dEsc.status === 400, dEsc.status);
+
+  const inject = await get('/api/mechanics/' + encodeURIComponent("MEC-9001' OR '1'='1"));
+  t('SQL-ish id rejected -> 400', inject.status === 400, inject.status);
+  const after = await get('/api/mechanics');
+  t('mechanics table intact after injection attempt', after.body?.total === 3, after.body?.total);
+
+  for (const m of ['POST','PUT','DELETE','PATCH']) {
+    const rl = await get('/api/mechanics', { method: m });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    const rd = await get('/api/mechanics/MEC-9001', { method: m });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+  }
+}
+
 sec('11. Collections stay separate over the wire');
 {
-  const [s, c, v] = await Promise.all([get('/api/services'), get('/api/customers'), get('/api/vehicles')]);
+  const [s, c, v, m] = await Promise.all([
+    get('/api/services'), get('/api/customers'), get('/api/vehicles'), get('/api/mechanics')]);
   t('services returns only SRV ids', s.body.data.every(x => x.id.startsWith('SRV-')));
   t('customers returns only CUS ids', c.body.data.every(x => x.id.startsWith('CUS-')));
   t('vehicles returns only VEH ids', v.body.data.every(x => x.id.startsWith('VEH-')));
   t('services rows have no customer fields', !s.body.data.some(x => 'phone' in x || 'regNo' in x));
   t('customers rows have no service fields', !c.body.data.some(x => 'price' in x || 'estTime' in x));
   t('vehicles rows have no service fields', !v.body.data.some(x => 'price' in x || 'estTime' in x));
+  t('mechanics returns only MEC ids', m.body.data.every(x => x.id.startsWith('MEC-')));
+  t('mechanics rows have no vehicle or service fields',
+    !m.body.data.some(x => 'regNo' in x || 'price' in x || 'estTime' in x));
+  t('salary never appears outside mechanics',
+    ![...s.body.data, ...c.body.data, ...v.body.data].some(x => 'salary' in x || 'commissionRate' in x));
 }
 
 sec('12. Unknown routes');
 {
-  const r = await get('/api/mechanics');
-  t('unimplemented collection -> 404', r.status === 404, r.status);
-  t('404 lists the 7 available routes', (r.body?.error?.available ?? []).length === 7, r.body?.error?.available);
+  // Pick a collection the router does NOT know, derived from what health
+  // advertises rather than hardcoded. B-4 hardcoded /api/mechanics here and
+  // B-5 turned it into a real route, so the assertion started failing for the
+  // wrong reason. Deriving it means the next phase inherits this unchanged.
+  const advertised = (await get('/api/health')).body?.data?.routes ?? [];
+  const unregistered = ['parts', 'invoices', 'payments', 'expenses', 'widgets']
+    .find(name => !advertised.includes(`GET /api/${name}`));
+  t('a collection to probe was found', Boolean(unregistered), advertised);
+
+  const r = await get(`/api/${unregistered}`);
+  t(`unregistered collection /api/${unregistered} -> 404`, r.status === 404, r.status);
+  t('404 advertises exactly what health advertises',
+    JSON.stringify(r.body?.error?.available) === JSON.stringify(advertised),
+    { from404: r.body?.error?.available, fromHealth: advertised });
+  t('every advertised route is a GET', advertised.every(x => x.startsWith('GET ')), advertised);
+
   const r2 = await get('/api/services/extra/segments');
   t('deep path under services -> 400 or 404, never 500', r2.status === 400 || r2.status === 404, r2.status);
   const r3 = await get('/nope');
   t('non-api path -> 404', r3.status === 404);
 }
 
-console.log(`\nPhase B-4 integration: ${pass} passed, ${fail} failed`);
+console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

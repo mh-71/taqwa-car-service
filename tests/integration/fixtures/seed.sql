@@ -13,3 +13,8 @@ INSERT INTO customers (id, name, phone, alt_phone, email, address, notes, status
 INSERT INTO vehicles (id, customer_id, reg_no, brand, model, year, color, vin, engine_no, chassis_no, mileage, fuel_type, transmission, next_service_date, notes, status, created_at, updated_at) VALUES
   ('VEH-9001','CUS-9001','B4-TEST-01','Toyota','Corolla',2019,'White','VIN9001','ENG9001','CHS9001',52000,'Petrol','Automatic','2026-12-01','regression row','Active','2026-09-10T09:00:00','2026-09-12T10:00:00'),
   ('VEH-9002','CUS-9002','B4-TEST-02','Honda','Civic',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'Active','2026-09-11T09:00:00',NULL);
+
+INSERT INTO mechanics (id, name, phone, alt_phone, email, address, specialization, experience, joining_date, employment_type, salary_type, salary, commission_rate, availability, notes, status, created_at, updated_at) VALUES
+  ('MEC-9001','B5 Full Mechanic','01911000001','01911000002','b5@example.test','Uttara, Dhaka','Engine & Transmission',12,'2021-03-15','Full Time','Monthly',32000,5.5,'Available','regression row','Active','2026-09-10T09:00:00','2026-09-12T10:00:00'),
+  ('MEC-9002','B5 Sparse Mechanic','01911000003',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'Active','2026-09-11T09:00:00',NULL),
+  ('MEC-9003','B5 Zeroed Mechanic','01911000004',NULL,NULL,NULL,'Brakes & Suspension',0,'2026-01-01','Part Time','Hourly',0,0,'On Leave',NULL,'Inactive','2026-09-09T09:00:00',NULL);
