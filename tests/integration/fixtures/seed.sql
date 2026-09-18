@@ -51,7 +51,16 @@ INSERT INTO job_cards (id, customer_id, vehicle_id, mechanic_id, appointment_id,
   ('JOB-9001','CUS-9002','VEH-9002','MEC-9001','APT-9004',NULL,'2026-09-23','2026-09-24','2026-09-24','2026-09-24T16:00:00','Delivered','high',48200,48260,'half','Full check before long trip','Oil dark, brake pads worn','Oil degraded; pads at 20%','Oil, filter and pads replaced','Air filter at next service','Minor scratch on rear bumper','Customer waited','{"battery":"ok","brakes":"worn","tyres":"ok"}',1.5,400,600,100,5,8000,395,8295,8295,0,'2026-09-13T10:00:00','2026-09-14T11:00:00'),
   ('JOB-9002','CUS-9001','VEH-9001','MEC-9002',NULL,NULL,'2026-09-20',NULL,NULL,NULL,'Received','normal',NULL,NULL,NULL,'AC cooling weak',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,0,0,0,0,0,0,0,'2026-09-12T10:00:00',NULL),
   ('JOB-9003','CUS-9001','VEH-9001','MEC-9003',NULL,NULL,'2026-09-21','2026-09-21',NULL,NULL,'In Progress','urgent',0,NULL,'empty','Rattle from underbody','Loose heat shield',NULL,NULL,NULL,NULL,NULL,'{}',NULL,NULL,0,0,0,300,0,300,0,300,'2026-09-11T10:00:00',NULL),
-  ('JOB-9004','CUS-9002','VEH-9002','MEC-9002',NULL,NULL,'2026-09-22',NULL,NULL,NULL,'Cancelled','low',12000,NULL,'full','Brake noise','Checked, no fault found',NULL,NULL,NULL,NULL,NULL,'{this is not valid json',NULL,NULL,0,0,0,2400,0,2400,0,0,'2026-09-10T10:00:00',NULL);
+  ('JOB-9004','CUS-9002','VEH-9002','MEC-9002',NULL,NULL,'2026-09-22',NULL,NULL,NULL,'Cancelled','low',12000,NULL,'full','Brake noise','Checked, no fault found',NULL,NULL,NULL,NULL,NULL,'{this is not valid json',NULL,NULL,0,0,0,2400,0,2400,0,0,'2026-09-10T10:00:00',NULL),
+  -- JOB-9005 exists for C-5. Reconciliation only happens for a job card that
+  -- has already started issuing stock, and the write API deliberately does not
+  -- change status (C-6 owns that), so the suite needs a SECOND job card already
+  -- In Progress to make two of them contend for the same part concurrently.
+  -- Its created_at is the oldest of the five, so it simply appends to the
+  -- newest-first ordering the read section asserts. It carries labour rather
+  -- than lines, so emptying its parts is still a job card that records
+  -- something.
+  ('JOB-9005','CUS-9001','VEH-9001','MEC-9001',NULL,NULL,'2026-09-19',NULL,NULL,NULL,'In Progress','normal',NULL,NULL,NULL,'Second bay: clutch judder',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,900,0,0,900,0,900,0,900,'2026-09-09T10:00:00',NULL);
 
 -- Child lines. name / part_no / unit_price are HISTORICAL SNAPSHOTS and are
 -- written here to differ deliberately from the current catalogue rows above:

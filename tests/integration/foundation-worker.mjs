@@ -266,6 +266,118 @@ export default {
         t('   ...and writes no ledger row', (await ledgerCount()) === 2, await ledgerCount());
       }
 
+      /* ---------- E. C-5 — a job card's batch is all or nothing ---------- */
+      // A job card write moves the parent, both line tables, parts.stock and
+      // the ledger in ONE batch. The route's own pre-check stops a shortage
+      // before the batch is built, so the API can never be made to demonstrate
+      // what happens when a statement AFTER a stock movement fails. That is
+      // exactly what this entry exists for.
+      {
+        await q(`INSERT INTO customers (id, name, phone, status, created_at)
+                 VALUES ('CUS-9801', 'C-5 Probe Customer', '01980000001', 'Active', ?1)`,
+          '2026-01-01T00:00:00Z').run();
+        await q(`INSERT INTO vehicles (id, customer_id, reg_no, brand, model, status, created_at)
+                 VALUES ('VEH-9892', 'CUS-9801', 'C5-PROBE-1', 'Toyota', 'Probe', 'Active', ?1)`,
+          '2026-01-01T00:00:00Z').run();
+        await q(`INSERT INTO mechanics (id, name, phone, status, created_at)
+                 VALUES ('MEC-9801', 'C-5 Probe Mechanic', '01980000002', 'Active', ?1)`,
+          '2026-01-01T00:00:00Z').run();
+        await q(`INSERT INTO parts (id, name, stock, status, created_at)
+                 VALUES ('PRT-9802', 'C-5 Probe Part', 10, 'Active', ?1)`,
+          '2026-01-01T00:00:00Z').run();
+        await q(`INSERT INTO job_cards
+                   (id, customer_id, vehicle_id, mechanic_id, date, status, priority,
+                    complaint, created_at)
+                 VALUES ('JOB-9801', 'CUS-9801', 'VEH-9892', 'MEC-9801', '2026-01-01',
+                         'In Progress', 'normal', 'C-5 probe', ?1)`,
+          '2026-01-01T00:00:00Z').run();
+
+        const jobStock = async () => (await q(
+          "SELECT stock FROM parts WHERE id = 'PRT-9802'").first()).stock;
+        const jobLedger = async () => (await q(
+          "SELECT count(*) n FROM inventory_transactions WHERE reference_id = 'JOB-9801'").first()).n;
+        const jobLines = async () => (await q(
+          "SELECT count(*) n FROM job_card_services WHERE job_card_id = 'JOB-9801'").first()).n;
+
+        // The two statements a job card's stock movement is made of, in the
+        // order the route sends them: the ledger row reads the live balance,
+        // then the stock follows.
+        const movement = (txnId, delta, plannedIssued) => [
+          q(`INSERT INTO inventory_transactions
+               (id, part_id, type, quantity, unit_cost, reference_type, reference_id,
+                reason, notes, prev_stock, new_stock, created_at)
+             SELECT ?1, 'PRT-9802', 'job-card-use',
+                    CASE WHEN (SELECT COALESCE(SUM(CASE WHEN type = 'job-card-use' THEN quantity
+                                                        WHEN type = 'return'       THEN -quantity
+                                                        ELSE 0 END), 0)
+                                 FROM inventory_transactions
+                                WHERE reference_type = 'job-card'
+                                  AND reference_id   = 'JOB-9801'
+                                  AND part_id        = 'PRT-9802') = ?3
+                         THEN ?2 END,
+                    NULL, 'job-card', 'JOB-9801', '', 'probe',
+                    (SELECT stock FROM parts WHERE id = 'PRT-9802'),
+                    (SELECT stock FROM parts WHERE id = 'PRT-9802') - ?2,
+                    ?4`,
+            txnId, delta, plannedIssued, '2026-01-06T00:00:00Z'),
+          q("UPDATE parts SET stock = stock - ?1 WHERE id = 'PRT-9802'", delta),
+        ];
+        const line = (serviceId) => q(
+          `INSERT INTO job_card_services (job_card_id, service_id, name, qty, unit_price, total, line_no)
+           VALUES ('JOB-9801', ?1, 'Probe line', 1, 100, 100, 1)`, serviceId);
+
+        t('the probe job card starts with stock 10', (await jobStock()) === 10, await jobStock());
+
+        // E1 — a child line that fails AFTER the stock has already moved.
+        let threw3 = null;
+        try {
+          await env.DB.batch([...movement('STK-9811', 3, 0), line('SRV-0000')]);
+        } catch (err) { threw3 = String(err.message || err); }
+        t('a job card batch whose child line violates a foreign key throws',
+          threw3 !== null && /FOREIGN KEY/i.test(threw3), threw3);
+        t('   ...and the stock movement that ran BEFORE it rolled back',
+          (await jobStock()) === 10, await jobStock());
+        t('   ...and so did its ledger row', (await jobLedger()) === 0, await jobLedger());
+        t('   ...and no line was written', (await jobLines()) === 0, await jobLines());
+
+        // E2 — the same batch, with a real service, commits every part of it.
+        await ins('SRV-9811', 'Probe Service', 100).run();
+        await env.DB.batch([...movement('STK-9812', 3, 0), line('SRV-9811')]);
+        t('the same batch with a valid line commits', (await jobStock()) === 7, await jobStock());
+        t('   ...writing exactly one ledger row', (await jobLedger()) === 1, await jobLedger());
+        t('   ...and one child line', (await jobLines()) === 1, await jobLines());
+        const snap2 = await q("SELECT prev_stock, new_stock, quantity FROM inventory_transactions WHERE id = 'STK-9812'").first();
+        t('   ...whose snapshot is prev 10 -> new 7 for a quantity of 3',
+          snap2.prev_stock === 10 && snap2.new_stock === 7 && snap2.quantity === 3, snap2);
+
+        // E3 — the reconciliation guard: a plan made against a stale issued
+        // balance produces a NULL quantity, which the column's NOT NULL turns
+        // into a rolled-back batch. This is what stops a concurrent edit from
+        // deducting the same units twice.
+        let threw4 = null;
+        try {
+          // 3 units are now issued, so a plan that still believes 0 are is stale.
+          await env.DB.batch(movement('STK-9813', 2, 0));
+        } catch (err) { threw4 = String(err.message || err); }
+        t('a movement planned against a stale issued balance throws',
+          threw4 !== null && /NOT NULL/i.test(threw4) && /quantity/i.test(threw4), threw4);
+        t('   ...so the stock never moved twice', (await jobStock()) === 7, await jobStock());
+        t('   ...and no second ledger row exists', (await jobLedger()) === 1, await jobLedger());
+
+        // E4 — and a plan made against the CURRENT balance goes through.
+        await env.DB.batch(movement('STK-9814', 2, 3));
+        t('a movement planned against the current balance applies',
+          (await jobStock()) === 5, await jobStock());
+        t('   ...and the ledger now holds both movements', (await jobLedger()) === 2, await jobLedger());
+        const issued = await q(
+          `SELECT COALESCE(SUM(CASE WHEN type = 'job-card-use' THEN quantity
+                                    WHEN type = 'return'       THEN -quantity
+                                    ELSE 0 END), 0) AS n
+             FROM inventory_transactions
+            WHERE reference_type = 'job-card' AND reference_id = 'JOB-9801'`).first();
+        t('   ...totalling 5 issued for this job card', issued.n === 5, issued);
+      }
+
       /* ---------- D. the helpers behave the same inside workerd ---------- */
       {
         t('todayInDhaka works in workerd',
@@ -278,8 +390,15 @@ export default {
       }
     } finally {
       /* ---------- cleanup, always ---------- */
+      // Foreign-key order: the child lines and the job card go before the
+      // customer, vehicle, mechanic and service they point at.
+      await env.DB.prepare("DELETE FROM job_card_services WHERE job_card_id LIKE 'JOB-98%'").run();
+      await env.DB.prepare("DELETE FROM job_card_parts WHERE job_card_id LIKE 'JOB-98%'").run();
+      await env.DB.prepare("DELETE FROM job_cards WHERE id LIKE 'JOB-98%'").run();
       await env.DB.prepare("DELETE FROM services WHERE id LIKE 'SRV-98%'").run();
       await env.DB.prepare("DELETE FROM vehicles WHERE id LIKE 'VEH-989%'").run();
+      await env.DB.prepare("DELETE FROM customers WHERE id LIKE 'CUS-98%'").run();
+      await env.DB.prepare("DELETE FROM mechanics WHERE id LIKE 'MEC-98%'").run();
       // The ledger rows hold an ON DELETE RESTRICT reference to the part, so
       // they go first.
       await env.DB.prepare("DELETE FROM inventory_transactions WHERE id LIKE 'STK-98%'").run();
@@ -293,6 +412,11 @@ export default {
     t('   ...including the inventory probe rows',
       (await q("SELECT count(*) n FROM parts WHERE id LIKE 'PRT-98%'").first()).n === 0
       && (await q("SELECT count(*) n FROM inventory_transactions WHERE id LIKE 'STK-98%'").first()).n === 0);
+    t('   ...and the job card probe rows',
+      (await q("SELECT count(*) n FROM job_cards WHERE id LIKE 'JOB-98%'").first()).n === 0
+      && (await q("SELECT count(*) n FROM job_card_services WHERE job_card_id LIKE 'JOB-98%'").first()).n === 0
+      && (await q("SELECT count(*) n FROM customers WHERE id LIKE 'CUS-98%'").first()).n === 0
+      && (await q("SELECT count(*) n FROM mechanics WHERE id LIKE 'MEC-98%'").first()).n === 0);
     t('the services counter was restored',
       (await counter('services')) === before.counter, await counter('services'));
 

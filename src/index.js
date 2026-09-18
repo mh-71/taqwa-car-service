@@ -30,8 +30,12 @@ import {
   createAppointment, updateAppointment, deleteAppointment,
 } from './routes/appointments.js';
 // Job cards have child line tables, so they do not go through collectionRoutes();
-// the module exports the same two handler shapes regardless.
-import { listJobCards, getJobCard } from './routes/job-cards.js';
+// the module exports the same handler shapes regardless. Their writes are
+// bespoke too: one operation moves the card, both line tables, stock, the
+// ledger and an appointment link together.
+import {
+  listJobCards, getJobCard, createJobCard, updateJobCard, deleteJobCard,
+} from './routes/job-cards.js';
 import { listInvoices, getInvoice } from './routes/invoices.js';
 import { listPayments, getPayment } from './routes/payments.js';
 import {
@@ -55,10 +59,10 @@ import { getSettings } from './routes/settings.js';
  * `create`/`update`/`remove` are optional. A collection that has them
  * accepts POST on its list path and PUT/DELETE on its detail path; one
  * that does not answers 405 there, with an Allow header naming only what
- * it really takes. The six simple entities have writes as of C-2;
- * appointments, job cards, invoices, payments and the ledger are still
- * read-only because their writes carry business logic that belongs in
- * their own phases.
+ * it really takes. The six simple entities have writes as of C-2,
+ * appointments as of C-3 and job cards as of C-5; invoices and payments
+ * are still read-only because their writes carry business logic that
+ * belongs in their own phases.
  */
 const COLLECTIONS = {
   customers: {
@@ -85,7 +89,10 @@ const COLLECTIONS = {
     list: listAppointments, detail: getAppointment,
     create: createAppointment, update: updateAppointment, remove: deleteAppointment,
   },
-  'job-cards': { list: listJobCards, detail: getJobCard },
+  'job-cards': {
+    list: listJobCards, detail: getJobCard,
+    create: createJobCard, update: updateJobCard, remove: deleteJobCard,
+  },
   invoices: { list: listInvoices, detail: getInvoice },
   payments: { list: listPayments, detail: getPayment },
   expenses: {

@@ -524,17 +524,23 @@ console.log('\n-- 10. Failure modes --');
   check('detail missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-5 made POST a list route and PUT/DELETE detail routes, so the methods that
+// still have no handler here are fewer than they were -- but the rule under
+// test is unchanged: a method this path does not implement is a 405 whose Allow
+// header names exactly what it does implement, and nothing more.
+for (const m of ['PUT', 'DELETE', 'PATCH']) {
   const rl = await call('/api/job-cards', { DB: stubDB({ jobs: JOBS }) }, { method: m });
   ok_(`${m} list -> 405`, rl.status === 405, `got ${rl.status}`);
+}
+for (const m of ['POST', 'PATCH']) {
   const rd = await call('/api/job-cards/JOB-0001', { DB: stubDB({ jobs: JOBS }) }, { method: m });
   ok_(`${m} detail -> 405`, rd.status === 405, `got ${rd.status}`);
 }
 {
-  const rl = await call('/api/job-cards', { DB: stubDB({ jobs: JOBS }) }, { method: 'POST' });
-  check('405 sets Allow on the list', rl.headers.get('allow'), 'GET');
-  const rd = await call('/api/job-cards/JOB-0001', { DB: stubDB({ jobs: JOBS }) }, { method: 'POST' });
-  check('405 sets Allow on the detail', rd.headers.get('allow'), 'GET');
+  const rl = await call('/api/job-cards', { DB: stubDB({ jobs: JOBS }) }, { method: 'PATCH' });
+  check('405 sets Allow on the list', rl.headers.get('allow'), 'GET, POST');
+  const rd = await call('/api/job-cards/JOB-0001', { DB: stubDB({ jobs: JOBS }) }, { method: 'PATCH' });
+  check('405 sets Allow on the detail', rd.headers.get('allow'), 'GET, PUT, DELETE');
 }
 
 console.log('\n=== GET /api/job-cards/:id ===');

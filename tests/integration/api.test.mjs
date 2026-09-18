@@ -35,12 +35,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 46 routes', routes.length === 46, routes);
+  t('advertises 49 routes', routes.length === 49, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('24 GET, 8 POST, 7 PUT, 7 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 8, PUT: 7, DELETE: 7 }), byMethod);
+    t('24 GET, 9 POST, 8 PUT, 8 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 9, PUT: 8, DELETE: 8 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -50,6 +50,9 @@ sec('1. Health');
   t('advertises parts routes', routes.includes('GET /api/parts') && routes.includes('GET /api/parts/:id'));
   t('advertises appointments routes', routes.includes('GET /api/appointments') && routes.includes('GET /api/appointments/:id'));
   t('advertises job-cards routes', routes.includes('GET /api/job-cards') && routes.includes('GET /api/job-cards/:id'));
+  t('advertises job-cards writes',
+    ['POST /api/job-cards', 'PUT /api/job-cards/:id', 'DELETE /api/job-cards/:id']
+      .every((r2) => routes.includes(r2)), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -703,13 +706,13 @@ sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
 {
   const r = await get('/api/job-cards');
   t('200', r.status === 200, r.status);
-  t('count 4', r.body?.count === 4, r.body?.count);
-  t('total 4', r.body?.total === 4, r.body?.total);
+  t('count 5', r.body?.count === 5, r.body?.count);
+  t('total 5', r.body?.total === 5, r.body?.total);
   t('meta keys match the other collections',
     JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
     Object.keys(r.body));
   t('newest first by created_at',
-    JSON.stringify(r.body.data.map(j => j.id)) === JSON.stringify(['JOB-9001','JOB-9002','JOB-9003','JOB-9004']),
+    JSON.stringify(r.body.data.map(j => j.id)) === JSON.stringify(['JOB-9001','JOB-9002','JOB-9003','JOB-9004','JOB-9005']),
     r.body.data.map(j => j.id));
 
   const byId = Object.fromEntries(r.body.data.map(j => [j.id, j]));
@@ -851,7 +854,7 @@ sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
     JSON.stringify(manualJob.inspectionChecklist) === '{}', manualJob.inspectionChecklist);
   t('malformed JSON checklist -> {}, not a 500',
     JSON.stringify(dup.inspectionChecklist) === '{}', dup.inspectionChecklist);
-  t('the malformed row did not fail the whole list', r.status === 200 && r.body.count === 4);
+  t('the malformed row did not fail the whole list', r.status === 200 && r.body.count === 5);
   const dupDetail = await get('/api/job-cards/JOB-9004');
   t('malformed JSON checklist -> 200 on detail too', dupDetail.status === 200, dupDetail.status);
   t('and {} there as well', JSON.stringify(dupDetail.body.data.inspectionChecklist) === '{}');
@@ -869,7 +872,7 @@ sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
   // ---- pagination ----
   const p1 = await get('/api/job-cards?limit=2');
   t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
-  t('total still 4', p1.body?.total === 4, p1.body?.total);
+  t('total still 5', p1.body?.total === 5, p1.body?.total);
   t('a paged result still carries its child lines',
     p1.body.data.find(j => j.id === 'JOB-9001').services.length === 2);
   const p2 = await get('/api/job-cards?limit=2&offset=2');
@@ -883,7 +886,7 @@ sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
   const p4 = await get('/api/job-cards?limit=1000');
   t('limit=1000 succeeds against real D1 — no variable-limit failure',
     p4.status === 200, { status: p4.status, err: p4.body?.error });
-  t('and returns every job card', p4.body?.count === 4, p4.body?.count);
+  t('and returns every job card', p4.body?.count === 5, p4.body?.count);
   for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
                           ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
     const bad = await get('/api/job-cards?' + q);
@@ -933,13 +936,18 @@ sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
   t('child lines survived the injection attempts',
     after.body?.data?.partsUsed?.length === 1 && after.body?.data?.services?.length === 2);
   const allAfter = await get('/api/job-cards');
-  t('job_cards table intact after injection attempts', allAfter.body?.total === 4, allAfter.body?.total);
+  t('job_cards table intact after injection attempts', allAfter.body?.total === 5, allAfter.body?.total);
 
-  for (const m of ['POST','PUT','DELETE','PATCH']) {
+  // C-5 gave this collection writes, so only the methods it still refuses are
+  // asserted here, and the Allow header now names the new ones. Section 16
+  // covers the writes themselves.
+  for (const m of ['PUT','DELETE','PATCH']) {
     const rl = await get('/api/job-cards', { method: m });
-    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET, POST', { status: rl.status, allow: rl.allow });
+  }
+  for (const m of ['POST','PATCH']) {
     const rd = await get('/api/job-cards/JOB-9001', { method: m });
-    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET, PUT, DELETE', { status: rd.status, allow: rd.allow });
   }
 
   // Names are derived from what health advertises so a phase that ships one
@@ -1798,9 +1806,10 @@ sec('12. Unknown routes');
   // collections that are still read-only advertise nothing but GET.
   t('only GET/POST/PUT/DELETE are advertised',
     advertised.every(x => ['GET', 'POST', 'PUT', 'DELETE'].includes(x.split(' ')[0])), advertised);
-  // Appointments left this list in C-3; the ledger accepts POST as of C-4 and
-  // is asserted separately, since it is append-only rather than read-only.
-  for (const readOnly of ['job-cards', 'invoices', 'payments', 'settings']) {
+  // Appointments left this list in C-3 and job cards in C-5; the ledger accepts
+  // POST as of C-4 and is asserted separately, since it is append-only rather
+  // than read-only.
+  for (const readOnly of ['invoices', 'payments', 'settings']) {
     t(`${readOnly} advertises GET only`,
       advertised.filter(x => x.endsWith(`/api/${readOnly}`) || x.endsWith(`/api/${readOnly}/:id`))
         .every(x => x.startsWith('GET ')),
@@ -2368,6 +2377,535 @@ sec('15. Inventory movements: atomic stock + ledger, against real D1');
   t('   ...and still cannot once the balance is zero', stillBlocked.status === 409, stillBlocked.body);
   t('   ...because the movements remain', (await ledgerFor()).length > 0);
   // cleanup.sql's sweep removes both, in foreign-key order.
+}
+
+sec('16. Job card writes: parent, lines, inventory and the appointment link, against real D1');
+{
+  // This section's own customer, vehicle, mechanic, service and parts, so the
+  // fixtures' figures are never disturbed. cleanup.sql's sweep removes them.
+  const cust = await send('POST', '/api/customers', { name: 'C-5 Job Card Customer', phone: '01955-000001' });
+  const C = cust.body?.data?.id;
+  const veh = await send('POST', '/api/vehicles',
+    { customerId: C, regNo: 'DHA-C5-01', brand: 'Toyota', model: 'Probe' });
+  const V = veh.body?.data?.id;
+  const other = await send('POST', '/api/customers', { name: 'C-5 Other Customer', phone: '01955-000002' });
+  const C2 = other.body?.data?.id;
+  const otherVeh = await send('POST', '/api/vehicles',
+    { customerId: C2, regNo: 'DHA-C5-02', brand: 'Honda', model: 'Probe' });
+  const V2 = otherVeh.body?.data?.id;
+  const mech = await send('POST', '/api/mechanics',
+    { name: 'C-5 Mechanic', phone: '01955-000003', specialization: 'Engine' });
+  const M = mech.body?.data?.id;
+  const svc = await send('POST', '/api/services',
+    { name: 'C-5 Full Service', category: 'Engine', price: 1500 });
+  const S = svc.body?.data?.id;
+  t('the section has its own customer, vehicle, mechanic and service',
+    [C, V, C2, V2, M, S].every(Boolean), { C, V, C2, V2, M, S });
+
+  const newPart = async (name, partNo, stock) => {
+    const p = await send('POST', '/api/parts',
+      { name, partNo, category: 'Filters', unit: 'pc',
+        purchasePrice: 100, sellingPrice: 200, minStock: 0 });
+    const id = p.body?.data?.id;
+    t(`a part for ${name} -> 201`, p.status === 201, p.body);
+    if (stock > 0) {
+      await send('POST', '/api/inventory-transactions',
+        { partId: id, type: 'initial-stock', quantity: stock });
+    }
+    return id;
+  };
+  const stockOf = async (id) => (await get(`/api/parts/${id}`)).body?.data?.stock;
+  // The ledger route returns newest first; these assertions read a job card's
+  // movements as a story, so they are turned back into chronological order.
+  const ledgerFor = async (jobId, partId) => {
+    const r = await get('/api/inventory-transactions?limit=1000');
+    return (r.body?.data ?? [])
+      .filter((x) => x.referenceType === 'job-card' && x.referenceId === jobId
+        && (partId === undefined || x.partId === partId))
+      .sort((x, y) => (x.createdAt || '').localeCompare(y.createdAt || '') || x.id.localeCompare(y.id));
+  };
+  const issuedFor = async (jobId, partId) => (await ledgerFor(jobId, partId)).reduce(
+    (s, x) => s + (x.type === 'job-card-use' ? x.quantity : x.type === 'return' ? -x.quantity : 0), 0);
+
+  const JOB = {
+    customerId: C, vehicleId: V, mechanicId: M,
+    date: '2026-09-18', complaint: 'C-5: engine noise under load',
+    services: [{ serviceId: S, name: 'C-5 Full Service (as sold)', qty: 1, unitPrice: 1500 }],
+  };
+
+  /* ---- 16a. create ---- */
+  const created = await send('POST', '/api/job-cards', JOB);
+  t('POST /api/job-cards -> 201', created.status === 201, created.body);
+  const J = created.body?.data?.id;
+  t('   ...allocated a real JOB id', /^JOB-\d{4}$/.test(J || ''), J);
+  t('   ...status is Received', created.body?.data?.status === 'Received', created.body?.data?.status);
+  t('   ...priority defaults to normal', created.body?.data?.priority === 'normal');
+  t('   ...createdAt set, updatedAt absent',
+    !!created.body?.data?.createdAt && !('updatedAt' in (created.body?.data ?? {})), created.body?.data);
+  t('   ...invoiceId starts null', created.body?.data?.invoiceId === null);
+  t('   ...appointmentId starts null', created.body?.data?.appointmentId === null);
+  t('   ...totals computed from the lines',
+    created.body?.data?.subtotal === 1500 && created.body?.data?.total === 1500
+      && created.body?.data?.due === 1500 && created.body?.data?.paid === 0, created.body?.data);
+  t('   ...one service line, no part lines',
+    created.body?.data?.services?.length === 1 && created.body?.data?.partsUsed?.length === 0,
+    created.body?.data);
+  t('   ...the line is named partsUsed, never parts',
+    'partsUsed' in created.body.data && !('parts' in created.body.data));
+
+  const readBack = await get(`/api/job-cards/${J}`);
+  t('   ...and a GET returns exactly what the POST reported',
+    JSON.stringify(readBack.body?.data) === JSON.stringify(created.body?.data),
+    { post: created.body?.data, get: readBack.body?.data });
+  t('   ...the line snapshot is the name that was sold, not the catalogue\'s',
+    readBack.body?.data?.services[0]?.name === 'C-5 Full Service (as sold)',
+    readBack.body?.data?.services[0]);
+
+  /* ---- 16b. a create writes no stock, even with an inventory part line ---- */
+  const stockPart = await newPart('C-5 Stocked Part', 'c5-p-1', 20);
+  const withPart = await send('POST', '/api/job-cards', {
+    ...JOB, complaint: 'C-5: create with an inventory part',
+    partsUsed: [{ partId: stockPart, name: 'C-5 Stocked Part', partNo: 'c5-p-1', qty: 5, unitPrice: 200 }],
+  });
+  t('a create carrying an inventory part -> 201', withPart.status === 201, withPart.body);
+  t('   ...stores the part line', withPart.body?.data?.partsUsed?.length === 1, withPart.body?.data);
+  t('   ...but moves NO stock, because a new job card is Received',
+    (await stockOf(stockPart)) === 20, await stockOf(stockPart));
+  t('   ...and writes no ledger row for it',
+    (await ledgerFor(withPart.body?.data?.id)).length === 0);
+  const delWithPart = await send('DELETE', `/api/job-cards/${withPart.body?.data?.id}`);
+  t('   ...and it can be deleted again while Received', delWithPart.status === 200, delWithPart.body);
+
+  /* ---- 16c. create validation ---- */
+  for (const [why, body] of [
+    ['a missing customer', { ...JOB, customerId: undefined }],
+    ['a missing vehicle', { ...JOB, vehicleId: undefined }],
+    ['a missing mechanic', { ...JOB, mechanicId: undefined }],
+    ['a missing date', { ...JOB, date: undefined }],
+    ['a blank complaint', { ...JOB, complaint: '   ' }],
+    ['nothing recorded at all', { ...JOB, services: [] }],
+    ['a discount above the subtotal', { ...JOB, discount: 99999 }],
+    ['paid above the total', { ...JOB, paid: 99999 }],
+    ['mileage out below mileage in', { ...JOB, mileage: 100, mileageOut: 50 }],
+    ['an estimated delivery before the job date', { ...JOB, estDelivery: '2026-09-17' }],
+    ['a server-computed total', { ...JOB, total: 1 }],
+    ['a status other than Received', { ...JOB, status: 'In Progress' }],
+  ]) {
+    const r = await send('POST', '/api/job-cards', body);
+    t(`${why} -> 422`, r.status === 422, { status: r.status, body: r.body });
+  }
+  {
+    const r = await send('POST', '/api/job-cards', { ...JOB, vehicleId: V2 });
+    t('a vehicle belonging to another customer -> 422', r.status === 422, r.body);
+    t('   ...naming the vehicle field',
+      r.body?.error?.fields?.vehicleId === 'Selected vehicle does not belong to this customer.', r.body?.error);
+  }
+  for (const [why, body] of [
+    // The customer and vehicle move together: an unknown customer with a REAL
+    // vehicle is caught by the ownership rule first, which is a 422 about the
+    // vehicle. Both unknown leaves the foreign keys to answer, which is the
+    // division C-3 established -- no per-reference preflight SELECT.
+    ['an unknown customer and vehicle', { ...JOB, customerId: 'CUS-7777', vehicleId: 'VEH-7777' }],
+    ['an unknown mechanic', { ...JOB, mechanicId: 'MEC-7777' }],
+    ['an unknown service on a line', { ...JOB, services: [{ serviceId: 'SRV-7777', name: 'Ghost', qty: 1, unitPrice: 10 }] }],
+    ['an unknown part on a line', { ...JOB, partsUsed: [{ partId: 'PRT-7777', name: 'Ghost', qty: 1, unitPrice: 10 }] }],
+  ]) {
+    const before = (await get('/api/job-cards?limit=1000')).body?.total;
+    const r = await send('POST', '/api/job-cards', body);
+    t(`${why} -> 409 from the schema's own foreign key`, r.status === 409, { status: r.status, body: r.body });
+    t('   ...with no SQL leaked', !JSON.stringify(r.body).includes('SQLITE'), r.body);
+    t('   ...and no job card was left behind',
+      (await get('/api/job-cards?limit=1000')).body?.total === before,
+      (await get('/api/job-cards?limit=1000')).body?.total);
+  }
+  {
+    const r = await send('POST', '/api/job-cards', 'not json');
+    t('a malformed body -> 400', r.status === 400, r.status);
+  }
+
+  /* ---- 16d. the appointment link ---- */
+  {
+    const appt = await send('POST', '/api/appointments', {
+      customerId: C, vehicleId: V, serviceId: S, date: '2099-06-01', time: '09:00',
+      duration: 60, source: 'Phone',
+    });
+    t('an appointment for the link tests -> 201', appt.status === 201, appt.body);
+    const A = appt.body?.data?.id;
+
+    const mismatch = await send('POST', '/api/job-cards', { ...JOB, customerId: C2, vehicleId: V2, appointmentId: A });
+    t('an appointment for a different customer -> 422', mismatch.status === 422, mismatch.body);
+
+    const linked = await send('POST', '/api/job-cards', { ...JOB, appointmentId: A, complaint: 'C-5: from an appointment' });
+    t('a job card created from a free, matching appointment -> 201', linked.status === 201, linked.body);
+    const LJ = linked.body?.data?.id;
+    t('   ...carries the appointment id', linked.body?.data?.appointmentId === A, linked.body?.data);
+    const back = await get(`/api/appointments/${A}`);
+    t('   ...and the appointment now points back at it', back.body?.data?.jobCardId === LJ, back.body?.data);
+    t('   ...its status is UNCHANGED — work has not started',
+      back.body?.data?.status === 'Scheduled', back.body?.data?.status);
+    t('   ...and its source is untouched', back.body?.data?.source === 'Phone', back.body?.data?.source);
+    t('   ...its updated_at was refreshed, as Storage.updateData does',
+      !!back.body?.data?.updatedAt, back.body?.data);
+
+    const second = await send('POST', '/api/job-cards', { ...JOB, appointmentId: A });
+    t('a second job card for the same appointment -> 409', second.status === 409, second.body);
+    t('   ...reason', second.body?.error?.reason === 'appointment_already_claimed', second.body?.error);
+    t('   ...naming the job card that has it', second.body?.error?.conflictsWith === LJ, second.body?.error);
+
+    const moveIt = await send('PUT', `/api/job-cards/${LJ}`, { appointmentId: null });
+    t('an edit cannot unlink the appointment -> 409', moveIt.status === 409, moveIt.body);
+    t('   ...reason', moveIt.body?.error?.reason === 'appointment_link_immutable', moveIt.body?.error);
+
+    const apptDel = await send('DELETE', `/api/appointments/${A}`);
+    t('the appointment cannot be deleted while a job card holds it -> 409',
+      apptDel.status === 409, apptDel.body);
+
+    const gone = await send('DELETE', `/api/job-cards/${LJ}`);
+    t('deleting the job card -> 200', gone.status === 200, gone.body);
+    const after = await get(`/api/appointments/${A}`);
+    t('   ...unlinks the appointment', after.body?.data?.jobCardId === null, after.body?.data);
+    t('   ...and leaves everything else about it alone',
+      after.body?.data?.status === 'Scheduled' && after.body?.data?.source === 'Phone', after.body?.data);
+    await send('DELETE', `/api/appointments/${A}`);
+  }
+
+  /* ---- 16e. update: merge, lines and snapshots ---- */
+  {
+    const before = (await get(`/api/job-cards/${J}`)).body?.data;
+    const patched = await send('PUT', `/api/job-cards/${J}`, { notes: 'C-5 merged note' });
+    t('PUT merges -> 200', patched.status === 200, patched.body);
+    t('   ...the supplied field changed', patched.body?.data?.notes === 'C-5 merged note');
+    t('   ...the untouched fields survive',
+      patched.body?.data?.complaint === before.complaint && patched.body?.data?.date === before.date,
+      patched.body?.data);
+    t('   ...the untouched lines survive',
+      JSON.stringify(patched.body?.data?.services) === JSON.stringify(before.services),
+      patched.body?.data?.services);
+    t('   ...createdAt unchanged', patched.body?.data?.createdAt === before.createdAt);
+    t('   ...updatedAt now set', !!patched.body?.data?.updatedAt, patched.body?.data);
+    t('   ...status untouched', patched.body?.data?.status === 'Received');
+
+    const cleared = await send('PUT', `/api/job-cards/${J}`, { mileage: 3000 });
+    t('setting a nullable number -> 200', cleared.status === 200 && cleared.body?.data?.mileage === 3000,
+      cleared.body?.data);
+    const nulled = await send('PUT', `/api/job-cards/${J}`, { mileage: null });
+    t('   ...and an explicit null clears it to null, not 0',
+      nulled.body?.data?.mileage === null, nulled.body?.data);
+
+    const money = await send('PUT', `/api/job-cards/${J}`, { discount: 100, taxRate: 10, paid: 200 });
+    t('totals are recomputed from the STORED lines', money.body?.data?.subtotal === 1500, money.body?.data);
+    t('   ...tax = round((1500 - 100) x 10 / 100)', money.body?.data?.tax === 140, money.body?.data);
+    t('   ...total = 1500 - 100 + 140', money.body?.data?.total === 1540, money.body?.data);
+    t('   ...paid is stored as sent', money.body?.data?.paid === 200, money.body?.data);
+    t('   ...due = total - paid', money.body?.data?.due === 1340, money.body?.data);
+    await send('PUT', `/api/job-cards/${J}`, { discount: 0, taxRate: 0, paid: 0 });
+
+    const relined = await send('PUT', `/api/job-cards/${J}`, {
+      services: [
+        { serviceId: S, name: 'C-5 Full Service (as sold)', qty: 2, unitPrice: 1500 },
+        { serviceId: S, name: 'Second helping', qty: 1, unitPrice: 500 },
+      ],
+      partsUsed: [{ name: 'Hand-cut bracket', partNo: 'MANUAL-1', qty: 2, unitPrice: 150 }],
+    });
+    t('supplying a line array replaces that set', relined.body?.data?.services?.length === 2, relined.body?.data);
+    t('   ...in the order supplied',
+      relined.body?.data?.services?.map((l) => l.name).join('|') === 'C-5 Full Service (as sold)|Second helping',
+      relined.body?.data?.services);
+    t('   ...a manual part line keeps a null partId',
+      relined.body?.data?.partsUsed[0]?.partId === null, relined.body?.data?.partsUsed);
+    t('   ...and the totals follow the new lines',
+      relined.body?.data?.subtotal === 3800, relined.body?.data);
+
+    const emptied = await send('PUT', `/api/job-cards/${J}`, { partsUsed: [] });
+    t('an empty array really clears that line table',
+      emptied.body?.data?.partsUsed?.length === 0, emptied.body?.data);
+    t('   ...and leaves the other line table alone',
+      emptied.body?.data?.services?.length === 2, emptied.body?.data);
+
+    const ghost = await send('PUT', '/api/job-cards/JOB-7777', { notes: 'x' });
+    t('PUT on an unknown id -> 404', ghost.status === 404, ghost.status);
+    const empty = await send('PUT', `/api/job-cards/${J}`, {});
+    t('PUT with no fields -> 422', empty.status === 422, empty.body);
+    const owned = await send('PUT', `/api/job-cards/${J}`, { due: 0 });
+    t('PUT of a computed field -> 422', owned.status === 422, owned.body);
+    const moved = await send('PUT', `/api/job-cards/${J}`, { status: 'In Progress' });
+    t('PUT of a status change -> 409, C-6 owns transitions', moved.status === 409, moved.body);
+    t('   ...reason', moved.body?.error?.reason === 'status_change_not_supported', moved.body?.error);
+    const same = await send('PUT', `/api/job-cards/${J}`, { status: 'Received', notes: 'still fine' });
+    t('   ...but echoing the stored status back is accepted', same.status === 200, same.body);
+  }
+
+  /* ---- 16f. delete guards, against the fixtures' real states ---- */
+  {
+    const invoiced = await send('DELETE', '/api/job-cards/JOB-9001');
+    t('deleting an invoiced job card -> 409', invoiced.status === 409, invoiced.body);
+    t('   ...reason', invoiced.body?.error?.reason === 'job_card_invoiced', invoiced.body?.error);
+    t('   ...naming the invoice', invoiced.body?.error?.invoiceId === 'INV-9001', invoiced.body?.error);
+    const started = await send('DELETE', '/api/job-cards/JOB-9003');
+    t('deleting an In Progress job card -> 409', started.status === 409, started.body);
+    t('   ...reason', started.body?.error?.reason === 'work_started', started.body?.error);
+    t('   ...and it is still there', (await get('/api/job-cards/JOB-9003')).status === 200);
+    const unknown = await send('DELETE', '/api/job-cards/JOB-7777');
+    t('deleting an unknown job card -> 404', unknown.status === 404, unknown.status);
+    const badId = await send('DELETE', '/api/job-cards/nope');
+    t('a malformed id -> 400', badId.status === 400, badId.status);
+
+    const gone = await send('DELETE', `/api/job-cards/${J}`);
+    t('deleting a Received job card -> 200', gone.status === 200, gone.body);
+    t('   ...reporting what went', JSON.stringify(gone.body?.data) === JSON.stringify({ id: J, deleted: true }),
+      gone.body?.data);
+    t('   ...and it is really gone', (await get(`/api/job-cards/${J}`)).status === 404);
+    const lines = await get('/api/job-cards?limit=1000');
+    t('   ...with its child lines cascaded away',
+      !(lines.body?.data ?? []).some((x) => x.id === J), lines.body?.data?.map((x) => x.id));
+  }
+
+  /* ---- 16g. inventory reconciliation, on a job card that is already issuing ---- */
+  // JOB-9003 is the In Progress fixture. Reconciliation only happens for a job
+  // that has already started issuing stock, and this phase deliberately does
+  // not change status, so a job card created above could never reach this path.
+  {
+    const A = await newPart('C-5 Reconcile Part A', 'c5-r-a', 20);
+    const B = await newPart('C-5 Reconcile Part B', 'c5-r-b', 20);
+    const R = 'JOB-9003';
+    const setParts = (partsUsed, extra = {}) => send('PUT', `/api/job-cards/${R}`, { partsUsed, ...extra });
+    const line = (id, name, qty) => ({ partId: id, name, partNo: 'x', qty, unitPrice: 100 });
+
+    const first = await setParts([line(A, 'C-5 Reconcile Part A', 5)]);
+    t('a first inventory line deducts it -> 200', first.status === 200, first.body);
+    t('   ...stock 20 -> 15', (await stockOf(A)) === 15, await stockOf(A));
+    t('   ...one ledger row, of 5', (await ledgerFor(R, A)).length === 1
+      && (await ledgerFor(R, A))[0].quantity === 5, await ledgerFor(R, A));
+    t('   ...recorded as job-card-use against this job card',
+      (await ledgerFor(R, A))[0].type === 'job-card-use'
+      && (await ledgerFor(R, A))[0].referenceType === 'job-card', (await ledgerFor(R, A))[0]);
+    t('   ...with the engine\'s own note',
+      (await ledgerFor(R, A))[0].notes === `Adjusted on ${R} (qty change)`, (await ledgerFor(R, A))[0]);
+    t('   ...snapshotting 20 -> 15',
+      (await ledgerFor(R, A))[0].prevStock === 20 && (await ledgerFor(R, A))[0].newStock === 15,
+      (await ledgerFor(R, A))[0]);
+
+    const more = await setParts([line(A, 'C-5 Reconcile Part A', 8)]);
+    t('raising the quantity deducts only the difference -> 200', more.status === 200, more.body);
+    t('   ...stock 15 -> 12', (await stockOf(A)) === 12, await stockOf(A));
+    t('   ...the extra movement is 3', (await ledgerFor(R, A))[1]?.quantity === 3, await ledgerFor(R, A));
+    t('   ...and 8 are now issued', (await issuedFor(R, A)) === 8, await issuedFor(R, A));
+
+    const again = await setParts([line(A, 'C-5 Reconcile Part A', 8)]);
+    t('submitting the SAME lines again -> 200', again.status === 200, again.body);
+    t('   ...deducts nothing — this is the idempotency rule',
+      (await stockOf(A)) === 12, await stockOf(A));
+    t('   ...and writes no ledger row', (await ledgerFor(R, A)).length === 2, await ledgerFor(R, A));
+
+    const fewer = await setParts([line(A, 'C-5 Reconcile Part A', 3)]);
+    t('lowering the quantity returns the difference -> 200', fewer.status === 200, fewer.body);
+    t('   ...stock 12 -> 17', (await stockOf(A)) === 17, await stockOf(A));
+    t('   ...as a return of 5',
+      (await ledgerFor(R, A))[2]?.type === 'return' && (await ledgerFor(R, A))[2]?.quantity === 5,
+      await ledgerFor(R, A));
+    t('   ...leaving 3 issued', (await issuedFor(R, A)) === 3, await issuedFor(R, A));
+
+    const both = await setParts([line(A, 'C-5 Reconcile Part A', 3), line(B, 'C-5 Reconcile Part B', 4)]);
+    t('adding a second part deducts only that one -> 200', both.status === 200, both.body);
+    t('   ...part A is untouched at 17', (await stockOf(A)) === 17, await stockOf(A));
+    t('   ...part B is 20 -> 16', (await stockOf(B)) === 16, await stockOf(B));
+
+    const swapped = await setParts([line(B, 'C-5 Reconcile Part B', 4)]);
+    t('removing a part returns everything it was issued -> 200', swapped.status === 200, swapped.body);
+    t('   ...part A is back to 20', (await stockOf(A)) === 20, await stockOf(A));
+    t('   ...with nothing issued', (await issuedFor(R, A)) === 0, await issuedFor(R, A));
+    t('   ...and part B is unchanged at 16', (await stockOf(B)) === 16, await stockOf(B));
+
+    const summed = await setParts([
+      line(B, 'C-5 Reconcile Part B', 2), line(B, 'C-5 Reconcile Part B', 3),
+    ]);
+    t('two lines for the same part are one requirement -> 200', summed.status === 200, summed.body);
+    t('   ...2 + 3 against 4 issued deducts 1', (await stockOf(B)) === 15, await stockOf(B));
+    t('   ...and 5 are issued', (await issuedFor(R, B)) === 5, await issuedFor(R, B));
+
+    const manual = await setParts([
+      line(B, 'C-5 Reconcile Part B', 5),
+      { name: 'Hand-cut bracket', partNo: 'MANUAL-9', qty: 9, unitPrice: 20 },
+    ]);
+    t('a manual line never enters the calculation -> 200', manual.status === 200, manual.body);
+    t('   ...so stock is unchanged at 15', (await stockOf(B)) === 15, await stockOf(B));
+    t('   ...and it is stored with a null partId',
+      manual.body?.data?.partsUsed?.some((l) => l.partId === null && l.qty === 9),
+      manual.body?.data?.partsUsed);
+
+    /* ---- shortage: nothing moves, and the edit itself is refused ---- */
+    const jcBefore = (await get(`/api/job-cards/${R}`)).body?.data;
+    const short = await setParts([line(B, 'C-5 Reconcile Part B', 999)], { notes: 'must not be saved' });
+    t('a shortage -> 409', short.status === 409, short.body);
+    t('   ...reason', short.body?.error?.reason === 'insufficient_stock', short.body?.error);
+    t('   ...naming the part, what is there and what more is needed',
+      short.body?.error?.shortages?.[0]?.name === 'C-5 Reconcile Part B'
+      && short.body?.error?.shortages?.[0]?.available === 15
+      && short.body?.error?.shortages?.[0]?.required === 994, short.body?.error);
+    t('   ...stock is untouched', (await stockOf(B)) === 15, await stockOf(B));
+    const jcAfterShort = (await get(`/api/job-cards/${R}`)).body?.data;
+    t('   ...and the job card itself was NOT saved',
+      JSON.stringify(jcAfterShort) === JSON.stringify(jcBefore), { before: jcBefore, after: jcAfterShort });
+
+    /* ---- multiple parts: one short fails all of them ---- */
+    const aBefore = await stockOf(A);
+    const bBefore = await stockOf(B);
+    const multi = await setParts([
+      line(A, 'C-5 Reconcile Part A', 6),
+      line(B, 'C-5 Reconcile Part B', 999),
+    ]);
+    t('one short part fails the whole edit -> 409', multi.status === 409, multi.body);
+    t('   ...the part that WAS available did not move',
+      (await stockOf(A)) === aBefore, { before: aBefore, after: await stockOf(A) });
+    t('   ...nor did the short one', (await stockOf(B)) === bBefore, await stockOf(B));
+    t('   ...and no ledger row was written for either',
+      (await issuedFor(R, A)) === 0 && (await issuedFor(R, B)) === 5,
+      { a: await issuedFor(R, A), b: await issuedFor(R, B) });
+
+    /* ---- a child line that fails takes the whole batch with it ---- */
+    const rollbackBefore = (await get(`/api/job-cards/${R}`)).body?.data;
+    const rollback = await send('PUT', `/api/job-cards/${R}`, {
+      notes: 'must not be saved either',
+      services: [{ serviceId: 'SRV-7777', name: 'Ghost service', qty: 1, unitPrice: 100 }],
+      partsUsed: [line(B, 'C-5 Reconcile Part B', 7)],
+    });
+    t('a job card whose service line breaks a foreign key -> 409', rollback.status === 409, rollback.body);
+    const rollbackAfter = (await get(`/api/job-cards/${R}`)).body?.data;
+    t('   ...the parent row rolled back',
+      JSON.stringify(rollbackAfter) === JSON.stringify(rollbackBefore),
+      { before: rollbackBefore, after: rollbackAfter });
+    t('   ...and the stock change it carried rolled back with it',
+      (await stockOf(B)) === bBefore && (await issuedFor(R, B)) === 5,
+      { stock: await stockOf(B), issued: await issuedFor(R, B) });
+
+    /* ---- reconciliation does not touch a job card that has not started ---- */
+    const notStarted = await send('POST', '/api/job-cards', {
+      ...JOB, complaint: 'C-5: Received, with parts on it',
+      partsUsed: [line(B, 'C-5 Reconcile Part B', 5)],
+    });
+    const NS = notStarted.body?.data?.id;
+    const nsStock = await stockOf(B);
+    const nsEdit = await send('PUT', `/api/job-cards/${NS}`, {
+      partsUsed: [line(B, 'C-5 Reconcile Part B', 12)],
+    });
+    t('editing the parts of a Received job card -> 200', nsEdit.status === 200, nsEdit.body);
+    t('   ...changes the lines', nsEdit.body?.data?.partsUsed[0]?.qty === 12, nsEdit.body?.data);
+    t('   ...and moves no stock at all', (await stockOf(B)) === nsStock, await stockOf(B));
+    t('   ...and issues nothing', (await issuedFor(NS, B)) === 0, await issuedFor(NS, B));
+    await send('DELETE', `/api/job-cards/${NS}`);
+
+    /* ---- Completed / Delivered / Cancelled are read-only ---- */
+    for (const [id, status] of [['JOB-9001', 'Delivered'], ['JOB-9004', 'Cancelled']]) {
+      const locked = await send('PUT', `/api/job-cards/${id}`, { notes: 'nope' });
+      t(`editing a ${status} job card -> 409`, locked.status === 409, locked.body);
+      t('   ...reason', locked.body?.error?.reason === 'job_card_read_only', locked.body?.error);
+    }
+
+    /* ---- 16h. concurrency ---- */
+    // A. the SAME job card, submitted twice at once. Whether the second
+    //    request plans before or after the first commits, the outcome must be
+    //    the same: five units leave stock, once.
+    {
+      const startStock = await stockOf(A);
+      const startIssued = await issuedFor(R, A);
+      const bodyFor = (note) => ({
+        notes: note,
+        partsUsed: [line(B, 'C-5 Reconcile Part B', 5), line(A, 'C-5 Reconcile Part A', 5)],
+      });
+      const [r1, r2] = await Promise.all([
+        send('PUT', `/api/job-cards/${R}`, bodyFor('C-5 concurrent one')),
+        send('PUT', `/api/job-cards/${R}`, bodyFor('C-5 concurrent two')),
+      ]);
+      const codes = [r1.status, r2.status].sort();
+      t('two concurrent identical edits: at least one succeeds',
+        codes.includes(200), { r1: r1.status, r2: r2.status });
+      t('   ...and neither is a 5xx', !codes.some((c) => c >= 500), codes);
+      t('   ...every refusal is a 409 the caller can act on',
+        [r1, r2].filter((r) => r.status !== 200)
+          .every((r) => r.status === 409
+            && ['concurrent_modification', 'insufficient_stock'].includes(r.body?.error?.reason)),
+        [r1.body?.error, r2.body?.error]);
+      t('   ...stock moved by exactly 5, never 10',
+        (await stockOf(A)) === startStock - 5, { start: startStock, now: await stockOf(A) });
+      t('   ...and exactly 5 are issued, never 10',
+        (await issuedFor(R, A)) === startIssued + 5,
+        { start: startIssued, now: await issuedFor(R, A) });
+      const loser = [r1, r2].find((r) => r.status === 409);
+      if (loser) {
+        const stored = (await get(`/api/job-cards/${R}`)).body?.data;
+        t('   ...and the refused edit left nothing of itself behind',
+          stored.notes !== (loser === r1 ? 'C-5 concurrent one' : 'C-5 concurrent two'),
+          { notes: stored.notes });
+      } else {
+        t('   ...both were serialised, so the second simply found nothing to do', true);
+      }
+    }
+
+    // B. TWO job cards competing for the same limited part. JOB-9005 is the
+    //    second In Progress fixture; it exists for exactly this.
+    {
+      const L = await newPart('C-5 Limited Part', 'c5-lim', 10);
+      const R2 = 'JOB-9005';
+      const [r1, r2] = await Promise.all([
+        send('PUT', `/api/job-cards/${R}`, { partsUsed: [line(L, 'C-5 Limited Part', 8)] }),
+        send('PUT', `/api/job-cards/${R2}`, { partsUsed: [line(L, 'C-5 Limited Part', 7)] }),
+      ]);
+      const left = await stockOf(L);
+      t('two job cards, 8 + 7 against a stock of 10: one succeeds',
+        [r1.status, r2.status].filter((c) => c === 200).length === 1,
+        { r1: r1.status, r2: r2.status });
+      t('   ...and one is refused', [r1.status, r2.status].filter((c) => c === 409).length === 1,
+        { r1: r1.status, r2: r2.status });
+      t('   ...the refusal is a stock conflict',
+        [r1, r2].find((r) => r.status === 409)?.body?.error?.reason === 'insufficient_stock',
+        [r1.body?.error, r2.body?.error]);
+      t('   ...stock is 2 or 3, and never negative', left === 2 || left === 3, left);
+      t('   ...and only the winner issued anything',
+        (await issuedFor(R, L)) + (await issuedFor(R2, L)) === 10 - left,
+        { a: await issuedFor(R, L), b: await issuedFor(R2, L), left });
+
+      // C. Both job cards taking exactly what is there: both may succeed.
+      const E = await newPart('C-5 Exact Part', 'c5-exact', 10);
+      const [e1, e2] = await Promise.all([
+        send('PUT', `/api/job-cards/${R}`, { partsUsed: [line(L, 'C-5 Limited Part', 0.0001), line(E, 'C-5 Exact Part', 5)] }),
+        send('PUT', `/api/job-cards/${R2}`, { partsUsed: [line(E, 'C-5 Exact Part', 5)] }),
+      ]);
+      t('two job cards taking 5 each from a stock of 10: neither is a 5xx',
+        e1.status < 500 && e2.status < 500, { e1: e1.status, e2: e2.status });
+      const exactLeft = await stockOf(E);
+      t('   ...stock never goes below zero', exactLeft >= 0, exactLeft);
+      t('   ...and what left stock is exactly what the ledger says was issued',
+        (await issuedFor(R, E)) + (await issuedFor(R2, E)) === 10 - exactLeft,
+        { a: await issuedFor(R, E), b: await issuedFor(R2, E), exactLeft });
+    }
+
+    /* ---- 16i. the ledger explains the balance, row by row ---- */
+    for (const [label, partId] of [['part A', A], ['part B', B]]) {
+      const rows = (await get('/api/inventory-transactions?limit=1000')).body?.data
+        ?.filter((x) => x.partId === partId)
+        ?.sort((x, y) => (x.createdAt || '').localeCompare(y.createdAt || '') || x.id.localeCompare(y.id));
+      const live = await stockOf(partId);
+      t(`${label}: every ledger row is internally consistent (prev + delta === new)`,
+        rows.every((x) => {
+          const d = ['purchase', 'adjustment-in', 'return', 'initial-stock'].includes(x.type)
+            ? x.quantity : -x.quantity;
+          return Math.abs((x.prevStock + d) - x.newStock) < 1e-9;
+        }), rows);
+      t(`   ...${label}'s rows chain end to end with no lost update`,
+        rows.every((x, i) => i === 0 || x.prevStock === rows[i - 1].newStock),
+        rows.map((x) => [x.id, x.prevStock, x.newStock]));
+      t(`   ...and its last snapshot equals the live balance`,
+        rows[rows.length - 1].newStock === live, { last: rows[rows.length - 1], live });
+      t(`   ...no ledger row is negative`, rows.every((x) => x.prevStock >= 0 && x.newStock >= 0));
+    }
+    t('every job-card ledger row this section wrote names its job card',
+      (await ledgerFor('JOB-9003')).every((x) => x.referenceType === 'job-card'
+        && x.referenceId === 'JOB-9003' && ['job-card-use', 'return'].includes(x.type)),
+      await ledgerFor('JOB-9003'));
+  }
+
+  // cleanup.sql's sweep removes the rows this section created, in FK order,
+  // and resets the counters the ids came from.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

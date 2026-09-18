@@ -26,6 +26,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-inventory-transactions.test.mjs` | `GET /api/inventory-transactions[/:id]`, including that the ledger is history rather than a balance, no aggregate or per-part rollup is invented, snapshots are returned as stored, and `unitCost` keeps null apart from zero |
 | `api-appointments-write.test.mjs` | `POST`/`PUT`/`DELETE /api/appointments` — overlap scoped to the same mechanic **or** the same vehicle on the half-open interval, duplicate bookings, status transitions out of a terminal status, and the three delete blockers, none of which is a foreign key |
 | `api-inventory-transactions-write.test.mjs` | `POST /api/inventory-transactions` — that no SELECT of the stock precedes the write, that both batch statements carry the same `stock + delta >= 0` guard, that direction is derived from the type server-side, and that `prevStock`/`newStock` are computed in SQL rather than bound |
+| `api-job-cards-write.test.mjs` | `POST`/`PUT`/`DELETE /api/job-cards` — that totals are recomputed from the lines rather than taken from the body, that a create moves no stock because a new job card is `Received`, that an edit reconciles against the **ledger** and only for the two statuses where stock has already moved, that `prevStock`/`newStock` are read from the live row in SQL, and that status, appointment, invoice, `completedAt` and `actualDelivery` are immutable here |
 | `write-crud.test.mjs` | `POST`/`PUT`/`DELETE` for the six simple entities — that PUT merges rather than replaces, that `stock` is writable nowhere on parts, that an active expense must be voided before it can be deleted, and that a referenced row's 409 comes from the schema's own foreign key |
 | `write-foundation.test.mjs` | `src/lib/write.js` and the two new `http.js` helpers — body parsing, the four field primitives, id formatting, the 409/422 responses, the constraint→status mapping, and the Asia/Dhaka date rule that audit Finding 2 turns on |
 | `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
@@ -103,8 +104,22 @@ second reason for it: the inventory movement's two-statement batch has to be
 shown rolling back when either half fails, and a route that returns 409
 cleanly can never demonstrate that.
 
+C-5 added a third reason: a job card write moves the parent, both line tables,
+`parts.stock` and the ledger in one batch, and the route's own pre-check stops a
+shortage *before* the batch is built — so the API can never be made to show what
+happens when a statement **after** a stock movement fails. The probe does that
+directly, and also proves the reconciliation guard: a movement planned against a
+stale issued balance produces a `NULL` quantity, whose `NOT NULL` rolls the whole
+batch back. That is what stops a concurrent edit deducting the same units twice.
+
 Fixture ids live in the `9xxx` range (`SRV-9001`, `CUS-9001`, `VEH-9001`, …),
 which `id_counters` will not reach until a collection passes 9000 records.
+
+`JOB-9005` is there for C-5 specifically. Reconciliation only happens for a job
+card that has already started issuing stock, and the write API deliberately does
+not change status (C-6 owns that) — so a job card the suite creates could never
+reach that path, and two of them could never be made to contend for the same
+part. Two fixtures already `In Progress` is what makes that test possible.
 
 First run needs the schema:
 
