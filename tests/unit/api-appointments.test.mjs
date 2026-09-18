@@ -487,10 +487,20 @@ console.log('\n-- 11. Routing --');
     JSON.stringify(body.error.available));
 }
 {
-  // Nothing on the write or Job Card side ships in this phase.
-  for (const path of ['/api/job-cards', '/api/appointment', '/api/bookings']) {
-    const res = await call(path, { DB: stubDB({ rows: [] }) });
-    ok_(`${path} is not a route -> 404`, res.status === 404, `got ${res.status}`);
+  // Collections the router does not know must 404. The names are derived from
+  // what health advertises rather than hardcoded: B-7 hardcoded /api/job-cards
+  // here and B-8 turned it into a real route, so the assertion started failing
+  // for the wrong reason. Deriving it means the next phase inherits this
+  // unchanged.
+  const advertised = (await (await call('/api/health',
+    { DB: stubDB({ rows: [{ name: 'customers' }] }) })).json()).data.routes;
+  const unregistered = ['invoices', 'payments', 'expenses', 'bookings', 'appointment']
+    .filter(name => !advertised.includes(`GET /api/${name}`));
+  ok_('at least one unregistered collection was found to probe',
+    unregistered.length > 0, JSON.stringify(advertised));
+  for (const name of unregistered) {
+    const res = await call(`/api/${name}`, { DB: stubDB({ rows: [] }) });
+    ok_(`/api/${name} is not a route -> 404`, res.status === 404, `got ${res.status}`);
   }
 }
 

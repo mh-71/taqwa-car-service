@@ -58,7 +58,10 @@ cleanup() {
                     + (SELECT count(*) FROM mechanics WHERE id LIKE 'MEC-9%')
                     + (SELECT count(*) FROM parts WHERE id LIKE 'PRT-9%')
                     + (SELECT count(*) FROM appointments WHERE id LIKE 'APT-9%')
-                    + (SELECT count(*) FROM job_cards WHERE id LIKE 'JOB-9%') AS n" \
+                    + (SELECT count(*) FROM job_cards WHERE id LIKE 'JOB-9%')
+                    + (SELECT count(*) FROM job_card_services WHERE job_card_id LIKE 'JOB-9%')
+                    + (SELECT count(*) FROM job_card_parts WHERE job_card_id LIKE 'JOB-9%')
+                    + (SELECT count(*) FROM invoices WHERE id LIKE 'INV-9%') AS n" \
            | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
     if [ "${left:-x}" = "0" ]; then
       echo "  all fixture rows removed"
@@ -121,11 +124,13 @@ echo "  schema applied"
 # nothing but the fixtures. Refusing here also means the run can never delete
 # rows it did not create.
 say "Checking the local database is clear"
-COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM customers) + (SELECT count(*) FROM vehicles) + (SELECT count(*) FROM mechanics) + (SELECT count(*) FROM parts) + (SELECT count(*) FROM appointments) + (SELECT count(*) FROM job_cards) AS n" \
+COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM customers) + (SELECT count(*) FROM vehicles) + (SELECT count(*) FROM mechanics) + (SELECT count(*) FROM parts) + (SELECT count(*) FROM appointments) + (SELECT count(*) FROM job_cards) + (SELECT count(*) FROM job_card_services)
+                    + (SELECT count(*) FROM job_card_parts) + (SELECT count(*) FROM invoices) AS n" \
          | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
 if [ "${COUNTS:-x}" != "0" ]; then
   cat >&2 <<MSG
-REFUSED: services/customers/vehicles/mechanics/parts/appointments/job_cards already hold ${COUNTS:-?} row(s).
+REFUSED: the fixture tables (services/customers/vehicles/mechanics/parts/
+appointments/job_cards/job card lines/invoices) already hold ${COUNTS:-?} row(s).
 
 This suite asserts exact counts, so it only runs against an empty local
 database, and it will not delete rows it did not insert. Clear the local
@@ -139,7 +144,8 @@ echo "  empty — safe to seed"
 say "Seeding fixtures"
 SEEDED=1
 d1_file "$HERE/fixtures/seed.sql" | grep -q '"success": true' || { echo "Seeding failed" >&2; exit 1; }
-echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointments, 1 job card"
+echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointments,"
+  echo "  4 job cards (4 service lines, 2 part lines), 1 invoice"
 
 # ------------------------------------------------------------------ run
 say "Running tests/integration/api.test.mjs"

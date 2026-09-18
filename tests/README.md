@@ -19,6 +19,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-mechanics.test.mjs` | `GET /api/mechanics[/:id]`, including the null-versus-zero rule for salary and commission |
 | `api-parts.test.mjs` | `GET /api/parts[/:id]`, including that stock is read from the column and never derived from the ledger |
 | `api-appointments.test.mjs` | `GET /api/appointments[/:id]`, including that references stay as ids, all five sources and six statuses round-trip verbatim, and date/time are never converted |
+| `api-job-cards.test.mjs` | `GET /api/job-cards[/:id]`, including child line tables, historical snapshots, `paid`/`due` staying snapshots, checklist JSON handling and the bounded-query/variable-limit rules |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
 | `finding7.test.cjs` | Audit Finding 7 — voiding an invoice releases its payments |
@@ -50,7 +51,10 @@ The runner discovers it — there is no list to update. Print a final
 `<label>: N passed, M failed` line and `process.exit(fail ? 1 : 0)`.
 
 For a new collection's API suite, copy `api-appointments.test.mjs`: it is the
-newest and exercises the shared factory in `src/lib/collection.js` most fully.
+newest one built on the shared factory in `src/lib/collection.js` and exercises
+it most fully. For a collection with child line tables, copy
+`api-job-cards.test.mjs` instead — that route is written out by hand and its
+suite has a stub that dispatches by table.
 Assert only your own collection's routes. The single exact full-route-list
 check is kept in `api-services.test.mjs` — one designated suite, so adding a
 collection means editing two lines in one file rather than every suite.

@@ -36,10 +36,46 @@ INSERT INTO appointments (id, customer_id, vehicle_id, service_id, mechanic_id, 
   ('APT-9005','CUS-9001','VEH-9001','SRV-9005','MEC-9003',NULL,'2026-09-24','15:00',45,'Cancelled','Website','Routine oil change','Customer cancelled',0,'2026-09-14T09:00:00',NULL),
   ('APT-9006','CUS-9002','VEH-9002','SRV-9006','MEC-9002',NULL,'2026-09-25','05:30',600,'No Show','Admin','Early slot','',0,'2026-09-15T09:00:00',NULL);
 
--- One job card, purely so an appointment can be observed in its linked state.
--- No Job Card API exists yet; this row only exists to satisfy the foreign key.
-INSERT INTO job_cards (id, customer_id, vehicle_id, mechanic_id, appointment_id, date, status, complaint, created_at) VALUES
-  ('JOB-9001','CUS-9002','VEH-9002','MEC-9001','APT-9004','2026-09-23','Received','Full check before long trip','2026-09-13T10:00:00');
+-- Four job cards. Foreign keys point at the customers, vehicles, mechanics and
+-- appointments above; invoice_id is filled in afterwards because job_cards and
+-- invoices reference each other.
+--
+--   JOB-9001  everything populated: child lines of both kinds, money, a valid
+--             inspection checklist, and both an appointment and an invoice link
+--   JOB-9002  no child lines at all, every nullable column NULL
+--   JOB-9003  a manual part line (part_id NULL) and mileage 0, which is a real
+--             reading and not the same as JOB-9002's unrecorded NULL
+--   JOB-9004  a malformed inspection checklist, plus two service lines sharing
+--             a line_no so the id tie-break in the ordering is exercised
+INSERT INTO job_cards (id, customer_id, vehicle_id, mechanic_id, appointment_id, invoice_id, date, est_delivery, actual_delivery, completed_at, status, priority, mileage, mileage_out, fuel_level, complaint, inspection, diagnosis, technician_notes, recommendations, condition_notes, notes, inspection_checklist, labour_hours, labour_rate, labour_cost, discount, tax_rate, subtotal, tax, total, paid, due, created_at, updated_at) VALUES
+  ('JOB-9001','CUS-9002','VEH-9002','MEC-9001','APT-9004',NULL,'2026-09-23','2026-09-24','2026-09-24','2026-09-24T16:00:00','Delivered','high',48200,48260,'half','Full check before long trip','Oil dark, brake pads worn','Oil degraded; pads at 20%','Oil, filter and pads replaced','Air filter at next service','Minor scratch on rear bumper','Customer waited','{"battery":"ok","brakes":"worn","tyres":"ok"}',1.5,400,600,100,5,8000,395,8295,8295,0,'2026-09-13T10:00:00','2026-09-14T11:00:00'),
+  ('JOB-9002','CUS-9001','VEH-9001','MEC-9002',NULL,NULL,'2026-09-20',NULL,NULL,NULL,'Received','normal',NULL,NULL,NULL,'AC cooling weak',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,0,0,0,0,0,0,0,'2026-09-12T10:00:00',NULL),
+  ('JOB-9003','CUS-9001','VEH-9001','MEC-9003',NULL,NULL,'2026-09-21','2026-09-21',NULL,NULL,'In Progress','urgent',0,NULL,'empty','Rattle from underbody','Loose heat shield',NULL,NULL,NULL,NULL,NULL,'{}',NULL,NULL,0,0,0,300,0,300,0,300,'2026-09-11T10:00:00',NULL),
+  ('JOB-9004','CUS-9002','VEH-9002','MEC-9002',NULL,NULL,'2026-09-22',NULL,NULL,NULL,'Cancelled','low',12000,NULL,'full','Brake noise','Checked, no fault found',NULL,NULL,NULL,NULL,NULL,'{this is not valid json',NULL,NULL,0,0,0,2400,0,2400,0,0,'2026-09-10T10:00:00',NULL);
+
+-- Child lines. name / part_no / unit_price are HISTORICAL SNAPSHOTS and are
+-- written here to differ deliberately from the current catalogue rows above:
+-- SRV-9001 is currently 'B4 Full Service' at 7500 and PRT-9001 is currently
+-- 'B6 Full Part' / 'B6-OF-001', but these lines record what was actually sold.
+INSERT INTO job_card_services (job_card_id, service_id, name, qty, unit_price, total, line_no) VALUES
+  ('JOB-9001','SRV-9001','Legacy Full Service (2024 price)',1,4000,4000,1),
+  ('JOB-9001','SRV-9002','Brake Pad Replacement',2,1700,3400,2),
+  ('JOB-9004','SRV-9003','Diagnostic Check A',1,1200,1200,1),
+  ('JOB-9004','SRV-9004','Diagnostic Check B',1,1200,1200,1);
+
+INSERT INTO job_card_parts (job_card_id, part_id, name, part_no, qty, unit_price, total, line_no) VALUES
+  ('JOB-9001','PRT-9001','Legacy Oil Filter (2024 label)','LEGACY-OF-001',1,600,600,1),
+  ('JOB-9003',NULL,'Custom heat shield bracket (hand cut)','MANUAL-01',2,150,300,1);
+
+-- One invoice, so a job card can be observed with a live invoice link. No
+-- Invoice API exists yet; this row only exists to satisfy the foreign key.
+INSERT INTO invoices (id, job_card_id, customer_id, vehicle_id, date, labour_cost, discount, tax_rate, subtotal, tax, total, paid, due, status, created_at) VALUES
+  ('INV-9001','JOB-9001','CUS-9002','VEH-9002','2026-09-24',600,100,5,8000,395,8295,8295,0,'Paid','2026-09-24T12:00:00');
+
+-- job_cards.invoice_id and invoices.job_card_id point at each other, so the
+-- back-reference is set after both rows exist rather than relying on the
+-- deferred constraint inside a single statement batch.
+UPDATE job_cards SET invoice_id = 'INV-9001' WHERE id = 'JOB-9001';
 
 -- appointments.job_card_id and job_cards.appointment_id point at each other, so
 -- the back-reference is set after both rows exist rather than relying on the

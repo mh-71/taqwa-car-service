@@ -24,7 +24,7 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 13 routes', routes.length === 13, routes);
+  t('advertises 15 routes', routes.length === 15, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
@@ -32,6 +32,7 @@ sec('1. Health');
   t('advertises mechanics routes', routes.includes('GET /api/mechanics') && routes.includes('GET /api/mechanics/:id'));
   t('advertises parts routes', routes.includes('GET /api/parts') && routes.includes('GET /api/parts/:id'));
   t('advertises appointments routes', routes.includes('GET /api/appointments') && routes.includes('GET /api/appointments/:id'));
+  t('advertises job-cards routes', routes.includes('GET /api/job-cards') && routes.includes('GET /api/job-cards/:id'));
 }
 
 sec('2. GET /api/services — list');
@@ -631,16 +632,274 @@ sec('10d. GET /api/appointments — references stay as ids, values as stored');
     t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
   }
 
-  // Job cards are not exposed in this phase, even though a row exists.
-  const jc = await get('/api/job-cards');
-  t('/api/job-cards is not a route -> 404', jc.status === 404, jc.status);
+  // The appointment's job card link is an id; the job card itself is a
+  // separate collection and is not embedded here.
+  t('the job card link stays an id, with no job card object embedded',
+    !Object.keys(linked).some(k => /^jobCard($|[A-Z])/.test(k) && k !== 'jobCardId'),
+    Object.keys(linked));
+}
+
+sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
+{
+  const r = await get('/api/job-cards');
+  t('200', r.status === 200, r.status);
+  t('count 4', r.body?.count === 4, r.body?.count);
+  t('total 4', r.body?.total === 4, r.body?.total);
+  t('meta keys match the other collections',
+    JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
+    Object.keys(r.body));
+  t('newest first by created_at',
+    JSON.stringify(r.body.data.map(j => j.id)) === JSON.stringify(['JOB-9001','JOB-9002','JOB-9003','JOB-9004']),
+    r.body.data.map(j => j.id));
+
+  const byId = Object.fromEntries(r.body.data.map(j => [j.id, j]));
+  const full = byId['JOB-9001'];
+
+  // ---- parent mapping ----
+  t('camelCase keys only', Object.keys(full).every(k => !k.includes('_')), Object.keys(full));
+  t('references are ids',
+    full.customerId === 'CUS-9002' && full.vehicleId === 'VEH-9002'
+      && full.mechanicId === 'MEC-9001' && full.appointmentId === 'APT-9004'
+      && full.invoiceId === 'INV-9001',
+    { c: full.customerId, v: full.vehicleId, m: full.mechanicId, a: full.appointmentId, i: full.invoiceId });
+  t('date is stored text, not shifted', full.date === '2026-09-23', full.date);
+  t('estDelivery / actualDelivery preserved',
+    full.estDelivery === '2026-09-24' && full.actualDelivery === '2026-09-24');
+  t('completedAt preserved', full.completedAt === '2026-09-24T16:00:00', full.completedAt);
+  t('status and priority preserved', full.status === 'Delivered' && full.priority === 'high');
+  t('mileage and mileageOut', full.mileage === 48200 && full.mileageOut === 48260);
+  t('fuelLevel', full.fuelLevel === 'half', full.fuelLevel);
+  t('prose fields mapped',
+    full.technicianNotes === 'Oil, filter and pads replaced'
+      && full.conditionNotes === 'Minor scratch on rear bumper'
+      && full.recommendations === 'Air filter at next service');
+  t('labourHours / labourRate / labourCost',
+    full.labourHours === 1.5 && full.labourRate === 400 && full.labourCost === 600);
+  t('updatedAt present when set', full.updatedAt === '2026-09-14T11:00:00', full.updatedAt);
+
+  const sparse = byId['JOB-9002'];
+  t('NULL references -> null', sparse.appointmentId === null && sparse.invoiceId === null);
+  t('NULL mileage -> null, not 0', sparse.mileage === null, sparse.mileage);
+  t('NULL labourHours/labourRate -> null', sparse.labourHours === null && sparse.labourRate === null);
+  t('NULL prose -> ""',
+    sparse.inspection === '' && sparse.diagnosis === '' && sparse.notes === ''
+      && sparse.estDelivery === '' && sparse.completedAt === '' && sparse.fuelLevel === '');
+  t('NOT NULL money 0 stays 0',
+    sparse.subtotal === 0 && sparse.total === 0 && sparse.paid === 0 && sparse.due === 0);
+  t('sparse job card omits updatedAt', !('updatedAt' in sparse), Object.keys(sparse));
+
+  const manualJob = byId['JOB-9003'];
+  t('mileage 0 stays 0 — a real reading, unlike JOB-9002 NULL',
+    manualJob.mileage === 0 && sparse.mileage === null,
+    { zero: manualJob.mileage, absent: sparse.mileage });
+  t('0 and null are distinguishable over the wire', manualJob.mileage !== sparse.mileage);
+
+  // ---- child lines ----
+  t('full job card has 2 service lines', full.services.length === 2, full.services.length);
+  t('full job card has 1 part line', full.partsUsed.length === 1, full.partsUsed.length);
+  t('service line shape',
+    JSON.stringify(Object.keys(full.services[0]).sort()) ===
+      JSON.stringify(['name','qty','serviceId','total','unitPrice']), Object.keys(full.services[0]));
+  t('part line shape',
+    JSON.stringify(Object.keys(full.partsUsed[0]).sort()) ===
+      JSON.stringify(['name','partId','partNo','qty','total','unitPrice']), Object.keys(full.partsUsed[0]));
+  t('child rows expose no surrogate id, line_no or jobCardId',
+    !['id','lineNo','line_no','jobCardId','job_card_id'].some(k => k in full.services[0]),
+    Object.keys(full.services[0]));
+  t('service lines in line_no order',
+    JSON.stringify(full.services.map(s => s.name)) ===
+      JSON.stringify(['Legacy Full Service (2024 price)','Brake Pad Replacement']),
+    full.services.map(s => s.name));
+
+  t('a job card with no lines gets services []',
+    Array.isArray(sparse.services) && sparse.services.length === 0, sparse.services);
+  t('a job card with no lines gets partsUsed []',
+    Array.isArray(sparse.partsUsed) && sparse.partsUsed.length === 0, sparse.partsUsed);
+  t('lines are attached to the right parents',
+    full.services.length === 2 && manualJob.services.length === 0
+      && byId['JOB-9004'].services.length === 2,
+    { j1: full.services.length, j3: manualJob.services.length, j4: byId['JOB-9004'].services.length });
+
+  // JOB-9004's two service lines share line_no = 1; the id tie-break must keep
+  // their order stable across repeated requests.
+  const dup = byId['JOB-9004'];
+  t('duplicate line_no still yields 2 lines', dup.services.length === 2, dup.services.length);
+  const again = await get('/api/job-cards/JOB-9004');
+  t('duplicate line_no ordering is stable across requests',
+    JSON.stringify(again.body.data.services.map(s => s.name)) === JSON.stringify(dup.services.map(s => s.name)),
+    { first: dup.services.map(s => s.name), second: again.body.data.services.map(s => s.name) });
+
+  // ---- historical snapshots ----
+  const cat = await get('/api/services/SRV-9001');
+  t('the catalogue currently says something different',
+    cat.body.data.name === 'B4 Full Service' && cat.body.data.price === 7500,
+    { name: cat.body.data.name, price: cat.body.data.price });
+  t('the job card still reports the snapshot name',
+    full.services[0].name === 'Legacy Full Service (2024 price)', full.services[0].name);
+  t('the job card still reports the snapshot price',
+    full.services[0].unitPrice === 4000, full.services[0].unitPrice);
+  t('serviceId still points at the catalogue row', full.services[0].serviceId === 'SRV-9001');
+
+  const catPart = await get('/api/parts/PRT-9001');
+  t('the parts catalogue currently says something different',
+    catPart.body.data.name === 'B6 Full Part' && catPart.body.data.partNo === 'B6-OF-001',
+    { name: catPart.body.data.name, partNo: catPart.body.data.partNo });
+  t('the job card still reports the snapshot part name',
+    full.partsUsed[0].name === 'Legacy Oil Filter (2024 label)', full.partsUsed[0].name);
+  t('the job card still reports the snapshot part number',
+    full.partsUsed[0].partNo === 'LEGACY-OF-001', full.partsUsed[0].partNo);
+  t('the job card still reports the snapshot part price',
+    full.partsUsed[0].unitPrice === 600, full.partsUsed[0].unitPrice);
+
+  // ---- manual part ----
+  t('manual line has partId null', manualJob.partsUsed[0].partId === null, manualJob.partsUsed[0].partId);
+  t('manual line keeps its name',
+    manualJob.partsUsed[0].name === 'Custom heat shield bracket (hand cut)', manualJob.partsUsed[0].name);
+  t('manual line keeps its part number', manualJob.partsUsed[0].partNo === 'MANUAL-01');
+  t('manual line keeps its price and total',
+    manualJob.partsUsed[0].unitPrice === 150 && manualJob.partsUsed[0].total === 300);
+  t('manual line is not promoted into an inventory part',
+    manualJob.partsUsed[0].partId !== '' && manualJob.partsUsed[0].partId === null);
+
+  // ---- financial values as stored ----
+  t('subtotal/tax/total as stored',
+    full.subtotal === 8000 && full.tax === 395 && full.total === 8295,
+    { s: full.subtotal, t: full.tax, tot: full.total });
+  t('discount and taxRate as stored', full.discount === 100 && full.taxRate === 5);
+  t('paid and due as stored', full.paid === 8295 && full.due === 0);
+  // The line totals sum to 8000 here, but nothing was recomputed: JOB-9004
+  // stores a subtotal of 2400 while its lines sum to 2400 and its total is
+  // 2400 with paid 0 — all read back exactly.
+  t('a cancelled job card keeps its stored figures',
+    dup.subtotal === 2400 && dup.total === 2400 && dup.paid === 0 && dup.due === 0,
+    { s: dup.subtotal, t: dup.total, p: dup.paid, d: dup.due });
+  t('no live balance field invented',
+    !Object.keys(full).some(k => /^live|balance/i.test(k)), Object.keys(full));
+  t('paid/due are the job card snapshot, not the invoice-derived live balance',
+    full.paid === 8295 && full.due === 0);
+
+  // ---- inspectionChecklist ----
+  t('valid JSON checklist is a parsed object',
+    typeof full.inspectionChecklist === 'object' && full.inspectionChecklist.brakes === 'worn',
+    full.inspectionChecklist);
+  t('checklist keys survive',
+    JSON.stringify(Object.keys(full.inspectionChecklist).sort()) === JSON.stringify(['battery','brakes','tyres']),
+    Object.keys(full.inspectionChecklist));
+  t('NULL checklist -> {}',
+    JSON.stringify(sparse.inspectionChecklist) === '{}', sparse.inspectionChecklist);
+  t('stored empty object stays {}',
+    JSON.stringify(manualJob.inspectionChecklist) === '{}', manualJob.inspectionChecklist);
+  t('malformed JSON checklist -> {}, not a 500',
+    JSON.stringify(dup.inspectionChecklist) === '{}', dup.inspectionChecklist);
+  t('the malformed row did not fail the whole list', r.status === 200 && r.body.count === 4);
+  const dupDetail = await get('/api/job-cards/JOB-9004');
+  t('malformed JSON checklist -> 200 on detail too', dupDetail.status === 200, dupDetail.status);
+  t('and {} there as well', JSON.stringify(dupDetail.body.data.inspectionChecklist) === '{}');
+
+  // ---- relationships are not embedded ----
+  const keys = new Set(r.body.data.flatMap(j => Object.keys(j)));
+  t('no customer/vehicle/mechanic object embedded',
+    !['customer','customerName','vehicle','vehicleRegNo','mechanic','mechanicName'].some(k => keys.has(k)),
+    [...keys]);
+  t('no appointment or invoice object embedded',
+    !['appointment','invoice','invoiceStatus','invoiceTotal'].some(k => keys.has(k)), [...keys]);
+  t('no inventory field embedded',
+    !['stock','issuedQty','currentStock'].some(k => keys.has(k)), [...keys]);
+
+  // ---- pagination ----
+  const p1 = await get('/api/job-cards?limit=2');
+  t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
+  t('total still 4', p1.body?.total === 4, p1.body?.total);
+  t('a paged result still carries its child lines',
+    p1.body.data.find(j => j.id === 'JOB-9001').services.length === 2);
+  const p2 = await get('/api/job-cards?limit=2&offset=2');
+  t('offset=2 returns the next page',
+    JSON.stringify(p2.body.data.map(j => j.id)) === JSON.stringify(['JOB-9003','JOB-9004']),
+    p2.body.data.map(j => j.id));
+  t('pages do not overlap', !p2.body.data.some(j => p1.body.data.find(x => x.id === j.id)));
+  const p3 = await get('/api/job-cards?offset=99');
+  t('offset past end -> empty array, still 200', p3.status === 200 && p3.body.data.length === 0);
+  // The SQLite variable ceiling: a full-size page must work against a real D1.
+  const p4 = await get('/api/job-cards?limit=1000');
+  t('limit=1000 succeeds against real D1 — no variable-limit failure',
+    p4.status === 200, { status: p4.status, err: p4.body?.error });
+  t('and returns every job card', p4.body?.count === 4, p4.body?.count);
+  for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
+                          ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
+    const bad = await get('/api/job-cards?' + q);
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_parameter', { q, status: bad.status });
+  }
+
+  // ---- detail ----
+  const d = await get('/api/job-cards/JOB-9001');
+  t('detail 200', d.status === 200, d.status);
+  t('detail matches the list record', JSON.stringify(d.body.data) === JSON.stringify(full));
+  t('no list meta on detail', d.body.count === undefined && d.body.limit === undefined);
+  const dEmpty = await get('/api/job-cards/JOB-9002');
+  t('a line-less job card still returns both empty arrays',
+    dEmpty.body.data.services.length === 0 && dEmpty.body.data.partsUsed.length === 0);
+
+  const d404 = await get('/api/job-cards/JOB-8888');
+  t('unknown id -> 404', d404.status === 404, d404.status);
+  t('404 message names a job card',
+    d404.body?.error?.message === 'No job card with that id.', d404.body?.error?.message);
+  for (const other of ['CUS-9001','VEH-9001','APT-9001','SRV-9001','MEC-9001','PRT-9001','INV-9001']) {
+    const x = await get('/api/job-cards/' + other);
+    t(`${other} on the job-cards route -> 404, not 400`, x.status === 404, x.status);
+  }
+  const jOnAppt = await get('/api/appointments/JOB-9001');
+  t('job card id on the appointments route -> 404',
+    jOnAppt.status === 404 && jOnAppt.body?.error?.message === 'No appointment with that id.');
+
+  for (const [id, why] of [['nonsense','no prefix shape'], ['JOB-','no number'], ['-9001','no prefix'],
+                           ['JOBCARDS-9001','prefix too long'], ['J-1','prefix too short']]) {
+    const bad = await get('/api/job-cards/' + encodeURIComponent(id));
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_id', { id, status: bad.status });
+  }
+  const dSlash = await get('/api/job-cards/');
+  t('trailing slash -> 400', dSlash.status === 400 && dSlash.body?.error?.code === 'invalid_id');
+  const dEsc = await fetch(BASE + '/api/job-cards/%zz');
+  t('malformed percent-escape -> 400', dEsc.status === 400, dEsc.status);
+
+  // Injections that would zero the money or delete the lines if they landed.
+  const injMoney = await get('/api/job-cards/' + encodeURIComponent("JOB-9001'; UPDATE job_cards SET paid=0, due=0 --"));
+  t('money-rewriting injection rejected -> 400', injMoney.status === 400, injMoney.status);
+  const injLines = await get('/api/job-cards/' + encodeURIComponent("JOB-9001'; DELETE FROM job_card_parts --"));
+  t('line-deleting injection rejected -> 400', injLines.status === 400, injLines.status);
+  const after = await get('/api/job-cards/JOB-9001');
+  t('money survived the injection attempts',
+    after.body?.data?.paid === 8295 && after.body?.data?.due === 0,
+    { paid: after.body?.data?.paid, due: after.body?.data?.due });
+  t('child lines survived the injection attempts',
+    after.body?.data?.partsUsed?.length === 1 && after.body?.data?.services?.length === 2);
+  const allAfter = await get('/api/job-cards');
+  t('job_cards table intact after injection attempts', allAfter.body?.total === 4, allAfter.body?.total);
+
+  for (const m of ['POST','PUT','DELETE','PATCH']) {
+    const rl = await get('/api/job-cards', { method: m });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    const rd = await get('/api/job-cards/JOB-9001', { method: m });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+  }
+
+  // Neither an Invoice nor a Payments API ships in this phase. The names are
+  // derived from what health advertises so a later phase that does ship them
+  // does not have to come back and edit this.
+  const live = (await get('/api/health')).body?.data?.routes ?? [];
+  const notYet = ['invoices', 'payments', 'inventory-transactions', 'expenses']
+    .filter(name => !live.includes(`GET /api/${name}`));
+  t('at least one unshipped collection was found to probe', notYet.length > 0, live);
+  for (const name of notYet) {
+    const x = await get(`/api/${name}`);
+    t(`/api/${name} is not a route yet -> 404`, x.status === 404, x.status);
+  }
 }
 
 sec('11. Collections stay separate over the wire');
 {
-  const [s, c, v, m, p, a] = await Promise.all([
+  const [s, c, v, m, p, a, j] = await Promise.all([
     get('/api/services'), get('/api/customers'), get('/api/vehicles'),
-    get('/api/mechanics'), get('/api/parts'), get('/api/appointments')]);
+    get('/api/mechanics'), get('/api/parts'), get('/api/appointments'), get('/api/job-cards')]);
   t('services returns only SRV ids', s.body.data.every(x => x.id.startsWith('SRV-')));
   t('customers returns only CUS ids', c.body.data.every(x => x.id.startsWith('CUS-')));
   t('vehicles returns only VEH ids', v.body.data.every(x => x.id.startsWith('VEH-')));
@@ -661,6 +920,12 @@ sec('11. Collections stay separate over the wire');
       .some(x => 'source' in x || 'reminderSent' in x));
   t('appointments rows carry no stock or salary',
     !a.body.data.some(x => 'stock' in x || 'salary' in x));
+  t('job cards returns only JOB ids', j.body.data.every(x => x.id.startsWith('JOB-')));
+  t('only job cards carry child line arrays',
+    ![...s.body.data, ...c.body.data, ...v.body.data, ...m.body.data, ...p.body.data, ...a.body.data]
+      .some(x => 'services' in x || 'partsUsed' in x));
+  t('job card rows carry no stock or salary',
+    !j.body.data.some(x => 'stock' in x || 'salary' in x));
   t('salary never appears outside mechanics',
     ![...s.body.data, ...c.body.data, ...v.body.data].some(x => 'salary' in x || 'commissionRate' in x));
 }
