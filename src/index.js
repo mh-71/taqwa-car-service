@@ -12,6 +12,7 @@
 import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
 import { listCustomers, getCustomer } from './routes/customers.js';
 import { listVehicles, getVehicle } from './routes/vehicles.js';
+import { listServices, getService } from './routes/services.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -22,6 +23,7 @@ import { listVehicles, getVehicle } from './routes/vehicles.js';
 const COLLECTIONS = {
   customers: { list: listCustomers, detail: getCustomer },
   vehicles: { list: listVehicles, detail: getVehicle },
+  services: { list: listServices, detail: getService },
 };
 
 const ROUTES = [
