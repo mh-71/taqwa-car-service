@@ -1,8 +1,8 @@
 /* ============================================================
    Taqwa Automobile Service Center — Worker API
    ------------------------------------------------------------
-   Phase B: health plus the first read-only route. The frontend
-   still runs entirely on localStorage and calls none of this.
+   Phase B: health plus read-only routes. The frontend still runs
+   entirely on localStorage and calls none of this.
 
    The rule this file exists to establish: the browser never touches
    D1. Every database operation goes through a Worker route, which
@@ -11,17 +11,31 @@
 
 import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
 import { listCustomers, getCustomer } from './routes/customers.js';
+import { listVehicles, getVehicle } from './routes/vehicles.js';
+
+/**
+ * Every collection exposes the same two shapes: a list at
+ * /api/<name> and a detail at /api/<name>/<id>. Registering them
+ * here keeps the path parsing in one place — adding a collection is
+ * one line plus its route module, not another branch in the router.
+ */
+const COLLECTIONS = {
+  customers: { list: listCustomers, detail: getCustomer },
+  vehicles: { list: listVehicles, detail: getVehicle },
+};
 
 const ROUTES = [
   'GET /api/health',
-  'GET /api/customers',
-  'GET /api/customers/:id',
+  ...Object.keys(COLLECTIONS).flatMap((name) => [
+    `GET /api/${name}`,
+    `GET /api/${name}/:id`,
+  ]),
 ];
 
-// Matches /api/customers/<anything>, including an empty segment so that
-// /api/customers/ is answered by the id validator (400) rather than falling
-// through to a confusing 404.
-const CUSTOMER_DETAIL = /^\/api\/customers\/(.*)$/;
+// Captures the collection name and, optionally, everything after the next
+// slash. The id group is allowed to be empty so that /api/customers/ reaches
+// the id validator (400) rather than falling through to a confusing 404.
+const API_PATH = /^\/api\/([a-z-]+)(?:\/(.*))?$/;
 
 /**
  * GET /api/health
@@ -84,20 +98,24 @@ export default {
       return health(env);
     }
 
-    if (url.pathname === '/api/customers') {
-      return listCustomers(request, env, url);
-    }
+    const match = API_PATH.exec(url.pathname);
+    if (match) {
+      const [, name, rawId] = match;
+      const collection = COLLECTIONS[name];
 
-    const detail = CUSTOMER_DETAIL.exec(url.pathname);
-    if (detail) {
-      let id;
-      try {
-        // A malformed escape (%zz) throws rather than returning garbage.
-        id = decodeURIComponent(detail[1]);
-      } catch {
-        return fail('invalid_id', 'Record id is not valid URL encoding.', 400);
+      if (collection) {
+        // No trailing segment at all -> the list route.
+        if (rawId === undefined) return collection.list(request, env, url);
+
+        let id;
+        try {
+          // A malformed escape (%zz) throws rather than returning garbage.
+          id = decodeURIComponent(rawId);
+        } catch {
+          return fail('invalid_id', 'Record id is not valid URL encoding.', 400);
+        }
+        return collection.detail(request, env, id);
       }
-      return getCustomer(request, env, id);
     }
 
     return notFound(ROUTES);
