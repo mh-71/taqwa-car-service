@@ -14,6 +14,7 @@ import { listCustomers, getCustomer } from './routes/customers.js';
 import { listVehicles, getVehicle } from './routes/vehicles.js';
 import { listServices, getService } from './routes/services.js';
 import { listMechanics, getMechanic } from './routes/mechanics.js';
+import { listParts, getPart } from './routes/parts.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -26,6 +27,7 @@ const COLLECTIONS = {
   vehicles: { list: listVehicles, detail: getVehicle },
   services: { list: listServices, detail: getService },
   mechanics: { list: listMechanics, detail: getMechanic },
+  parts: { list: listParts, detail: getPart },
 };
 
 const ROUTES = [

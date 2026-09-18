@@ -17,6 +17,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-vehicles.test.mjs` | `GET /api/vehicles[/:id]` |
 | `api-services.test.mjs` | `GET /api/services[/:id]`, plus the one exact check of the full route list |
 | `api-mechanics.test.mjs` | `GET /api/mechanics[/:id]`, including the null-versus-zero rule for salary and commission |
+| `api-parts.test.mjs` | `GET /api/parts[/:id]`, including that stock is read from the column and never derived from the ledger |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
 | `finding7.test.cjs` | Audit Finding 7 — voiding an invoice releases its payments |
@@ -47,8 +48,8 @@ Drop a file in `tests/unit/` named `<name>.test.mjs` or `<name>.test.cjs`.
 The runner discovers it — there is no list to update. Print a final
 `<label>: N passed, M failed` line and `process.exit(fail ? 1 : 0)`.
 
-For a new collection's API suite, copy `api-mechanics.test.mjs`: it is the
-newest and exercises the shared factory in `src/lib/collection.js` most fully.
+For a new collection's API suite, copy `api-parts.test.mjs`: it is the newest
+and exercises the shared factory in `src/lib/collection.js` most fully.
 Assert only your own collection's routes. The single exact full-route-list
 check is kept in `api-services.test.mjs` — one designated suite, so adding a
 collection means editing two lines in one file rather than every suite.

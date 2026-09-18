@@ -18,3 +18,8 @@ INSERT INTO mechanics (id, name, phone, alt_phone, email, address, specializatio
   ('MEC-9001','B5 Full Mechanic','01911000001','01911000002','b5@example.test','Uttara, Dhaka','Engine & Transmission',12,'2021-03-15','Full Time','Monthly',32000,5.5,'Available','regression row','Active','2026-09-10T09:00:00','2026-09-12T10:00:00'),
   ('MEC-9002','B5 Sparse Mechanic','01911000003',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'Active','2026-09-11T09:00:00',NULL),
   ('MEC-9003','B5 Zeroed Mechanic','01911000004',NULL,NULL,NULL,'Brakes & Suspension',0,'2026-01-01','Part Time','Hourly',0,0,'On Leave',NULL,'Inactive','2026-09-09T09:00:00',NULL);
+
+INSERT INTO parts (id, name, part_no, category, brand, supplier, location, unit, purchase_price, selling_price, stock, min_stock, reorder_qty, notes, status, created_at, updated_at) VALUES
+  ('PRT-9001','B6 Full Part','B6-OF-001','Filters','Toyota','Dhaka Auto Parts','Rack A2','pc',350,500,18,8,10,'regression row','Active','2026-09-10T09:00:00','2026-09-12T10:00:00'),
+  ('PRT-9002','B6 Sparse Part',NULL,NULL,NULL,NULL,NULL,NULL,2200,2800,24,10,NULL,NULL,'Active','2026-09-11T09:00:00',NULL),
+  ('PRT-9003','B6 Out Of Stock','B6-SP-003','Engine','NGK','Dhaka Auto Parts','Rack A3','pc',450,650,0,12,0,'','Inactive','2026-09-09T09:00:00',NULL);

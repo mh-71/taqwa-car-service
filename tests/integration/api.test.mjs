@@ -24,12 +24,13 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 9 routes', routes.length === 9, routes);
+  t('advertises 11 routes', routes.length === 11, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
   t('advertises vehicles routes', routes.includes('GET /api/vehicles') && routes.includes('GET /api/vehicles/:id'));
   t('advertises mechanics routes', routes.includes('GET /api/mechanics') && routes.includes('GET /api/mechanics/:id'));
+  t('advertises parts routes', routes.includes('GET /api/parts') && routes.includes('GET /api/parts/:id'));
 }
 
 sec('2. GET /api/services — list');
@@ -335,10 +336,133 @@ sec('10b. GET /api/mechanics — the new collection, over real HTTP');
   }
 }
 
+sec('10c. GET /api/parts — stock comes from the column, not the ledger');
+{
+  const r = await get('/api/parts');
+  t('200', r.status === 200, r.status);
+  t('count 3', r.body?.count === 3, r.body?.count);
+  t('total 3', r.body?.total === 3, r.body?.total);
+  t('meta keys match the other collections',
+    JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
+    Object.keys(r.body));
+  t('newest first, id DESC tie-break',
+    JSON.stringify(r.body.data.map(p => p.id)) === JSON.stringify(['PRT-9002','PRT-9001','PRT-9003']),
+    r.body.data.map(p => p.id));
+
+  const byId = Object.fromEntries(r.body.data.map(p => [p.id, p]));
+  const full = byId['PRT-9001'];
+  t('full part record shape', JSON.stringify(full) === JSON.stringify({
+    id:'PRT-9001', name:'B6 Full Part', partNo:'B6-OF-001', category:'Filters',
+    brand:'Toyota', supplier:'Dhaka Auto Parts', location:'Rack A2', unit:'pc',
+    purchasePrice:350, sellingPrice:500, stock:18, minStock:8, reorderQty:10,
+    notes:'regression row', status:'Active', createdAt:'2026-09-10T09:00:00',
+    updatedAt:'2026-09-12T10:00:00' }), full);
+  t('camelCase keys only', Object.keys(full).every(k => !k.includes('_')), Object.keys(full));
+
+  const sparse = byId['PRT-9002'];
+  t('NULL text -> ""',
+    sparse.partNo === '' && sparse.category === '' && sparse.brand === ''
+      && sparse.supplier === '' && sparse.location === '' && sparse.unit === ''
+      && sparse.notes === '');
+  t('NULL reorderQty stays null — the UI supplies its own default',
+    sparse.reorderQty === null, sparse.reorderQty);
+  t('NOT NULL numbers always arrive as numbers',
+    typeof sparse.purchasePrice === 'number' && typeof sparse.sellingPrice === 'number'
+      && typeof sparse.stock === 'number' && typeof sparse.minStock === 'number');
+  t('sparse part omits updatedAt', !('updatedAt' in sparse), Object.keys(sparse));
+
+  const zero = byId['PRT-9003'];
+  t('stock 0 stays 0 — out of stock is a real state', zero.stock === 0, zero.stock);
+  t('reorderQty stored as 0 stays 0', zero.reorderQty === 0, zero.reorderQty);
+  t('a stored 0 and a NULL are distinguishable over the wire',
+    zero.reorderQty === 0 && sparse.reorderQty === null,
+    { stored: zero.reorderQty, absent: sparse.reorderQty });
+  t('Inactive status preserved', zero.status === 'Inactive', zero.status);
+
+  // The API reports the stored balance. Nothing here is summed, joined or
+  // reconciled against inventory_transactions.
+  const keys = new Set(r.body.data.flatMap(p => Object.keys(p)));
+  t('no derived low-stock flag', ![...keys].some(k => /low|alert|needsReorder/i.test(k)), [...keys]);
+  t('no derived stock value', ![...keys].some(k => /value|worth/i.test(k)), [...keys]);
+  t('no embedded transaction history',
+    ![...keys].some(k => /transaction|history|movement|ledger/i.test(k)), [...keys]);
+  t('no openingStock — it is not a stored column', !keys.has('openingStock'), [...keys]);
+
+  const p1 = await get('/api/parts?limit=2');
+  t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
+  t('total still 3', p1.body?.total === 3, p1.body?.total);
+  const p2 = await get('/api/parts?limit=2&offset=2');
+  t('offset=2 returns the last one', JSON.stringify(p2.body.data.map(p => p.id)) === JSON.stringify(['PRT-9003']),
+    p2.body.data.map(p => p.id));
+  t('pages do not overlap', !p2.body.data.some(p => p1.body.data.find(x => x.id === p.id)));
+  const p3 = await get('/api/parts?offset=99');
+  t('offset past end -> empty array, still 200', p3.status === 200 && p3.body.data.length === 0);
+  const p4 = await get('/api/parts?limit=1000');
+  t('limit at the maximum accepted', p4.status === 200, p4.status);
+
+  for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
+                          ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
+    const bad = await get('/api/parts?' + q);
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_parameter', { q, status: bad.status });
+  }
+
+  const d = await get('/api/parts/PRT-9001');
+  t('detail 200', d.status === 200, d.status);
+  t('detail matches the list record', JSON.stringify(d.body.data) === JSON.stringify(full));
+  t('no list meta on detail', d.body.count === undefined && d.body.limit === undefined);
+  const dZero = await get('/api/parts/PRT-9003');
+  t('out-of-stock detail reports 0', dZero.body?.data?.stock === 0, dZero.body?.data?.stock);
+  const dSparse = await get('/api/parts/PRT-9002');
+  t('sparse detail keeps reorderQty null', dSparse.body?.data?.reorderQty === null, dSparse.body?.data?.reorderQty);
+
+  const d404 = await get('/api/parts/PRT-8888');
+  t('unknown id -> 404', d404.status === 404, d404.status);
+  t('404 message names a part', d404.body?.error?.message === 'No part with that id.', d404.body?.error?.message);
+  for (const other of ['MEC-9001', 'SRV-9001', 'CUS-9001', 'VEH-9001']) {
+    const x = await get('/api/parts/' + other);
+    t(`${other} on the parts route -> 404, not 400`, x.status === 404, x.status);
+  }
+  const pOnMech = await get('/api/mechanics/PRT-9001');
+  t('parts id on the mechanics route -> 404',
+    pOnMech.status === 404 && pOnMech.body?.error?.message === 'No mechanic with that id.');
+
+  for (const [id, why] of [['nonsense','no prefix shape'], ['PRT-','no number'], ['-9001','no prefix'],
+                           ['PARTSXX-9001','prefix too long'], ['P-1','prefix too short']]) {
+    const bad = await get('/api/parts/' + encodeURIComponent(id));
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_id', { id, status: bad.status });
+  }
+  const dEmpty = await get('/api/parts/');
+  t('trailing slash -> 400', dEmpty.status === 400 && dEmpty.body?.error?.code === 'invalid_id');
+  const dEsc = await fetch(BASE + '/api/parts/%zz');
+  t('malformed percent-escape -> 400', dEsc.status === 400, dEsc.status);
+
+  // An injection that would zero the stock if it ever reached the database.
+  const inject = await get('/api/parts/' + encodeURIComponent("PRT-9001'; UPDATE parts SET stock=0 --"));
+  t('stock-mutating injection rejected -> 400', inject.status === 400, inject.status);
+  const after = await get('/api/parts/PRT-9001');
+  t('stock is untouched after the injection attempt', after.body?.data?.stock === 18, after.body?.data?.stock);
+  const allAfter = await get('/api/parts');
+  t('parts table intact after injection attempt', allAfter.body?.total === 3, allAfter.body?.total);
+
+  for (const m of ['POST','PUT','DELETE','PATCH']) {
+    const rl = await get('/api/parts', { method: m });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    const rd = await get('/api/parts/PRT-9001', { method: m });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+  }
+
+  // The ledger is deliberately not exposed in this phase.
+  for (const path of ['/api/inventory-transactions', '/api/inventory']) {
+    const x = await get(path);
+    t(`${path} is not a route yet -> 404`, x.status === 404, x.status);
+  }
+}
+
 sec('11. Collections stay separate over the wire');
 {
-  const [s, c, v, m] = await Promise.all([
-    get('/api/services'), get('/api/customers'), get('/api/vehicles'), get('/api/mechanics')]);
+  const [s, c, v, m, p] = await Promise.all([
+    get('/api/services'), get('/api/customers'), get('/api/vehicles'),
+    get('/api/mechanics'), get('/api/parts')]);
   t('services returns only SRV ids', s.body.data.every(x => x.id.startsWith('SRV-')));
   t('customers returns only CUS ids', c.body.data.every(x => x.id.startsWith('CUS-')));
   t('vehicles returns only VEH ids', v.body.data.every(x => x.id.startsWith('VEH-')));
@@ -348,6 +472,11 @@ sec('11. Collections stay separate over the wire');
   t('mechanics returns only MEC ids', m.body.data.every(x => x.id.startsWith('MEC-')));
   t('mechanics rows have no vehicle or service fields',
     !m.body.data.some(x => 'regNo' in x || 'price' in x || 'estTime' in x));
+  t('parts returns only PRT ids', p.body.data.every(x => x.id.startsWith('PRT-')));
+  t('stock never appears outside parts',
+    ![...s.body.data, ...c.body.data, ...v.body.data, ...m.body.data].some(x => 'stock' in x));
+  t('parts rows carry no salary or service fields',
+    !p.body.data.some(x => 'salary' in x || 'estTime' in x));
   t('salary never appears outside mechanics',
     ![...s.body.data, ...c.body.data, ...v.body.data].some(x => 'salary' in x || 'commissionRate' in x));
 }

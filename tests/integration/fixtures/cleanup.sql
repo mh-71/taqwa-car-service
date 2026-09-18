@@ -10,3 +10,4 @@ DELETE FROM vehicles  WHERE id LIKE 'VEH-9%';
 DELETE FROM customers WHERE id LIKE 'CUS-9%';
 DELETE FROM services  WHERE id LIKE 'SRV-9%';
 DELETE FROM mechanics WHERE id LIKE 'MEC-9%';
+DELETE FROM parts     WHERE id LIKE 'PRT-9%';
