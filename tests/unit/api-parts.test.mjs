@@ -422,11 +422,45 @@ console.log('\n-- 11. Routing --');
     JSON.stringify(body.error.available));
 }
 {
-  // The ledger is not exposed in this phase; its obvious paths must 404.
-  for (const path of ['/api/inventory-transactions', '/api/inventory', '/api/part']) {
+  // B-13 shipped the ledger, so the probe that asserted it 404s is derived
+  // from what health advertises rather than hardcoded -- the same fix the
+  // other suites already use, so the next phase inherits this unchanged.
+  const advertised = (await (await call('/api/health', {
+    DB: {
+      prepare(sql) {
+        return {
+          async all() { return { results: sql.includes("type = 'table'") ? [{ name: 'customers' }] : [] }; },
+          async first() { return { n: 1 }; },
+        };
+      },
+    },
+  })).json()).data.routes;
+
+  // Whatever is advertised must answer; whatever is not must 404. Neither
+  // list is hardcoded, so shipping a route can never make this stale again.
+  for (const path of ['/api/inventory-transactions', '/api/inventory', '/api/part', '/api/stock']) {
     const res = await call(path, { DB: stubDB({ rows: [] }) });
-    ok_(`${path} is not a route yet -> 404`, res.status === 404, `got ${res.status}`);
+    const isRouted = advertised.includes(`GET ${path}`);
+    ok_(`${path} ${isRouted ? 'is a route -> 200' : 'is not a route -> 404'}`,
+      isRouted ? res.status === 200 : res.status === 404, `got ${res.status}`);
   }
+
+  // The ledger specifically: exposed as of B-13, and separate from parts.
+  ok_('the ledger is now advertised', advertised.includes('GET /api/inventory-transactions'));
+  ok_('/api/inventory is still not a route', !advertised.includes('GET /api/inventory'));
+  const ledger = await call('/api/inventory-transactions', { DB: stubDB({ rows: [] }) });
+  ok_('the ledger route answers 200', ledger.status === 200, `got ${ledger.status}`);
+  const lb = await ledger.json();
+  ok_('the ledger returns its own rows, not parts', Array.isArray(lb.data));
+
+  // parts.stock stays the balance; B-6's rule is unchanged by B-13.
+  const partsRes = await call('/api/parts', { DB: stubDB({ rows: [] }) });
+  const partsDb = stubDB({ rows: [] });
+  await call('/api/parts', { DB: partsDb });
+  ok_('the parts route still never reads the ledger',
+    !partsDb.calls.some((c) => /inventory_transactions/i.test(c.sql)),
+    partsDb.calls.map((c) => c.sql).join(' | '));
+  ok_('parts still answers independently', partsRes.status === 200);
 }
 
 console.log(`\nGET /api/parts unit: ${pass} passed, ${fail} failed`);

@@ -22,6 +22,9 @@ import { listJobCards, getJobCard } from './routes/job-cards.js';
 import { listInvoices, getInvoice } from './routes/invoices.js';
 import { listPayments, getPayment } from './routes/payments.js';
 import { listExpenses, getExpense } from './routes/expenses.js';
+import {
+  listInventoryTransactions, getInventoryTransaction,
+} from './routes/inventory-transactions.js';
 // Settings is a singleton the schema enforces (id INTEGER PRIMARY KEY
 // CHECK (id = 1)), so it has no list and no addressable detail. It is
 // dispatched directly below, beside /api/health, rather than joining
@@ -45,6 +48,10 @@ const COLLECTIONS = {
   invoices: { list: listInvoices, detail: getInvoice },
   payments: { list: listPayments, detail: getPayment },
   expenses: { list: listExpenses, detail: getExpense },
+  'inventory-transactions': {
+    list: listInventoryTransactions,
+    detail: getInventoryTransaction,
+  },
 };
 
 const ROUTES = [

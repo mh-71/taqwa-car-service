@@ -178,3 +178,27 @@ INSERT INTO settings (
   '["Sat","Sun","Mon","Tue","Wed","Thu"]',
   '2026-09-26T09:00:00'
 );
+
+-- Inventory transactions — the stock audit trail, and the last of the eleven
+-- collections to be exposed. These reference PRT-9001..PRT-9003 above
+-- (part_id is NOT NULL with ON DELETE RESTRICT), so they must be inserted
+-- after parts and removed before them.
+--
+-- Deliberately NOT reconciled with parts.stock: the fixtures above set stock
+-- directly, exactly as seed-data.js does for the app's own demo data, where
+-- historical job cards are treated as already settled rather than retro-
+-- deducted. The ledger is history, parts.stock is the balance, and the API
+-- never derives one from the other — so a fixture that made them agree would
+-- be asserting a relationship the code does not maintain.
+--
+--   STK-9001  initial-stock, a recorded unit cost, manual with a NULL ref id
+--   STK-9002  job-card-use, referencing JOB-9001, no unit cost
+--   STK-9003  return of that issue, so the ledger carries both directions
+--   STK-9004  purchase at a genuine ZERO unit cost — the null-versus-zero case
+--   STK-9005  damaged, every optional column NULL, fractional quantity/stock
+INSERT INTO inventory_transactions (id, part_id, type, quantity, unit_cost, reference_type, reference_id, reason, notes, prev_stock, new_stock, created_at) VALUES
+  ('STK-9001','PRT-9001','initial-stock',18,350,'manual',NULL,'','Opening stock',0,18,'2026-09-10T09:05:00'),
+  ('STK-9002','PRT-9001','job-card-use',2,NULL,'job-card','JOB-9001','','',18,16,'2026-09-14T11:00:00'),
+  ('STK-9003','PRT-9001','return',2,NULL,'job-card','JOB-9001','','Returned — JOB-9001 cancelled',16,18,'2026-09-15T11:00:00'),
+  ('STK-9004','PRT-9002','purchase',5,0,'manual',NULL,'Supplier sample','',19,24,'2026-09-16T11:00:00'),
+  ('STK-9005','PRT-9003','damaged',1.5,NULL,NULL,NULL,NULL,NULL,4.5,3,'2026-09-17T11:00:00');

@@ -387,7 +387,7 @@ console.log('\n-- 14. Route registration --');
   const b = await res.json();
   const routes = b.data.routes;
 
-  check('health advertises 22 routes', routes.length, 22);
+  check('health advertises 24 routes', routes.length, 24);
   ok_('advertises GET /api/settings', routes.includes('GET /api/settings'));
   ok_('does NOT advertise a settings detail route', !routes.includes('GET /api/settings/:id'));
   ok_('every advertised route is a GET', routes.every((r) => r.startsWith('GET ')));

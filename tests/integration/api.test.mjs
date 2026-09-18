@@ -24,7 +24,7 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 22 routes', routes.length === 22, routes);
+  t('advertises 24 routes', routes.length === 24, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
@@ -36,6 +36,7 @@ sec('1. Health');
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
+  t('advertises inventory-transactions routes', routes.includes('GET /api/inventory-transactions') && routes.includes('GET /api/inventory-transactions/:id'));
   // Settings is the one singleton among the collections: one entry, no /:id.
   t('advertises the settings route', routes.includes('GET /api/settings'));
   t('advertises no settings detail route', !routes.includes('GET /api/settings/:id'));
@@ -460,11 +461,23 @@ sec('10c. GET /api/parts — stock comes from the column, not the ledger');
     t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
   }
 
-  // The ledger is deliberately not exposed in this phase.
-  for (const path of ['/api/inventory-transactions', '/api/inventory']) {
+  // B-13 shipped the ledger, so this is derived from what health advertises
+  // rather than hardcoded: whatever is advertised must answer, whatever is not
+  // must 404. Section 10i covers the ledger's own behaviour in full.
+  const advertised = (await get('/api/health')).body?.data?.routes ?? [];
+  for (const path of ['/api/inventory-transactions', '/api/inventory', '/api/stock']) {
     const x = await get(path);
-    t(`${path} is not a route yet -> 404`, x.status === 404, x.status);
+    const isRouted = advertised.includes(`GET ${path}`);
+    t(`${path} ${isRouted ? 'is a route -> 200' : 'is not a route -> 404'}`,
+      isRouted ? x.status === 200 : x.status === 404, x.status);
   }
+  t('the ledger is now advertised', advertised.includes('GET /api/inventory-transactions'));
+  t('/api/inventory is still not a route', !advertised.includes('GET /api/inventory'));
+
+  // Parts still reads stock from its own column, never from the ledger.
+  const pOne = await get('/api/parts/PRT-9001');
+  t('parts detail still answers independently of the ledger',
+    pOne.status === 200 && pOne.body?.data?.stock === 18, pOne.body?.data?.stock);
 }
 
 sec('10d. GET /api/appointments — references stay as ids, values as stored');
@@ -889,11 +902,14 @@ sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
     t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
   }
 
-  // Neither an Invoice nor a Payments API ships in this phase. The names are
-  // derived from what health advertises so a later phase that does ship them
-  // does not have to come back and edit this.
+  // Names are derived from what health advertises so a phase that ships one
+  // does not have to come back and edit this. As of B-13 every real collection
+  // in that list HAS shipped, so `widgets` is appended as a permanent
+  // sentinel -- it is not a collection and never will be, which keeps the
+  // probe meaningful now that the read surface is complete. Section 12 uses
+  // the same sentinel for the same reason.
   const live = (await get('/api/health')).body?.data?.routes ?? [];
-  const notYet = ['invoices', 'payments', 'inventory-transactions', 'expenses']
+  const notYet = ['invoices', 'payments', 'inventory-transactions', 'expenses', 'widgets']
     .filter(name => !live.includes(`GET /api/${name}`));
   t('at least one unshipped collection was found to probe', notYet.length > 0, live);
   for (const name of notYet) {
@@ -1477,7 +1493,102 @@ sec('10h. GET /api/expenses — stored rows, Void included, no aggregates');
   }
 }
 
-sec('10i. GET /api/settings — the singleton, read whole and left alone');
+sec('10i. GET /api/inventory-transactions — the ledger, as history not balance');
+{
+  const r = await get('/api/inventory-transactions');
+  t('ledger 200', r.status === 200, r.status);
+  t('returns the 5 fixture rows', r.body?.count === 5, r.body?.count);
+  t('total matches', r.body?.total === 5, r.body?.total);
+  const rows = r.body?.data ?? [];
+  const byId = Object.fromEntries(rows.map((x) => [x.id, x]));
+
+  t('newest first', rows.map((x) => x.id).join(',') === 'STK-9005,STK-9004,STK-9003,STK-9002,STK-9001',
+    rows.map((x) => x.id));
+
+  // Exact mapping on the fully populated row.
+  const a = byId['STK-9001'];
+  t('partId maps from part_id', a?.partId === 'PRT-9001', a?.partId);
+  t('type verbatim', a?.type === 'initial-stock', a?.type);
+  t('quantity as stored', a?.quantity === 18, a?.quantity);
+  t('unitCost as stored', a?.unitCost === 350, a?.unitCost);
+  t('referenceType maps from reference_type', a?.referenceType === 'manual', a?.referenceType);
+  t('prevStock maps from prev_stock', a?.prevStock === 0, a?.prevStock);
+  t('newStock maps from new_stock', a?.newStock === 18, a?.newStock);
+  t('createdAt maps from created_at', a?.createdAt === '2026-09-10T09:05:00', a?.createdAt);
+  t('no snake_case leaked', !JSON.stringify(rows).includes('part_id'), JSON.stringify(a));
+  t('no updatedAt — the ledger is append-only', rows.every((x) => !('updatedAt' in x)));
+  t('exactly 12 fields per record', Object.keys(a ?? {}).length === 12, Object.keys(a ?? {}));
+
+  // null versus zero — the distinction inventory.js:608 renders.
+  t('a NULL unit_cost comes back null', byId['STK-9002']?.unitCost === null, byId['STK-9002']?.unitCost);
+  t('a ZERO unit_cost comes back 0, not null', byId['STK-9004']?.unitCost === 0, byId['STK-9004']?.unitCost);
+  t('zero is a number', typeof byId['STK-9004']?.unitCost === 'number');
+  t('the two stay distinguishable',
+    byId['STK-9002']?.unitCost == null && byId['STK-9004']?.unitCost != null);
+
+  // References keep null; free text falls back to ''.
+  t('manual movement has a null referenceId', byId['STK-9001']?.referenceId === null, byId['STK-9001']?.referenceId);
+  t('job movement carries its job id', byId['STK-9002']?.referenceId === 'JOB-9001', byId['STK-9002']?.referenceId);
+  t('an all-NULL row keeps null references',
+    byId['STK-9005']?.referenceType === null && byId['STK-9005']?.referenceId === null, byId['STK-9005']);
+  t('NULL reason -> \'\'', byId['STK-9005']?.reason === '', byId['STK-9005']?.reason);
+  t('NULL notes -> \'\'', byId['STK-9005']?.notes === '', byId['STK-9005']?.notes);
+  t('a real reason survives', byId['STK-9004']?.reason === 'Supplier sample', byId['STK-9004']?.reason);
+
+  // Fractional quantities and stock survive the REAL columns.
+  t('fractional quantity survives', byId['STK-9005']?.quantity === 1.5, byId['STK-9005']?.quantity);
+  t('fractional prevStock survives', byId['STK-9005']?.prevStock === 4.5, byId['STK-9005']?.prevStock);
+
+  // Both directions present, neither normalised.
+  t('an outbound row keeps a positive quantity', byId['STK-9002']?.quantity === 2, byId['STK-9002']?.quantity);
+  t('a return row is its own type', byId['STK-9003']?.type === 'return', byId['STK-9003']?.type);
+  t('no direction/sign field is invented',
+    rows.every((x) => !('direction' in x) && !('sign' in x)));
+
+  // No aggregates anywhere in the envelope or the rows.
+  for (const key of ['movementIn', 'movementOut', 'usageByPart', 'stockValue', 'balance', 'issued']) {
+    t(`no invented \`${key}\``, !(key in (r.body ?? {})) && rows.every((x) => !(key in x)), key);
+  }
+
+  // The ledger and parts.stock are not reconciled by the API — B-6's rule.
+  const partsRes = await get('/api/parts');
+  const prt1 = (partsRes.body?.data ?? []).find((p) => p.id === 'PRT-9001');
+  t('parts still reports its own stock column', prt1?.stock === 18, prt1?.stock);
+  t('the ledger row carries no stock field of its own', !('stock' in (byId['STK-9001'] ?? {})));
+
+  // Detail, paging, and failure modes.
+  const d = await get('/api/inventory-transactions/STK-9002');
+  t('detail 200', d.status === 200, d.status);
+  t('detail returns the right row', d.body?.data?.id === 'STK-9002', d.body?.data?.id);
+  t('detail has no paging metadata', !('count' in (d.body ?? {})));
+  const miss = await get('/api/inventory-transactions/STK-7777');
+  t('unknown id -> 404', miss.status === 404, miss.status);
+  t('404 message names the singular',
+    miss.body?.error?.message === 'No inventory transaction with that id.', miss.body?.error);
+  const cross = await get('/api/inventory-transactions/PRT-9001');
+  t('a well-formed id from another collection -> 404', cross.status === 404, cross.status);
+  const bad = await get('/api/inventory-transactions/nope');
+  t('a malformed id -> 400', bad.status === 400, bad.status);
+
+  const paged = await get('/api/inventory-transactions?limit=2&offset=1');
+  t('paging works', paged.body?.count === 2 && paged.body?.total === 5, paged.body);
+  const badLimit = await get('/api/inventory-transactions?limit=0');
+  t('limit=0 -> 400', badLimit.status === 400, badLimit.status);
+
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    const w = await get('/api/inventory-transactions', { method });
+    t(`${method} -> 405`, w.status === 405, w.status);
+    t(`${method} sets Allow: GET`, w.allow === 'GET', w.allow);
+  }
+
+  // A GET changes nothing.
+  const after = await get('/api/inventory-transactions');
+  t('repeated GETs are byte-identical',
+    JSON.stringify(after.body) === JSON.stringify(r.body));
+  t('still 5 rows afterwards', after.body?.count === 5, after.body?.count);
+}
+
+sec('10j. GET /api/settings — the singleton, read whole and left alone');
 {
   const r = await get('/api/settings');
   t('settings 200', r.status === 200, r.status);

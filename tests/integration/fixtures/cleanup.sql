@@ -25,6 +25,9 @@ DELETE FROM vehicles  WHERE id LIKE 'VEH-9%';
 DELETE FROM customers WHERE id LIKE 'CUS-9%';
 DELETE FROM services  WHERE id LIKE 'SRV-9%';
 DELETE FROM mechanics WHERE id LIKE 'MEC-9%';
+-- inventory_transactions holds an ON DELETE RESTRICT reference to parts, so
+-- the ledger rows go before the parts they point at.
+DELETE FROM inventory_transactions WHERE id LIKE 'STK-9%';
 DELETE FROM parts     WHERE id LIKE 'PRT-9%';
 -- expenses have no foreign keys in either direction, so their position here is
 -- free; they go last simply to keep the FK-ordered block above unbroken.
