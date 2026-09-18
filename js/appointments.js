@@ -40,14 +40,12 @@
   // stored verbatim and are the exact set a future backend/D1 column will
   // carry, so no separate display label is kept alongside them.
   //
-  // 'Website' is reserved for bookings submitted through the public site's API.
-  // The management UI never offers it when creating an appointment, because an
-  // appointment typed in here did not arrive via the website -- letting staff
-  // pick it would corrupt the very origin data this field exists to record.
-  // It stays a valid data value, accepted by validation, and remains
-  // selectable while editing a record that already carries it.
-  const SOURCES = ['Website', 'Admin', 'Phone', 'Walk-in'];
-  const MANUAL_SOURCES = ['Admin', 'Phone', 'Walk-in'];
+  // All five are selectable in the management UI and accepted by validation.
+  // 'Website' is also what the public site's API will send once bookings come
+  // in that way, and 'Facebook' is reserved for the Facebook/messenger contact
+  // workflow -- both are ordinary values here, so a booking that arrives by
+  // either route and one recorded by hand end up in the same column.
+  const SOURCES = ['Admin', 'Phone', 'Walk-in', 'Facebook', 'Website'];
   const DEFAULT_SOURCE = 'Admin';
 
   /**
@@ -332,17 +330,15 @@
   }
 
   /**
-   * Source options for the form. Always offers the three manual origins; adds
-   * the record's own source when it is something else (an API-created
-   * 'Website' booking), so editing an appointment never silently relabels
-   * where it came from. Same "keep the current value selectable" idiom the
-   * app already uses for inactive mechanics, services and parts.
+   * Source options for the create and edit forms -- all five canonical values,
+   * in the same order everywhere. A record's own source is always among them,
+   * so editing an appointment never relabels where it came from; a legacy or
+   * unrecognised value resolves to the default through normSource().
    */
   function sourceOptions(selected) {
     const current = normSource(selected);
-    const list = MANUAL_SOURCES.includes(current) ? MANUAL_SOURCES : [current, ...MANUAL_SOURCES];
-    return list.map(sc =>
-      `<option value="${esc(sc)}"${sc === current ? ' selected' : ''}>${esc(sc)}${sc === 'Website' ? ' (from website)' : ''}</option>`
+    return SOURCES.map(sc =>
+      `<option value="${esc(sc)}"${sc === current ? ' selected' : ''}>${esc(sc)}</option>`
     ).join('');
   }
 
