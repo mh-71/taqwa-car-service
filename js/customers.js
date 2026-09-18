@@ -22,8 +22,10 @@
       jobs,
       vehicleCount: vehicles.length,
       serviceCount: jobs.length,
-      totalPaid: jobs.reduce((s, j) => s + (Number(j.paid) || 0), 0),
-      totalDue: jobs.reduce((s, j) => s + (Number(j.due) || 0), 0)
+      // Live balances (Utils.sumJobs*) rather than the Job Cards' frozen
+      // pre-invoice snapshot, so a settled invoice clears the customer's due.
+      totalPaid: Utils.sumJobsPaid(jobs),
+      totalDue: Utils.sumJobsDue(jobs)
     };
   }
 

@@ -30,9 +30,21 @@ const Utils = (() => {
     return `${hr}:${String(m).padStart(2, '0')} ${ampm}`;
   }
 
-  /** Today as yyyy-mm-dd */
+  /**
+   * Format a Date as a yyyy-mm-dd string in the browser's LOCAL calendar.
+   * Never toISOString() -- that converts to UTC first, which reports the
+   * wrong calendar date for part of every day outside UTC (in Dhaka,
+   * UTC+6, midnight--06:00 local would resolve to the previous day).
+   */
+  function toDateStr(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d)) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  /** Today as yyyy-mm-dd, in the browser's local calendar. */
   function todayStr() {
-    return new Date().toISOString().slice(0, 10);
+    return toDateStr(new Date());
   }
 
   /** Escape text before inserting into HTML */
@@ -112,6 +124,68 @@ const Utils = (() => {
   }
   function getMechanicRevenue(mechanicId) {
     return getMechanicCompletedJobs(mechanicId).reduce((s, j) => s + (Number(j.total) || 0), 0);
+  }
+
+  /* ============================================================
+     Live Job Card balances
+     ------------------------------------------------------------
+     A Job Card's own paid/due are a FROZEN pre-invoice snapshot --
+     correct as history, wrong as a current balance. Once an Invoice
+     exists, Payments become the source of truth and payments.js
+     recomputes the INVOICE's paid/due from non-Void Payments; it
+     deliberately never writes back to the Job Card.
+
+     These helpers resolve the right source at read time. Nothing is
+     written, nothing is synced, and the snapshot stays intact:
+
+       - Cancelled job          -> nothing is owed (due 0); any money
+                                   actually taken still counts as paid
+       - Live (non-Void) invoice -> the Invoice's paid/due
+       - Otherwise               -> the Job Card's own snapshot
+
+     Voiding an Invoice clears jobCard.invoiceId (invoices.js), which
+     returns the job to its un-invoiced state, so it falls back to the
+     snapshot it carried before that invoice existed. The status guard
+     on a still-linked invoice is defensive, for a stale reference --
+     a Void invoice's frozen figures are never treated as live.
+     ============================================================ */
+
+  /** Map of invoiceId -> invoice, built once, for summing many jobs cheaply. */
+  function invoiceIndex(jobs) {
+    if (!(jobs || []).some(j => j && j.invoiceId)) return null;
+    return new Map(Storage.getData('invoices').map(i => [i.id, i]));
+  }
+
+  /**
+   * Current paid/due for one Job Card. Pass the optional index when
+   * looping over many jobs to avoid a per-job invoice lookup.
+   */
+  function liveJobBalance(job, invoiceById) {
+    if (!job) return { paid: 0, due: 0 };
+    const inv = job.invoiceId
+      ? (invoiceById ? invoiceById.get(job.invoiceId) || null : Storage.getById('invoices', job.invoiceId))
+      : null;
+    const useInvoice = !!inv && inv.status !== 'Void';
+    const source = useInvoice ? inv : job;
+    return {
+      paid: Number(source.paid) || 0,
+      due: job.status === 'Cancelled' ? 0 : (Number(source.due) || 0)
+    };
+  }
+
+  function liveJobPaid(job) { return liveJobBalance(job).paid; }
+  function liveJobDue(job) { return liveJobBalance(job).due; }
+
+  /** Total currently outstanding across a list of Job Cards. */
+  function sumJobsDue(jobs) {
+    const idx = invoiceIndex(jobs);
+    return (jobs || []).reduce((s, j) => s + liveJobBalance(j, idx).due, 0);
+  }
+
+  /** Total actually collected across a list of Job Cards. */
+  function sumJobsPaid(jobs) {
+    const idx = invoiceIndex(jobs);
+    return (jobs || []).reduce((s, j) => s + liveJobBalance(j, idx).paid, 0);
   }
 
   /* ============================================================
@@ -416,7 +490,8 @@ const Utils = (() => {
   })();
 
   return {
-    money, fmtDate, fmtTime, todayStr, esc, badge, toast, Modal,
+    money, fmtDate, fmtTime, todayStr, toDateStr, esc, badge, toast, Modal,
+    liveJobBalance, liveJobPaid, liveJobDue, sumJobsDue, sumJobsPaid,
     customerName, mechanicName, vehicleLabel, vehicleReg, serviceName,
     ACTIVE_JOB_STATUSES, DONE_JOB_STATUSES,
     getMechanicJobs, getMechanicActiveJobs, getMechanicCompletedJobs, getMechanicRevenue,

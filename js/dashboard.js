@@ -35,7 +35,9 @@
     const todaysAppts = appts.filter(a => a.date === today && a.status !== 'Cancelled').length;
     const todayRevenue = todaysPayments().reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const todayExpenseTotal = todaysExpenses().reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const totalDue = jobCards.reduce((s, j) => s + (Number(j.due) || 0), 0);
+    // Live balance, not the Job Cards' frozen pre-invoice snapshot: once a
+    // job is invoiced its Invoice carries the current due (see Utils).
+    const totalDue = Utils.sumJobsDue(jobCards);
     const lowStock = parts.filter(p => Number(p.stock) <= Number(p.minStock)).length;
 
     const stats = [
@@ -72,7 +74,7 @@
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      const key = Utils.toDateStr(d);   // local calendar, never UTC
       const total = payments
         .filter(p => (p.date || '').slice(0, 10) === key)
         .reduce((s, p) => s + (Number(p.amount) || 0), 0);

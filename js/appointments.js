@@ -11,7 +11,7 @@
 
 (() => {
 
-  const { esc, money, fmtDate, fmtTime, todayStr, badge, toast, Modal } = Utils;
+  const { esc, money, fmtDate, fmtTime, todayStr, toDateStr, badge, toast, Modal } = Utils;
 
   /* ---------- status model ---------- */
 
@@ -69,7 +69,7 @@
   };
   const tomorrowStr = () => {
     const d = new Date(); d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return toDateStr(d);   // local calendar, never UTC
   };
 
   /* ---------- conflict detection ---------- */
