@@ -8,8 +8,13 @@
 -- The `9%` id range is reserved for test fixtures. Real records are numbered
 -- from 0001 upward by id_counters, so this can never reach live data unless a
 -- collection passes 9000 records -- at which point the fixture ids must move.
--- Child lines cascade from job_cards, but they are removed explicitly so a
+-- payments hold RESTRICT references to both invoices and job_cards, so they go
+-- before either.
+DELETE FROM payments WHERE id LIKE 'PAY-9%';
+-- Child lines cascade from their parent, but they are removed explicitly so a
 -- partial fixture (lines without their parent) is still cleaned up.
+DELETE FROM invoice_services WHERE invoice_id LIKE 'INV-9%';
+DELETE FROM invoice_parts    WHERE invoice_id LIKE 'INV-9%';
 DELETE FROM job_card_services WHERE job_card_id LIKE 'JOB-9%';
 DELETE FROM job_card_parts    WHERE job_card_id LIKE 'JOB-9%';
 -- invoices holds a RESTRICT reference to job_cards, so it goes first.

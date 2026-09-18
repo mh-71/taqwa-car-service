@@ -20,6 +20,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-parts.test.mjs` | `GET /api/parts[/:id]`, including that stock is read from the column and never derived from the ledger |
 | `api-appointments.test.mjs` | `GET /api/appointments[/:id]`, including that references stay as ids, all five sources and six statuses round-trip verbatim, and date/time are never converted |
 | `api-job-cards.test.mjs` | `GET /api/job-cards[/:id]`, including child line tables, historical snapshots, `paid`/`due` staying snapshots, checklist JSON handling and the bounded-query/variable-limit rules |
+| `api-invoices.test.mjs` | `GET /api/invoices[/:id]`, including billed snapshots, stored money reported without consulting payments, and Void invoices keeping their frozen figures |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
 | `finding7.test.cjs` | Audit Finding 7 — voiding an invoice releases its payments |

@@ -67,10 +67,44 @@ INSERT INTO job_card_parts (job_card_id, part_id, name, part_no, qty, unit_price
   ('JOB-9001','PRT-9001','Legacy Oil Filter (2024 label)','LEGACY-OF-001',1,600,600,1),
   ('JOB-9003',NULL,'Custom heat shield bracket (hand cut)','MANUAL-01',2,150,300,1);
 
--- One invoice, so a job card can be observed with a live invoice link. No
--- Invoice API exists yet; this row only exists to satisfy the foreign key.
-INSERT INTO invoices (id, job_card_id, customer_id, vehicle_id, date, labour_cost, discount, tax_rate, subtotal, tax, total, paid, due, status, created_at) VALUES
-  ('INV-9001','JOB-9001','CUS-9002','VEH-9002','2026-09-24',600,100,5,8000,395,8295,8295,0,'Paid','2026-09-24T12:00:00');
+-- Four invoices.
+--
+--   INV-9001  normal, linked to JOB-9001, with service and part lines whose
+--             snapshots differ from the current catalogue, and an Active
+--             payment against it that the read API must ignore
+--   INV-9002  Void, with non-zero paid/due frozen at the moment of voiding and
+--             job_card_id already cleared, which is the state voidInvoice()
+--             leaves an invoice in; it keeps its lines
+--   INV-9003  a manual part line (part_id NULL) and NULL notes
+--   INV-9004  no child lines at all, Unpaid
+INSERT INTO invoices (id, job_card_id, customer_id, vehicle_id, date, labour_cost, discount, tax_rate, subtotal, tax, total, paid, due, status, notes, created_at, updated_at) VALUES
+  ('INV-9001','JOB-9001','CUS-9002','VEH-9002','2026-09-24',600,100,5,8000,395,8295,8295,0,'Paid','Settled on collection','2026-09-24T12:00:00','2026-09-25T09:00:00'),
+  ('INV-9002',NULL,'CUS-9001','VEH-9001','2026-09-23',0,0,0,4935,0,4935,3000,1935,'Void',NULL,'2026-09-23T12:00:00',NULL),
+  ('INV-9003',NULL,'CUS-9001','VEH-9001','2026-09-22',0,0,0,300,0,300,150,150,'Partial',NULL,'2026-09-22T12:00:00',NULL),
+  ('INV-9004',NULL,'CUS-9002','VEH-9002','2026-09-21',0,0,0,1500,0,1500,0,1500,'Unpaid','','2026-09-21T12:00:00',NULL);
+
+-- Invoice lines. name / part_no / unit_price are HISTORICAL SNAPSHOTS of what
+-- was billed, written here to differ deliberately from the catalogue rows
+-- above: SRV-9001 is currently 'B4 Full Service' at 7500 and PRT-9001 is
+-- currently 'B6 Full Part' / 'B6-OF-001'.
+INSERT INTO invoice_services (invoice_id, service_id, name, qty, unit_price, total, line_no) VALUES
+  ('INV-9001','SRV-9001','Billed Full Service (2024 rate)',1,4000,4000,1),
+  ('INV-9001','SRV-9002','Brake Pad Replacement',2,1700,3400,2),
+  ('INV-9002','SRV-9003','Voided Diagnostic A',1,1200,1200,1),
+  ('INV-9002','SRV-9004','Voided Diagnostic B',1,1200,1200,1);
+
+INSERT INTO invoice_parts (invoice_id, part_id, name, part_no, qty, unit_price, total, line_no) VALUES
+  ('INV-9001','PRT-9001','Billed Oil Filter (2024 label)','BILLED-OF-001',1,600,600,1),
+  ('INV-9003',NULL,'Custom bracket (hand cut)','MANUAL-01',2,150,300,1);
+
+-- Payments exist only to prove the invoice read API never consults them: the
+-- stored paid/due on each invoice above must come back unchanged regardless of
+-- what these say. PAY-9002 is a released advance, the state voidInvoice()
+-- leaves a payment in (invoice_id NULL, job card inherited).
+INSERT INTO payments (id, invoice_id, customer_id, job_card_id, date, amount, method, status, notes, created_at) VALUES
+  ('PAY-9001','INV-9001','CUS-9002',NULL,'2026-09-25',8295,'Cash','Active','Full settlement','2026-09-25T09:00:00'),
+  ('PAY-9002',NULL,'CUS-9001','JOB-9001','2026-09-23',3000,'Bank Transfer','Active','Released when INV-9002 was voided','2026-09-23T13:00:00'),
+  ('PAY-9003','INV-9001','CUS-9002',NULL,'2026-09-25',500,'Card','Void','Keyed twice','2026-09-25T09:30:00');
 
 -- job_cards.invoice_id and invoices.job_card_id point at each other, so the
 -- back-reference is set after both rows exist rather than relying on the

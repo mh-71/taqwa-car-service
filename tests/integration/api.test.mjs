@@ -24,7 +24,7 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 15 routes', routes.length === 15, routes);
+  t('advertises 17 routes', routes.length === 17, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
@@ -33,6 +33,7 @@ sec('1. Health');
   t('advertises parts routes', routes.includes('GET /api/parts') && routes.includes('GET /api/parts/:id'));
   t('advertises appointments routes', routes.includes('GET /api/appointments') && routes.includes('GET /api/appointments/:id'));
   t('advertises job-cards routes', routes.includes('GET /api/job-cards') && routes.includes('GET /api/job-cards/:id'));
+  t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
 }
 
 sec('2. GET /api/services — list');
@@ -895,11 +896,237 @@ sec('10e. GET /api/job-cards — parent plus child lines, snapshots preserved');
   }
 }
 
+sec('10f. GET /api/invoices — stored money, billed snapshots, no payment lookup');
+{
+  const r = await get('/api/invoices');
+  t('200', r.status === 200, r.status);
+  t('count 4', r.body?.count === 4, r.body?.count);
+  t('total 4', r.body?.total === 4, r.body?.total);
+  t('meta keys match the other collections',
+    JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
+    Object.keys(r.body));
+  t('newest first by created_at',
+    JSON.stringify(r.body.data.map(i => i.id)) === JSON.stringify(['INV-9001','INV-9002','INV-9003','INV-9004']),
+    r.body.data.map(i => i.id));
+
+  const byId = Object.fromEntries(r.body.data.map(i => [i.id, i]));
+  const full = byId['INV-9001'];
+
+  // ---- parent mapping ----
+  t('full invoice record shape', JSON.stringify({ ...full, services: undefined, partsUsed: undefined }) ===
+    JSON.stringify({ id:'INV-9001', jobCardId:'JOB-9001', customerId:'CUS-9002', vehicleId:'VEH-9002',
+      date:'2026-09-24', labourCost:600, discount:100, taxRate:5, subtotal:8000, tax:395,
+      total:8295, paid:8295, due:0, status:'Paid', notes:'Settled on collection',
+      services: undefined, partsUsed: undefined,
+      createdAt:'2026-09-24T12:00:00', updatedAt:'2026-09-25T09:00:00' }),
+    { ...full, services: undefined, partsUsed: undefined });
+  t('camelCase keys only', Object.keys(full).every(k => !k.includes('_')), Object.keys(full));
+  t('date is stored text, not shifted', full.date === '2026-09-24', full.date);
+  t('the field is partsUsed, not parts', 'partsUsed' in full && !('parts' in full), Object.keys(full));
+
+  const voided = byId['INV-9002'];
+  t('NULL job_card_id -> null', voided.jobCardId === null, voided.jobCardId);
+  t('NULL notes -> ""', voided.notes === '', voided.notes);
+  t('voided invoice omits updatedAt', !('updatedAt' in voided), Object.keys(voided));
+  t('stored empty-string notes stay ""', byId['INV-9004'].notes === '', byId['INV-9004'].notes);
+  t('money 0 stays 0, never null',
+    voided.labourCost === 0 && voided.tax === 0 && voided.taxRate === 0);
+
+  // ---- child lines ----
+  t('INV-9001 has 2 service lines', full.services.length === 2, full.services.length);
+  t('INV-9001 has 1 part line', full.partsUsed.length === 1, full.partsUsed.length);
+  t('service line shape',
+    JSON.stringify(Object.keys(full.services[0]).sort()) ===
+      JSON.stringify(['name','qty','serviceId','total','unitPrice']), Object.keys(full.services[0]));
+  t('part line shape',
+    JSON.stringify(Object.keys(full.partsUsed[0]).sort()) ===
+      JSON.stringify(['name','partId','partNo','qty','total','unitPrice']), Object.keys(full.partsUsed[0]));
+  t('child rows expose no surrogate id, line_no or invoiceId',
+    !['id','lineNo','line_no','invoiceId','invoice_id'].some(k => k in full.services[0]),
+    Object.keys(full.services[0]));
+  t('service lines in line_no order',
+    JSON.stringify(full.services.map(s => s.name)) ===
+      JSON.stringify(['Billed Full Service (2024 rate)','Brake Pad Replacement']),
+    full.services.map(s => s.name));
+
+  const noLines = byId['INV-9004'];
+  t('an invoice with no lines gets services []',
+    Array.isArray(noLines.services) && noLines.services.length === 0, noLines.services);
+  t('an invoice with no lines gets partsUsed []',
+    Array.isArray(noLines.partsUsed) && noLines.partsUsed.length === 0, noLines.partsUsed);
+  t('lines are attached to the right parents',
+    full.services.length === 2 && voided.services.length === 2 && noLines.services.length === 0,
+    { i1: full.services.length, i2: voided.services.length, i4: noLines.services.length });
+
+  // INV-9002's two service lines share line_no = 1; the id tie-break must keep
+  // their order stable across repeated requests.
+  const again = await get('/api/invoices/INV-9002');
+  t('duplicate line_no ordering is stable across requests',
+    JSON.stringify(again.body.data.services.map(s => s.name)) === JSON.stringify(voided.services.map(s => s.name)),
+    { first: voided.services.map(s => s.name), second: again.body.data.services.map(s => s.name) });
+
+  // ---- historical snapshots ----
+  const cat = await get('/api/services/SRV-9001');
+  t('the services catalogue currently says something different',
+    cat.body.data.name === 'B4 Full Service' && cat.body.data.price === 7500,
+    { name: cat.body.data.name, price: cat.body.data.price });
+  t('the invoice still reports the billed name',
+    full.services[0].name === 'Billed Full Service (2024 rate)', full.services[0].name);
+  t('the invoice still reports the billed price',
+    full.services[0].unitPrice === 4000, full.services[0].unitPrice);
+  t('serviceId still points at the catalogue row', full.services[0].serviceId === 'SRV-9001');
+
+  const catPart = await get('/api/parts/PRT-9001');
+  t('the parts catalogue currently says something different',
+    catPart.body.data.name === 'B6 Full Part' && catPart.body.data.partNo === 'B6-OF-001',
+    { name: catPart.body.data.name, partNo: catPart.body.data.partNo });
+  t('the invoice still reports the billed part name',
+    full.partsUsed[0].name === 'Billed Oil Filter (2024 label)', full.partsUsed[0].name);
+  t('the invoice still reports the billed part number',
+    full.partsUsed[0].partNo === 'BILLED-OF-001', full.partsUsed[0].partNo);
+  t('the invoice still reports the billed part price',
+    full.partsUsed[0].unitPrice === 600, full.partsUsed[0].unitPrice);
+
+  // ---- manual part ----
+  const manual = byId['INV-9003'];
+  t('manual line has partId null', manual.partsUsed[0].partId === null, manual.partsUsed[0].partId);
+  t('manual line keeps its name',
+    manual.partsUsed[0].name === 'Custom bracket (hand cut)', manual.partsUsed[0].name);
+  t('manual line keeps its part number', manual.partsUsed[0].partNo === 'MANUAL-01');
+  t('manual line keeps its price and total',
+    manual.partsUsed[0].unitPrice === 150 && manual.partsUsed[0].total === 300);
+  t('manual line is not promoted into a catalogue part', manual.partsUsed[0].partId === null);
+
+  // ---- financial values as stored, with payments deliberately disagreeing ----
+  t('subtotal/tax/total as stored',
+    full.subtotal === 8000 && full.tax === 395 && full.total === 8295,
+    { s: full.subtotal, t: full.tax, tot: full.total });
+  t('labourCost/discount/taxRate as stored',
+    full.labourCost === 600 && full.discount === 100 && full.taxRate === 5);
+  t('paid and due as stored', full.paid === 8295 && full.due === 0);
+  t('status as stored', full.status === 'Paid');
+  t('INV-9003 keeps its partial figures',
+    manual.paid === 150 && manual.due === 150 && manual.status === 'Partial',
+    { p: manual.paid, d: manual.due, s: manual.status });
+  t('INV-9004 keeps its unpaid figures',
+    noLines.paid === 0 && noLines.due === 1500 && noLines.status === 'Unpaid');
+  t('no live balance field invented',
+    !Object.keys(full).some(k => /^live|balance/i.test(k)), Object.keys(full));
+  t('no payments array embedded', !('payments' in full), Object.keys(full));
+
+  // ---- void invoice ----
+  t('a Void invoice reports status Void', voided.status === 'Void', voided.status);
+  // PAY-9002 is the released advance: it no longer points at INV-9002, so a
+  // payment-derived reading would show 0 collected. The stored figures are
+  // frozen at 3000/1935 and that is what the API reports.
+  t('a Void invoice keeps its frozen paid', voided.paid === 3000, voided.paid);
+  t('a Void invoice keeps its frozen due', voided.due === 1935, voided.due);
+  t('due was not forced to 0 because the invoice is Void', voided.due !== 0);
+  t('a Void invoice keeps its total', voided.total === 4935, voided.total);
+  t('a Void invoice still returns its lines', voided.services.length === 2, voided.services.length);
+
+  // The payments exist and disagree with the stored figures in both directions.
+  // INV-9001 has an Active 8295 plus a Void 500; INV-9002 has none linked at
+  // all. The API reports the stored column either way.
+  t('an Active payment does not change the reported paid', full.paid === 8295);
+  t('a Void payment does not change the reported paid', full.paid === 8295 && full.total === 8295);
+  t('an invoice with no linked payments still reports its stored paid',
+    voided.paid === 3000, voided.paid);
+
+  // ---- relationships ----
+  const keys = new Set(r.body.data.flatMap(i => Object.keys(i)));
+  t('no customer/vehicle/job card object embedded',
+    !['customer','customerName','vehicle','vehicleRegNo','jobCard','jobCardStatus'].some(k => keys.has(k)),
+    [...keys]);
+  t('services and partsUsed are the only nested arrays',
+    JSON.stringify(Object.keys(full).filter(k => Array.isArray(full[k])).sort()) ===
+      JSON.stringify(['partsUsed','services']), Object.keys(full));
+
+  // ---- pagination ----
+  const p1 = await get('/api/invoices?limit=2');
+  t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
+  t('total still 4', p1.body?.total === 4, p1.body?.total);
+  t('a paged result still carries its child lines',
+    p1.body.data.find(i => i.id === 'INV-9001').services.length === 2);
+  const p2 = await get('/api/invoices?limit=2&offset=2');
+  t('offset=2 returns the next page',
+    JSON.stringify(p2.body.data.map(i => i.id)) === JSON.stringify(['INV-9003','INV-9004']),
+    p2.body.data.map(i => i.id));
+  t('pages do not overlap', !p2.body.data.some(i => p1.body.data.find(x => x.id === i.id)));
+  const p3 = await get('/api/invoices?offset=99');
+  t('offset past end -> empty array, still 200', p3.status === 200 && p3.body.data.length === 0);
+  const p4 = await get('/api/invoices?limit=1000');
+  t('limit=1000 succeeds against real D1 — no variable-limit failure',
+    p4.status === 200, { status: p4.status, err: p4.body?.error });
+  t('and returns every invoice', p4.body?.count === 4, p4.body?.count);
+  const p5 = await get('/api/invoices?limit=500');
+  t('limit=500 succeeds', p5.status === 200, p5.status);
+  for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
+                          ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
+    const bad = await get('/api/invoices?' + q);
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_parameter', { q, status: bad.status });
+  }
+
+  // ---- detail and ids ----
+  const d = await get('/api/invoices/INV-9001');
+  t('detail 200', d.status === 200, d.status);
+  t('detail matches the list record', JSON.stringify(d.body.data) === JSON.stringify(full));
+  t('no list meta on detail', d.body.count === undefined && d.body.limit === undefined);
+  const dEmpty = await get('/api/invoices/INV-9004');
+  t('a line-less invoice returns both empty arrays',
+    dEmpty.body.data.services.length === 0 && dEmpty.body.data.partsUsed.length === 0);
+
+  const d404 = await get('/api/invoices/INV-8888');
+  t('unknown id -> 404', d404.status === 404, d404.status);
+  t('404 message names an invoice',
+    d404.body?.error?.message === 'No invoice with that id.', d404.body?.error?.message);
+  for (const other of ['JOB-9001','CUS-9001','PRT-9001','VEH-9001','APT-9001','SRV-9001','MEC-9001','PAY-9001']) {
+    const x = await get('/api/invoices/' + other);
+    t(`${other} on the invoices route -> 404, not 400`, x.status === 404, x.status);
+  }
+  const iOnJob = await get('/api/job-cards/INV-9001');
+  t('invoice id on the job-cards route -> 404',
+    iOnJob.status === 404 && iOnJob.body?.error?.message === 'No job card with that id.');
+
+  for (const [id, why] of [['nonsense','no prefix shape'], ['INV-','no number'], ['-9001','no prefix'],
+                           ['INVOICES-9001','prefix too long'], ['I-1','prefix too short']]) {
+    const bad = await get('/api/invoices/' + encodeURIComponent(id));
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_id', { id, status: bad.status });
+  }
+  const dSlash = await get('/api/invoices/');
+  t('trailing slash -> 400', dSlash.status === 400 && dSlash.body?.error?.code === 'invalid_id');
+  const dEsc = await fetch(BASE + '/api/invoices/%zz');
+  t('malformed percent-escape -> 400', dEsc.status === 400, dEsc.status);
+
+  const injMoney = await get('/api/invoices/' + encodeURIComponent("INV-9001'; UPDATE invoices SET paid=0, due=0 --"));
+  t('money-rewriting injection rejected -> 400', injMoney.status === 400, injMoney.status);
+  const injVoid = await get('/api/invoices/' + encodeURIComponent("INV-9001'; UPDATE invoices SET status='Void' --"));
+  t('status-rewriting injection rejected -> 400', injVoid.status === 400, injVoid.status);
+  const injLines = await get('/api/invoices/' + encodeURIComponent("INV-9001'; DELETE FROM invoice_parts --"));
+  t('line-deleting injection rejected -> 400', injLines.status === 400, injLines.status);
+  const after = await get('/api/invoices/INV-9001');
+  t('money survived the injection attempts',
+    after.body?.data?.paid === 8295 && after.body?.data?.due === 0 && after.body?.data?.status === 'Paid',
+    { paid: after.body?.data?.paid, status: after.body?.data?.status });
+  t('child lines survived the injection attempts',
+    after.body?.data?.partsUsed?.length === 1 && after.body?.data?.services?.length === 2);
+  const allAfter = await get('/api/invoices');
+  t('invoices table intact after injection attempts', allAfter.body?.total === 4, allAfter.body?.total);
+
+  for (const m of ['POST','PUT','DELETE','PATCH']) {
+    const rl = await get('/api/invoices', { method: m });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    const rd = await get('/api/invoices/INV-9001', { method: m });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+  }
+}
+
 sec('11. Collections stay separate over the wire');
 {
-  const [s, c, v, m, p, a, j] = await Promise.all([
+  const [s, c, v, m, p, a, j, inv] = await Promise.all([
     get('/api/services'), get('/api/customers'), get('/api/vehicles'),
-    get('/api/mechanics'), get('/api/parts'), get('/api/appointments'), get('/api/job-cards')]);
+    get('/api/mechanics'), get('/api/parts'), get('/api/appointments'),
+    get('/api/job-cards'), get('/api/invoices')]);
   t('services returns only SRV ids', s.body.data.every(x => x.id.startsWith('SRV-')));
   t('customers returns only CUS ids', c.body.data.every(x => x.id.startsWith('CUS-')));
   t('vehicles returns only VEH ids', v.body.data.every(x => x.id.startsWith('VEH-')));
@@ -926,6 +1153,12 @@ sec('11. Collections stay separate over the wire');
       .some(x => 'services' in x || 'partsUsed' in x));
   t('job card rows carry no stock or salary',
     !j.body.data.some(x => 'stock' in x || 'salary' in x));
+  t('invoices returns only INV ids', inv.body.data.every(x => x.id.startsWith('INV-')));
+  t('only job cards and invoices carry child line arrays',
+    ![...s.body.data, ...c.body.data, ...v.body.data, ...m.body.data, ...p.body.data, ...a.body.data]
+      .some(x => 'services' in x || 'partsUsed' in x));
+  t('invoice rows carry no stock, salary or complaint',
+    !inv.body.data.some(x => 'stock' in x || 'salary' in x || 'complaint' in x));
   t('salary never appears outside mechanics',
     ![...s.body.data, ...c.body.data, ...v.body.data].some(x => 'salary' in x || 'commissionRate' in x));
 }

@@ -19,6 +19,7 @@ import { listAppointments, getAppointment } from './routes/appointments.js';
 // Job cards have child line tables, so they do not go through collectionRoutes();
 // the module exports the same two handler shapes regardless.
 import { listJobCards, getJobCard } from './routes/job-cards.js';
+import { listInvoices, getInvoice } from './routes/invoices.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -34,6 +35,7 @@ const COLLECTIONS = {
   parts: { list: listParts, detail: getPart },
   appointments: { list: listAppointments, detail: getAppointment },
   'job-cards': { list: listJobCards, detail: getJobCard },
+  invoices: { list: listInvoices, detail: getInvoice },
 };
 
 const ROUTES = [
