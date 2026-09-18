@@ -47,6 +47,33 @@ export const noDatabase = () =>
   fail('no_database', 'No D1 binding named DB. Check wrangler.jsonc.', 503);
 
 /**
+ * 409 — the request was understood and its fields are fine, but the current
+ * state of the data forbids it: deleting a customer who still has vehicles,
+ * invoicing a job card that already has a live invoice, a duplicate
+ * registration number. These are the rules the frontend's delete guards and
+ * the schema's constraints already enforce; this is how the API reports them.
+ *
+ * `extra` carries machine-readable context (e.g. { conflictsWith: 'VEH-0003' })
+ * so a caller can branch without parsing the message.
+ */
+export const conflict = (message, extra = {}) =>
+  fail('conflict', message, 409, extra);
+
+/**
+ * 422 — the request parsed and its shape is right, but a field's VALUE is not
+ * usable: a negative price, a status outside the allowed set, a malformed
+ * date. Kept distinct from 400, which stays what it has always meant here --
+ * the request itself was malformed (bad JSON, an unparseable id, a limit that
+ * is not a number).
+ *
+ * `fields` maps field name -> reason, mirroring the shape the frontend's own
+ * validate() functions already return, so a form can highlight the offending
+ * inputs directly.
+ */
+export const unprocessable = (message, fields = null) =>
+  fail('unprocessable', message, 422, fields ? { fields } : {});
+
+/**
  * Validate a record id taken from the URL path.
  *
  * The app's ids are human-readable and prefixed (CUS-0001, JOB-0007), so the

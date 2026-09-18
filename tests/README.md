@@ -24,6 +24,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-payments.test.mjs` | `GET /api/payments[/:id]`, including the four reference combinations, advance vs voided vs released-advance, and that a GET never reaches into invoices |
 | `api-expenses.test.mjs` | `GET /api/expenses[/:id]`, including that Void rows are returned rather than filtered, no aggregate is invented, and an unconstrained category round-trips |
 | `api-inventory-transactions.test.mjs` | `GET /api/inventory-transactions[/:id]`, including that the ledger is history rather than a balance, no aggregate or per-part rollup is invented, snapshots are returned as stored, and `unitCost` keeps null apart from zero |
+| `write-foundation.test.mjs` | `src/lib/write.js` and the two new `http.js` helpers — body parsing, the four field primitives, id formatting, the 409/422 responses, the constraint→status mapping, and the Asia/Dhaka date rule that audit Finding 2 turns on |
 | `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
@@ -81,6 +82,18 @@ Three safeguards worth knowing about:
 2. **Cleanup runs from an `EXIT` trap**, so fixtures are removed even when a
    test fails or the run is interrupted — then it verifies none are left.
 3. **A 5xx from the Worker fails the run**, even if every assertion passed.
+4. **`id_counters` must total 0 afterwards.** From C-2 onward a write test
+   allocates real sequential ids; deleting the row it created hides that,
+   but the counter it advanced does not reset itself. A non-zero total
+   fails the run.
+
+`run.sh` has a second phase after the API suite: `foundation-worker.mjs`
+is a **test-only Worker entry**, started on `PORT + 1` against the same
+local D1. It exists because `env.DB.batch()` rollback and concurrent
+`UPDATE ... RETURNING` allocation are D1's behaviour rather than ours, and
+no API route reaches them. It is never registered in `src/index.js` and
+never deployed. Its rows use the `SRV-98xx` / `VEH-989x` range, which the
+existing `9%` cleanup already covers.
 
 Fixture ids live in the `9xxx` range (`SRV-9001`, `CUS-9001`, `VEH-9001`, …),
 which `id_counters` will not reach until a collection passes 9000 records.

@@ -44,6 +44,7 @@ d1() { npx wrangler d1 execute "$DB" --local --command "$1" --json 2>/dev/null |
 d1_file() { npx wrangler d1 execute "$DB" --local --file "$1" --json 2>/dev/null | sed -n '/^\[/,$p'; }
 
 WORKER_PID=""
+FOUNDATION_PID=""
 SEEDED=0
 
 cleanup() {
@@ -69,12 +70,29 @@ cleanup() {
                     + (SELECT count(*) FROM inventory_transactions WHERE id LIKE 'STK-9%')
                     + (SELECT count(*) FROM settings WHERE id = 1) AS n" \
            | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
+    # Counters matter as much as rows from C-2 onward: a write test that
+    # allocates an id leaves no row behind once it is deleted, but the counter
+    # it advanced is invisible to the check above. A non-zero total means a
+    # test allocated an id and did not restore it.
+    local counters
+    counters=$(d1 "SELECT sum(last_value) AS n FROM id_counters" \
+           | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
+    if [ "${counters:-0}" != "0" ]; then
+      echo "  WARNING: id_counters total is ${counters:-?}, expected 0 — a test allocated ids without restoring them" >&2
+      [ "$code" = "0" ] && code=1
+    fi
+
     if [ "${left:-x}" = "0" ]; then
       echo "  all fixture rows removed"
     else
       echo "  WARNING: ${left:-?} fixture row(s) still present — remove them before committing" >&2
       [ "$code" = "0" ] && code=1
     fi
+  fi
+
+  if [ -n "$FOUNDATION_PID" ]; then
+    kill -- "-$FOUNDATION_PID" 2>/dev/null || kill "$FOUNDATION_PID" 2>/dev/null
+    wait "$FOUNDATION_PID" 2>/dev/null
   fi
 
   if [ -n "$WORKER_PID" ]; then
@@ -171,6 +189,38 @@ echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointment
 say "Running tests/integration/api.test.mjs"
 TAQWA_API_BASE="$BASE" node "$HERE/api.test.mjs"
 RESULT=$?
+
+# ------------------------------------------------- write foundation (C-1)
+# src/lib/write.js has two behaviours that only a real database can show:
+# that a failed env.DB.batch() rolls everything back, and that
+# UPDATE ... RETURNING hands concurrent callers distinct numbers. C-1 ships
+# no write route, so they are exercised through a TEST-ONLY Worker entry on a
+# second port, bound to the same local D1. Nothing here is registered in
+# src/index.js and nothing here is deployed.
+FOUNDATION_PORT=$((PORT + 1))
+FOUNDATION_BASE="http://127.0.0.1:${FOUNDATION_PORT}"
+say "Running tests/integration/foundation-worker.mjs (test-only entry, port $FOUNDATION_PORT)"
+setsid npx wrangler dev --local --port "$FOUNDATION_PORT" --config "$ROOT/wrangler.jsonc" \
+  "$HERE/foundation-worker.mjs" > "$LOG.foundation" 2>&1 &
+FOUNDATION_PID=$!
+for _ in $(seq 1 45); do
+  curl -s -m 2 -o /dev/null "$FOUNDATION_BASE/" && break
+  sleep 1
+done
+FOUNDATION_JSON=$(curl -s -m 60 "$FOUNDATION_BASE/")
+if [ -z "$FOUNDATION_JSON" ]; then
+  echo "  foundation worker did not answer:" >&2
+  tail -20 "$LOG.foundation" >&2
+  RESULT=1
+else
+  node -e '
+    const r = JSON.parse(process.argv[1]);
+    r.lines.forEach(l => console.log(l));
+    console.log(`\nWrite foundation integration: ${r.pass} passed, ${r.fail} failed`);
+    process.exit(r.fail ? 1 : 0);
+  ' "$FOUNDATION_JSON" || RESULT=1
+fi
+rm -f "$LOG.foundation"
 
 sleep 2   # let the Worker flush the tail of its request log
 say "Worker status codes served"
