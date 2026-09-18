@@ -327,13 +327,14 @@ console.log('\n-- 11. Routing --');
     'GET /api/job-cards', 'GET /api/job-cards/:id',
     'GET /api/invoices', 'GET /api/invoices/:id',
     'GET /api/payments', 'GET /api/payments/:id',
+    'GET /api/expenses', 'GET /api/expenses/:id',
   ]);
 }
 {
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 19);
+  check('404 advertises every route', body.error.available.length, 21);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

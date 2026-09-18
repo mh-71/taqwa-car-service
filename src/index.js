@@ -21,6 +21,7 @@ import { listAppointments, getAppointment } from './routes/appointments.js';
 import { listJobCards, getJobCard } from './routes/job-cards.js';
 import { listInvoices, getInvoice } from './routes/invoices.js';
 import { listPayments, getPayment } from './routes/payments.js';
+import { listExpenses, getExpense } from './routes/expenses.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -38,6 +39,7 @@ const COLLECTIONS = {
   'job-cards': { list: listJobCards, detail: getJobCard },
   invoices: { list: listInvoices, detail: getInvoice },
   payments: { list: listPayments, detail: getPayment },
+  expenses: { list: listExpenses, detail: getExpense },
 };
 
 const ROUTES = [

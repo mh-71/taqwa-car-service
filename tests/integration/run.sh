@@ -64,7 +64,8 @@ cleanup() {
                     + (SELECT count(*) FROM invoices WHERE id LIKE 'INV-9%')
                     + (SELECT count(*) FROM invoice_services WHERE invoice_id LIKE 'INV-9%')
                     + (SELECT count(*) FROM invoice_parts WHERE invoice_id LIKE 'INV-9%')
-                    + (SELECT count(*) FROM payments WHERE id LIKE 'PAY-9%') AS n" \
+                    + (SELECT count(*) FROM payments WHERE id LIKE 'PAY-9%')
+                    + (SELECT count(*) FROM expenses WHERE id LIKE 'EXP-9%') AS n" \
            | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
     if [ "${left:-x}" = "0" ]; then
       echo "  all fixture rows removed"
@@ -130,12 +131,12 @@ say "Checking the local database is clear"
 COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM customers) + (SELECT count(*) FROM vehicles) + (SELECT count(*) FROM mechanics) + (SELECT count(*) FROM parts) + (SELECT count(*) FROM appointments) + (SELECT count(*) FROM job_cards) + (SELECT count(*) FROM job_card_services)
                     + (SELECT count(*) FROM job_card_parts) + (SELECT count(*) FROM invoices)
                     + (SELECT count(*) FROM invoice_services) + (SELECT count(*) FROM invoice_parts)
-                    + (SELECT count(*) FROM payments) AS n" \
+                    + (SELECT count(*) FROM payments) + (SELECT count(*) FROM expenses) AS n" \
          | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
 if [ "${COUNTS:-x}" != "0" ]; then
   cat >&2 <<MSG
 REFUSED: the fixture tables (services/customers/vehicles/mechanics/parts/
-appointments/job_cards/invoices/line tables/payments) already hold ${COUNTS:-?} row(s).
+appointments/job_cards/invoices/line tables/payments/expenses) already hold ${COUNTS:-?} row(s).
 
 This suite asserts exact counts, so it only runs against an empty local
 database, and it will not delete rows it did not insert. Clear the local
@@ -151,7 +152,7 @@ SEEDED=1
 d1_file "$HERE/fixtures/seed.sql" | grep -q '"success": true' || { echo "Seeding failed" >&2; exit 1; }
 echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointments,"
   echo "  4 job cards (4 service lines, 2 part lines),"
-  echo "  4 invoices (4 service lines, 2 part lines), 5 payments"
+  echo "  4 invoices (4 service lines, 2 part lines), 5 payments, 5 expenses"
 
 # ------------------------------------------------------------------ run
 say "Running tests/integration/api.test.mjs"

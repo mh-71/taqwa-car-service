@@ -24,7 +24,7 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 19 routes', routes.length === 19, routes);
+  t('advertises 21 routes', routes.length === 21, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
@@ -35,6 +35,7 @@ sec('1. Health');
   t('advertises job-cards routes', routes.includes('GET /api/job-cards') && routes.includes('GET /api/job-cards/:id'));
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
+  t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
 }
 
 sec('2. GET /api/services — list');
@@ -1313,12 +1314,171 @@ sec('10g. GET /api/payments — stored cash facts, and a GET that changes nothin
     'payment rows differ after a read');
 }
 
+sec('10h. GET /api/expenses — stored rows, Void included, no aggregates');
+{
+  const r = await get('/api/expenses');
+  t('200', r.status === 200, r.status);
+  t('count 5', r.body?.count === 5, r.body?.count);
+  t('total 5', r.body?.total === 5, r.body?.total);
+  t('meta keys match the other collections',
+    JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
+    Object.keys(r.body));
+  t('newest first by created_at',
+    JSON.stringify(r.body.data.map(e => e.id)) ===
+      JSON.stringify(['EXP-9001','EXP-9002','EXP-9003','EXP-9004','EXP-9005']),
+    r.body.data.map(e => e.id));
+
+  const byId = Object.fromEntries(r.body.data.map(e => [e.id, e]));
+
+  // ---- exact field mapping ----
+  const full = byId['EXP-9001'];
+  t('full expense record shape', JSON.stringify(full) === JSON.stringify({
+    id:'EXP-9001', date:'2026-09-25', category:'Parts Purchase',
+    description:'Engine oil restock — 12 cans', amount:26400, method:'Bank Transfer',
+    payee:'Dhaka Auto Parts', reference:'INV-DAP-8842', notes:'Quarterly restock',
+    status:'Active', createdAt:'2026-09-25T10:00:00' }), full);
+  t('camelCase keys only', Object.keys(full).every(k => !k.includes('_')), Object.keys(full));
+  t('date is stored text, not shifted', full.date === '2026-09-25', full.date);
+  t('updatedAt omitted when never updated', !('updatedAt' in full), Object.keys(full));
+
+  const nulls = byId['EXP-9003'];
+  t('NULL payee -> ""', nulls.payee === '', nulls.payee);
+  t('NULL reference -> ""', nulls.reference === '', nulls.reference);
+  t('NULL notes -> ""', nulls.notes === '', nulls.notes);
+  t('a NULL optional is "" and not null',
+    nulls.payee !== null && nulls.reference !== null && nulls.notes !== null);
+  t('stored empty strings stay ""',
+    byId['EXP-9005'].payee === '' && byId['EXP-9005'].reference === '');
+
+  const dec = byId['EXP-9004'];
+  t('updatedAt present when set', dec.updatedAt === '2026-09-26T09:00:00', dec.updatedAt);
+  t('a decimal amount survives the round trip', dec.amount === 612.5, dec.amount);
+  t('a large amount survives', byId['EXP-9005'].amount === 1000000, byId['EXP-9005'].amount);
+  t('amount is a number over the wire', typeof dec.amount === 'number', typeof dec.amount);
+
+  // ---- categories and methods ----
+  t('a non-canonical category round-trips',
+    byId['EXP-9005'].category === 'Legacy Category', byId['EXP-9005'].category);
+  t('it was not coerced to Other', byId['EXP-9005'].category !== 'Other');
+  const methods = new Set(r.body.data.map(e => e.method));
+  t('Cash round-trips', methods.has('Cash'));
+  t('Card round-trips', methods.has('Card'));
+  t('Bank Transfer round-trips', methods.has('Bank Transfer'));
+  t('Mobile Banking round-trips', methods.has('Mobile Banking'));
+
+  // ---- Void rows are returned, and the consumer still filters them ----
+  const voided = byId['EXP-9002'];
+  t('the Void expense is present in the list', Boolean(voided), r.body.data.map(e => e.id));
+  t('it reports status Void', voided.status === 'Void', voided.status);
+  t('its amount is intact', voided.amount === 8500, voided.amount);
+  t('and every other field too',
+    voided.date === '2026-09-24' && voided.category === 'Electricity'
+      && voided.method === 'Mobile Banking' && voided.payee === 'DESCO');
+  t('both statuses appear in one page',
+    r.body.data.some(e => e.status === 'Active') && r.body.data.some(e => e.status === 'Void'));
+  const dVoid = await get('/api/expenses/EXP-9002');
+  t('a Void expense is retrievable by id', dVoid.status === 200, dVoid.status);
+  t('and reports Void with its amount', dVoid.body?.data?.status === 'Void' && dVoid.body?.data?.amount === 8500);
+
+  // reports.js and dashboard.js filter status !== 'Void' themselves before
+  // summing; the API hands over every row and that logic still works on it.
+  const active = r.body.data.filter(e => e.status !== 'Void');
+  t('a consumer can still exclude Void rows from the API response', active.length === 4, active.length);
+  t('and sum only the active ones, as reports.js does',
+    active.reduce((s, e) => s + e.amount, 0) === 26400 + 4200 + 612.5 + 1000000,
+    active.reduce((s, e) => s + e.amount, 0));
+  t('the excluded row is exactly the voided one',
+    !active.some(e => e.id === 'EXP-9002'), active.map(e => e.id));
+  t('the API itself applied no status filter',
+    r.body.count === 5 && active.length === 4, { api: r.body.count, afterFilter: active.length });
+
+  // ---- no aggregates, nothing joined ----
+  const keys = new Set(r.body.data.flatMap(e => Object.keys(e)));
+  t('no total / byCategory / netResult invented',
+    !['total','expenseTotal','byCategory','byMethod','byDay','netResult','net'].some(k => keys.has(k)),
+    [...keys]);
+  t('no isVoid / isActive invented', !['isVoid','isActive'].some(k => keys.has(k)), [...keys]);
+  t('exactly the stored fields and nothing else',
+    [...keys].every(k => ['id','date','category','description','amount','method','payee',
+      'reference','notes','status','createdAt','updatedAt'].includes(k)), [...keys]);
+  t('no reference id to any other collection',
+    ![...keys].some(k => /Id$/.test(k)), [...keys]);
+
+  // ---- pagination ----
+  const p1 = await get('/api/expenses?limit=2');
+  t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
+  t('total still 5', p1.body?.total === 5, p1.body?.total);
+  const p2 = await get('/api/expenses?limit=2&offset=2');
+  t('offset=2 returns the next page',
+    JSON.stringify(p2.body.data.map(e => e.id)) === JSON.stringify(['EXP-9003','EXP-9004']),
+    p2.body.data.map(e => e.id));
+  t('pages do not overlap', !p2.body.data.some(e => p1.body.data.find(x => x.id === e.id)));
+  const p3 = await get('/api/expenses?offset=99');
+  t('offset past end -> empty array, still 200', p3.status === 200 && p3.body.data.length === 0);
+  const p4 = await get('/api/expenses?limit=1000');
+  t('limit=1000 succeeds', p4.status === 200, p4.status);
+  t('and returns every expense', p4.body?.count === 5, p4.body?.count);
+  const p5 = await get('/api/expenses?limit=500');
+  t('limit=500 succeeds', p5.status === 200, p5.status);
+  for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
+                          ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
+    const bad = await get('/api/expenses?' + q);
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_parameter', { q, status: bad.status });
+  }
+
+  // ---- detail and ids ----
+  const d = await get('/api/expenses/EXP-9001');
+  t('detail 200', d.status === 200, d.status);
+  t('detail matches the list record', JSON.stringify(d.body.data) === JSON.stringify(full));
+  t('no list meta on detail', d.body.count === undefined && d.body.limit === undefined);
+
+  const d404 = await get('/api/expenses/EXP-8888');
+  t('unknown id -> 404', d404.status === 404, d404.status);
+  t('404 message names an expense',
+    d404.body?.error?.message === 'No expense with that id.', d404.body?.error?.message);
+  for (const other of ['PAY-9001','INV-9001','JOB-9001','CUS-9001','VEH-9001','PRT-9001','APT-9001','MEC-9001']) {
+    const x = await get('/api/expenses/' + other);
+    t(`${other} on the expenses route -> 404, not 400`, x.status === 404, x.status);
+  }
+  const eOnPay = await get('/api/payments/EXP-9001');
+  t('expense id on the payments route -> 404',
+    eOnPay.status === 404 && eOnPay.body?.error?.message === 'No payment with that id.');
+
+  for (const [id, why] of [['nonsense','no prefix shape'], ['EXP-','no number'], ['-9001','no prefix'],
+                           ['EXPENSES-9001','prefix too long'], ['E-1','prefix too short']]) {
+    const bad = await get('/api/expenses/' + encodeURIComponent(id));
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_id', { id, status: bad.status });
+  }
+  const dSlash = await get('/api/expenses/');
+  t('trailing slash -> 400', dSlash.status === 400 && dSlash.body?.error?.code === 'invalid_id');
+  const dEsc = await fetch(BASE + '/api/expenses/%zz');
+  t('malformed percent-escape -> 400', dEsc.status === 400, dEsc.status);
+
+  const injVoid = await get('/api/expenses/' + encodeURIComponent("EXP-9001'; UPDATE expenses SET status='Void' --"));
+  t('status-rewriting injection rejected -> 400', injVoid.status === 400, injVoid.status);
+  const injAmount = await get('/api/expenses/' + encodeURIComponent("EXP-9001'; UPDATE expenses SET amount=0 --"));
+  t('amount-rewriting injection rejected -> 400', injAmount.status === 400, injAmount.status);
+  const afterInj = await get('/api/expenses/EXP-9001');
+  t('expense survived the injection attempts',
+    afterInj.body?.data?.amount === 26400 && afterInj.body?.data?.status === 'Active',
+    { amount: afterInj.body?.data?.amount, status: afterInj.body?.data?.status });
+  const allAfter = await get('/api/expenses');
+  t('expenses table intact after injection attempts', allAfter.body?.total === 5, allAfter.body?.total);
+
+  for (const m of ['POST','PUT','DELETE','PATCH']) {
+    const rl = await get('/api/expenses', { method: m });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    const rd = await get('/api/expenses/EXP-9001', { method: m });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+  }
+}
+
 sec('11. Collections stay separate over the wire');
 {
-  const [s, c, v, m, p, a, j, inv, pay] = await Promise.all([
+  const [s, c, v, m, p, a, j, inv, pay, exp] = await Promise.all([
     get('/api/services'), get('/api/customers'), get('/api/vehicles'),
     get('/api/mechanics'), get('/api/parts'), get('/api/appointments'),
-    get('/api/job-cards'), get('/api/invoices'), get('/api/payments')]);
+    get('/api/job-cards'), get('/api/invoices'), get('/api/payments'), get('/api/expenses')]);
   t('services returns only SRV ids', s.body.data.every(x => x.id.startsWith('SRV-')));
   t('customers returns only CUS ids', c.body.data.every(x => x.id.startsWith('CUS-')));
   t('vehicles returns only VEH ids', v.body.data.every(x => x.id.startsWith('VEH-')));
@@ -1357,6 +1517,12 @@ sec('11. Collections stay separate over the wire');
       ...a.body.data, ...j.body.data, ...inv.body.data].some(x => 'amount' in x || 'method' in x));
   t('payment rows carry no totals or child line arrays',
     !pay.body.data.some(x => 'total' in x || 'services' in x || 'partsUsed' in x));
+  t('expenses returns only EXP ids', exp.body.data.every(x => x.id.startsWith('EXP-')));
+  t('only expenses carry category and payee',
+    ![...c.body.data, ...v.body.data, ...m.body.data, ...a.body.data,
+      ...j.body.data, ...inv.body.data, ...pay.body.data].some(x => 'payee' in x));
+  t('expense rows carry no reference to any other collection',
+    !exp.body.data.some(x => Object.keys(x).some(k => /Id$/.test(k))));
   t('salary never appears outside mechanics',
     ![...s.body.data, ...c.body.data, ...v.body.data].some(x => 'salary' in x || 'commissionRate' in x));
 }

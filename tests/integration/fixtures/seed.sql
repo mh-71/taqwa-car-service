@@ -124,3 +124,23 @@ UPDATE payments SET updated_at = '2026-09-26T11:00:00' WHERE id = 'PAY-9005';
 -- the back-reference is set after both rows exist rather than relying on the
 -- deferred constraint inside a single statement batch.
 UPDATE appointments SET job_card_id = 'JOB-9001' WHERE id = 'APT-9004';
+
+-- Expenses. The only table in the schema with no foreign keys at all, so these
+-- rows depend on nothing above and nothing depends on them.
+--
+--   EXP-9001  everything populated, including payee and reference
+--   EXP-9002  Void, with its amount and every other field left intact
+--   EXP-9003  payee, reference and notes all NULL, to exercise the '' mapping
+--   EXP-9004  a decimal amount, and the one row with an updated_at
+--   EXP-9005  a category outside the frontend's list, which the schema permits
+--             because expenses.category carries no CHECK constraint
+INSERT INTO expenses (id, date, category, description, amount, method, payee, reference, notes, status, created_at) VALUES
+  ('EXP-9001','2026-09-25','Parts Purchase','Engine oil restock — 12 cans',26400,'Bank Transfer','Dhaka Auto Parts','INV-DAP-8842','Quarterly restock','Active','2026-09-25T10:00:00'),
+  ('EXP-9002','2026-09-24','Electricity','Monthly electricity bill',8500,'Mobile Banking','DESCO','','Billed twice, voided','Void','2026-09-24T10:00:00'),
+  ('EXP-9003','2026-09-23','Tools','Torque wrench replacement',4200,'Cash',NULL,NULL,NULL,'Active','2026-09-23T10:00:00'),
+  ('EXP-9004','2026-09-22','Transport','Parts pickup from Motor Bhaban',612.50,'Card','Rickshaw','','Split fare','Active','2026-09-22T10:00:00'),
+  ('EXP-9005','2026-09-21','Legacy Category','Imported from the old spreadsheet',1000000,'Cash','','','','Active','2026-09-21T10:00:00');
+
+-- EXP-9004 is the one expense with an updated_at, set separately because the
+-- insert above does not list that column.
+UPDATE expenses SET updated_at = '2026-09-26T09:00:00' WHERE id = 'EXP-9004';
