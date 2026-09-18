@@ -29,3 +29,8 @@ DELETE FROM parts     WHERE id LIKE 'PRT-9%';
 -- expenses have no foreign keys in either direction, so their position here is
 -- free; they go last simply to keep the FK-ordered block above unbroken.
 DELETE FROM expenses  WHERE id LIKE 'EXP-9%';
+-- settings is the singleton: CHECK (id = 1) makes a reserved `9%` id range
+-- impossible, so this is the one fixture removed by its real id. That is safe
+-- only because run.sh refuses to seed unless the table was empty first, so the
+-- row deleted here is always the row this suite inserted.
+DELETE FROM settings WHERE id = 1;

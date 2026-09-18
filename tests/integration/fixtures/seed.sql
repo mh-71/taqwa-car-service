@@ -144,3 +144,37 @@ INSERT INTO expenses (id, date, category, description, amount, method, payee, re
 -- EXP-9004 is the one expense with an updated_at, set separately because the
 -- insert above does not list that column.
 UPDATE expenses SET updated_at = '2026-09-26T09:00:00' WHERE id = 'EXP-9004';
+
+-- Settings. The one singleton in the schema: CHECK (id = 1) means this row and
+-- a real shop's row are the same row, so there is no reserved `9%` id range to
+-- hide in. run.sh's preflight refuses to start unless this table is empty,
+-- which is what keeps the fixture from ever overwriting live settings.
+--
+-- Every column is populated, including the two nullable ones the app leaves
+-- blank in practice, so the integration suite exercises the full mapping
+-- rather than the '' fallbacks (those are covered in the unit suite, which can
+-- stub a sparse row without touching a database).
+INSERT INTO settings (
+  id, business_name, phone, email, website, tax_id, address,
+  business_description, invoice_footer, payment_terms,
+  tax_rate, currency, default_appointment_duration,
+  opening_time, closing_time, working_days, updated_at
+) VALUES (
+  1,
+  'Taqwa Automobile Service Center',
+  '+880 1712-345678',
+  'info@taqwaauto.com',
+  'https://taqwaauto.com',
+  'BIN-004471928',
+  'Sector #15, Block #C, Road #3/A, Plot #40, Diabari, Uttara, Dhaka',
+  'Full-service automobile workshop — servicing, diagnostics and parts.',
+  'Thank you for servicing with Taqwa Automobile Service Center.',
+  'Payment due within 7 days of invoicing.',
+  5,
+  '৳',
+  60,
+  '09:00',
+  '20:00',
+  '["Sat","Sun","Mon","Tue","Wed","Thu"]',
+  '2026-09-26T09:00:00'
+);

@@ -22,6 +22,11 @@ import { listJobCards, getJobCard } from './routes/job-cards.js';
 import { listInvoices, getInvoice } from './routes/invoices.js';
 import { listPayments, getPayment } from './routes/payments.js';
 import { listExpenses, getExpense } from './routes/expenses.js';
+// Settings is a singleton the schema enforces (id INTEGER PRIMARY KEY
+// CHECK (id = 1)), so it has no list and no addressable detail. It is
+// dispatched directly below, beside /api/health, rather than joining
+// COLLECTIONS — see routes/settings.js for why.
+import { getSettings } from './routes/settings.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -48,6 +53,9 @@ const ROUTES = [
     `GET /api/${name}`,
     `GET /api/${name}/:id`,
   ]),
+  // One entry, not two: a singleton has nothing to address. Listed last so
+  // the advertised order stays the order the routes shipped in.
+  'GET /api/settings',
 ];
 
 // Captures the collection name and, optionally, everything after the next
@@ -114,6 +122,15 @@ export default {
     if (url.pathname === '/api/health') {
       if (request.method !== 'GET') return methodNotAllowed(['GET']);
       return health(env);
+    }
+
+    // The exact path only. Anything below it (/api/settings/1, and there is
+    // no other id a singleton could have) is left to fall through to the
+    // 404 below rather than being handed to a detail handler that does not
+    // exist — which is what keeps a trailing segment a clean 404 instead of
+    // a TypeError.
+    if (url.pathname === '/api/settings') {
+      return getSettings(request, env);
     }
 
     const match = API_PATH.exec(url.pathname);

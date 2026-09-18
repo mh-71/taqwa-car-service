@@ -24,7 +24,7 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 21 routes', routes.length === 21, routes);
+  t('advertises 22 routes', routes.length === 22, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
@@ -36,6 +36,10 @@ sec('1. Health');
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
+  // Settings is the one singleton among the collections: one entry, no /:id.
+  t('advertises the settings route', routes.includes('GET /api/settings'));
+  t('advertises no settings detail route', !routes.includes('GET /api/settings/:id'));
+  t('exactly one settings entry', routes.filter((r2) => r2.includes('/api/settings')).length === 1, routes);
 }
 
 sec('2. GET /api/services — list');
@@ -1471,6 +1475,88 @@ sec('10h. GET /api/expenses — stored rows, Void included, no aggregates');
     const rd = await get('/api/expenses/EXP-9001', { method: m });
     t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
   }
+}
+
+sec('10i. GET /api/settings — the singleton, read whole and left alone');
+{
+  const r = await get('/api/settings');
+  t('settings 200', r.status === 200, r.status);
+  t('JSON content type', (r.ct || '').includes('application/json'), r.ct);
+
+  const s = r.body?.data;
+  t('data is an object', s !== null && typeof s === 'object');
+  t('data is NOT an array', Array.isArray(s) === false, s);
+  t('the envelope carries only data', JSON.stringify(Object.keys(r.body ?? {})) === '["data"]', Object.keys(r.body ?? {}));
+  for (const key of ['count', 'total', 'limit', 'offset']) {
+    t(`no \`${key}\` on a singleton`, !(key in (r.body ?? {})), key);
+  }
+
+  // Every value below is the literal in fixtures/seed.sql.
+  t('businessName', s?.businessName === 'Taqwa Automobile Service Center', s?.businessName);
+  t('phone', s?.phone === '+880 1712-345678', s?.phone);
+  t('email', s?.email === 'info@taqwaauto.com', s?.email);
+  t('website', s?.website === 'https://taqwaauto.com', s?.website);
+  t('taxId maps from tax_id', s?.taxId === 'BIN-004471928', s?.taxId);
+  t('address', s?.address === 'Sector #15, Block #C, Road #3/A, Plot #40, Diabari, Uttara, Dhaka', s?.address);
+  t('businessDescription maps from business_description',
+    s?.businessDescription === 'Full-service automobile workshop — servicing, diagnostics and parts.', s?.businessDescription);
+  t('invoiceFooter maps from invoice_footer',
+    s?.invoiceFooter === 'Thank you for servicing with Taqwa Automobile Service Center.', s?.invoiceFooter);
+  t('paymentTerms maps from payment_terms', s?.paymentTerms === 'Payment due within 7 days of invoicing.', s?.paymentTerms);
+  t('taxRate maps from tax_rate and stays numeric', s?.taxRate === 5 && typeof s?.taxRate === 'number', s?.taxRate);
+  t('currency survives the round trip as a multi-byte symbol', s?.currency === '৳', s?.currency);
+  t('defaultAppointmentDuration maps from default_appointment_duration',
+    s?.defaultAppointmentDuration === 60, s?.defaultAppointmentDuration);
+  t('openingTime maps from opening_time', s?.openingTime === '09:00', s?.openingTime);
+  t('closingTime maps from closing_time', s?.closingTime === '20:00', s?.closingTime);
+  t('updatedAt maps from updated_at', s?.updatedAt === '2026-09-26T09:00:00', s?.updatedAt);
+
+  // working_days is JSON text in the column and must arrive as a real array.
+  t('workingDays is an array, not the stored string', Array.isArray(s?.workingDays), s?.workingDays);
+  t('workingDays parsed correctly',
+    JSON.stringify(s?.workingDays) === JSON.stringify(['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu']), s?.workingDays);
+
+  // The frontend's fifteen fields, all present; id and theme, neither.
+  t('all 15 frontend fields present',
+    ['businessName', 'phone', 'email', 'website', 'taxId', 'address', 'businessDescription',
+      'invoiceFooter', 'paymentTerms', 'taxRate', 'currency', 'defaultAppointmentDuration',
+      'openingTime', 'closingTime', 'workingDays'].every(k => k in (s ?? {})), Object.keys(s ?? {}));
+  t('id is not exposed', !('id' in (s ?? {})));
+  t('theme is not exposed — it stays in localStorage', !('theme' in (s ?? {})));
+  t('no field came back null', Object.values(s ?? {}).every(v => v !== null), s);
+
+  // A GET must not touch the row. Compare the whole payload before and after,
+  // and confirm the singleton is still exactly one row afterwards.
+  const before = JSON.stringify(s);
+  await get('/api/settings');
+  await get('/api/settings');
+  const after = await get('/api/settings');
+  t('repeated GETs return a byte-identical record', JSON.stringify(after.body?.data) === before,
+    { before, after: JSON.stringify(after.body?.data) });
+
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    const w = await get('/api/settings', { method });
+    t(`${method} /api/settings -> 405`, w.status === 405, w.status);
+    t(`${method} sets Allow: GET`, w.allow === 'GET', w.allow);
+    t(`${method} error code`, w.body?.error?.code === 'method_not_allowed', w.body);
+  }
+
+  // The singleton has no addressable id, so anything below the path is a
+  // plain unknown route — not a 400 from an id validator, and not a crash.
+  for (const path of ['/api/settings/1', '/api/settings/anything', '/api/settings/SET-0001', '/api/settings/']) {
+    const d = await get(path);
+    t(`${path} -> 404`, d.status === 404, d.status);
+    t(`${path} uses the standard not-found shape`, d.body?.error?.code === 'not_found', d.body);
+  }
+
+  // Paging params are meaningless here and must not be echoed back.
+  const paged = await get('/api/settings?limit=5&offset=3');
+  t('query params are ignored, not treated as paging', paged.status === 200 && !('limit' in (paged.body ?? {})), paged.body);
+
+  // And after all of the above, the row is still there, unchanged and single.
+  const final = await get('/api/settings');
+  t('the row survived every request above', final.status === 200 && JSON.stringify(final.body?.data) === before,
+    { before, final: JSON.stringify(final.body?.data) });
 }
 
 sec('11. Collections stay separate over the wire');

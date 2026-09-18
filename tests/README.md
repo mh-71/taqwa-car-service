@@ -23,6 +23,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-invoices.test.mjs` | `GET /api/invoices[/:id]`, including billed snapshots, stored money reported without consulting payments, and Void invoices keeping their frozen figures |
 | `api-payments.test.mjs` | `GET /api/payments[/:id]`, including the four reference combinations, advance vs voided vs released-advance, and that a GET never reaches into invoices |
 | `api-expenses.test.mjs` | `GET /api/expenses[/:id]`, including that Void rows are returned rather than filtered, no aggregate is invented, and an unconstrained category round-trips |
+| `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
 | `finding7.test.cjs` | Audit Finding 7 — voiding an invoice releases its payments |

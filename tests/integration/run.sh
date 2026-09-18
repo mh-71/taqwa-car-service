@@ -65,7 +65,8 @@ cleanup() {
                     + (SELECT count(*) FROM invoice_services WHERE invoice_id LIKE 'INV-9%')
                     + (SELECT count(*) FROM invoice_parts WHERE invoice_id LIKE 'INV-9%')
                     + (SELECT count(*) FROM payments WHERE id LIKE 'PAY-9%')
-                    + (SELECT count(*) FROM expenses WHERE id LIKE 'EXP-9%') AS n" \
+                    + (SELECT count(*) FROM expenses WHERE id LIKE 'EXP-9%')
+                    + (SELECT count(*) FROM settings WHERE id = 1) AS n" \
            | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
     if [ "${left:-x}" = "0" ]; then
       echo "  all fixture rows removed"
@@ -127,16 +128,24 @@ echo "  schema applied"
 # The suite asserts exact row counts, so it needs these three tables to hold
 # nothing but the fixtures. Refusing here also means the run can never delete
 # rows it did not create.
+#
+# settings matters most here. Every other fixture hides in a reserved `9%` id
+# range that cannot collide with real data, but settings is capped at a single
+# row by CHECK (id = 1), so the fixture row and a real one are the same row.
+# This count is the only thing standing between the suite and a shop's own
+# saved settings: if the table holds anything, the run refuses rather than
+# overwriting it.
 say "Checking the local database is clear"
 COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM customers) + (SELECT count(*) FROM vehicles) + (SELECT count(*) FROM mechanics) + (SELECT count(*) FROM parts) + (SELECT count(*) FROM appointments) + (SELECT count(*) FROM job_cards) + (SELECT count(*) FROM job_card_services)
                     + (SELECT count(*) FROM job_card_parts) + (SELECT count(*) FROM invoices)
                     + (SELECT count(*) FROM invoice_services) + (SELECT count(*) FROM invoice_parts)
-                    + (SELECT count(*) FROM payments) + (SELECT count(*) FROM expenses) AS n" \
+                    + (SELECT count(*) FROM payments) + (SELECT count(*) FROM expenses)
+                    + (SELECT count(*) FROM settings) AS n" \
          | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
 if [ "${COUNTS:-x}" != "0" ]; then
   cat >&2 <<MSG
 REFUSED: the fixture tables (services/customers/vehicles/mechanics/parts/
-appointments/job_cards/invoices/line tables/payments/expenses) already hold ${COUNTS:-?} row(s).
+appointments/job_cards/invoices/line tables/payments/expenses/settings) already hold ${COUNTS:-?} row(s).
 
 This suite asserts exact counts, so it only runs against an empty local
 database, and it will not delete rows it did not insert. Clear the local
@@ -152,7 +161,8 @@ SEEDED=1
 d1_file "$HERE/fixtures/seed.sql" | grep -q '"success": true' || { echo "Seeding failed" >&2; exit 1; }
 echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointments,"
   echo "  4 job cards (4 service lines, 2 part lines),"
-  echo "  4 invoices (4 service lines, 2 part lines), 5 payments, 5 expenses"
+  echo "  4 invoices (4 service lines, 2 part lines), 5 payments, 5 expenses,"
+  echo "  1 settings row (the singleton, id = 1)"
 
 # ------------------------------------------------------------------ run
 say "Running tests/integration/api.test.mjs"
