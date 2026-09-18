@@ -1,19 +1,18 @@
 /* ============================================================
    Taqwa Automobile Service Center — Worker API
    ------------------------------------------------------------
-   Phase A: a health endpoint only. No business routes yet, and the
-   frontend still runs entirely on localStorage — nothing calls this.
+   Phase B: health plus the first read-only route. The frontend
+   still runs entirely on localStorage and calls none of this.
 
    The rule this file exists to establish: the browser never touches
    D1. Every database operation goes through a Worker route, which
    validates its input server-side and binds every SQL parameter.
    ============================================================ */
 
-const json = (body, status = 200) =>
-  new Response(JSON.stringify(body, null, 2), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-  });
+import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
+import { listCustomers } from './routes/customers.js';
+
+const ROUTES = ['GET /api/health', 'GET /api/customers'];
 
 /**
  * GET /api/health
@@ -24,20 +23,8 @@ const json = (body, status = 200) =>
  */
 async function health(env) {
   const started = Date.now();
-  const result = {
-    ok: true,
-    service: 'taqwa-api',
-    phase: 'A — schema and health only',
-    timestamp: new Date().toISOString(),
-    database: { bound: false },
-  };
 
-  if (!env.DB) {
-    result.ok = false;
-    result.database.error = 'No D1 binding named DB. Check wrangler.jsonc.';
-    return json(result, 503);
-  }
-  result.database.bound = true;
+  if (!env.DB) return noDatabase();
 
   try {
     const tables = await env.DB.prepare(
@@ -51,47 +38,48 @@ async function health(env) {
         WHERE type = 'index' AND name NOT LIKE 'sqlite_%'`
     ).first();
 
-    result.database.reachable = true;
-    result.database.tableCount = tables.results.length;
-    result.database.indexCount = indexes ? indexes.n : 0;
-    result.database.tables = tables.results.map((t) => t.name);
-    result.database.migrated = tables.results.some((t) => t.name === 'customers');
-    result.database.latencyMs = Date.now() - started;
+    const migrated = tables.results.some((t) => t.name === 'customers');
 
-    if (!result.database.migrated) {
-      result.ok = false;
-      result.database.hint =
-        'Schema not applied. Run: npm run db:migrate:local';
-    }
+    const body = {
+      service: 'taqwa-api',
+      phase: 'B — read-only API',
+      timestamp: new Date().toISOString(),
+      routes: ROUTES,
+      database: {
+        bound: true,
+        reachable: true,
+        tableCount: tables.results.length,
+        indexCount: indexes ? indexes.n : 0,
+        tables: tables.results.map((t) => t.name),
+        migrated,
+        latencyMs: Date.now() - started,
+        ...(migrated ? {} : { hint: 'Schema not applied. Run: npm run db:migrate:local' }),
+      },
+    };
+
+    return migrated
+      ? ok(body, { ok: true })
+      : fail('not_migrated', 'Schema has not been applied to this database.', 503, body);
   } catch (err) {
-    result.ok = false;
-    result.database.reachable = false;
-    result.database.error = String(err && err.message ? err.message : err);
+    console.error('GET /api/health failed:', err);
+    return fail('database_error', 'D1 binding is present but did not answer.', 503);
   }
-
-  return json(result, result.ok ? 200 : 503);
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname === '/api/health') {
-      if (request.method !== 'GET') {
-        return json({ ok: false, error: 'Method not allowed' }, 405);
-      }
-      return health(env);
-    }
+    switch (url.pathname) {
+      case '/api/health':
+        if (request.method !== 'GET') return methodNotAllowed(['GET']);
+        return health(env);
 
-    return json(
-      {
-        ok: false,
-        error: 'Not found',
-        // Every route added from here on is listed by the health endpoint's
-        // sibling documentation, not guessed at by clients.
-        available: ['GET /api/health'],
-      },
-      404
-    );
+      case '/api/customers':
+        return listCustomers(request, env, url);
+
+      default:
+        return notFound(ROUTES);
+    }
   },
 };
