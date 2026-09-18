@@ -35,12 +35,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 45 routes', routes.length === 45, routes);
+  t('advertises 46 routes', routes.length === 46, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('24 GET, 7 POST, 7 PUT, 7 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 7, PUT: 7, DELETE: 7 }), byMethod);
+    t('24 GET, 8 POST, 7 PUT, 7 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 8, PUT: 7, DELETE: 7 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -1620,9 +1620,17 @@ sec('10i. GET /api/inventory-transactions — the ledger, as history not balance
   const badLimit = await get('/api/inventory-transactions?limit=0');
   t('limit=0 -> 400', badLimit.status === 400, badLimit.status);
 
-  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+  // C-4 made POST a real route on the list path. The ledger is append-only,
+  // so PUT and DELETE stay refused -- on the detail path too, where a recorded
+  // movement could otherwise be edited or erased. Section 15 covers the writes.
+  for (const method of ['PUT', 'PATCH', 'DELETE']) {
     const w = await get('/api/inventory-transactions', { method });
     t(`${method} -> 405`, w.status === 405, w.status);
+    t(`${method} Allow names POST`, w.allow === 'GET, POST', w.allow);
+  }
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    const w = await get('/api/inventory-transactions/STK-9001', { method });
+    t(`${method} on a recorded movement -> 405`, w.status === 405, w.status);
     t(`${method} sets Allow: GET`, w.allow === 'GET', w.allow);
   }
 
@@ -1790,14 +1798,20 @@ sec('12. Unknown routes');
   // collections that are still read-only advertise nothing but GET.
   t('only GET/POST/PUT/DELETE are advertised',
     advertised.every(x => ['GET', 'POST', 'PUT', 'DELETE'].includes(x.split(' ')[0])), advertised);
-  // Appointments left this list in C-3.
-  for (const readOnly of ['job-cards', 'invoices', 'payments',
-    'inventory-transactions', 'settings']) {
+  // Appointments left this list in C-3; the ledger accepts POST as of C-4 and
+  // is asserted separately, since it is append-only rather than read-only.
+  for (const readOnly of ['job-cards', 'invoices', 'payments', 'settings']) {
     t(`${readOnly} advertises GET only`,
       advertised.filter(x => x.endsWith(`/api/${readOnly}`) || x.endsWith(`/api/${readOnly}/:id`))
         .every(x => x.startsWith('GET ')),
       advertised.filter(x => x.includes(`/api/${readOnly}`)));
   }
+
+  t('the ledger advertises POST but never PUT or DELETE',
+    advertised.includes('POST /api/inventory-transactions')
+      && !advertised.includes('PUT /api/inventory-transactions/:id')
+      && !advertised.includes('DELETE /api/inventory-transactions/:id'),
+    advertised.filter(x => x.includes('inventory-transactions')));
 
   const r2 = await get('/api/services/extra/segments');
   t('deep path under services -> 400 or 404, never 500', r2.status === 400 || r2.status === 404, r2.status);
@@ -2148,6 +2162,212 @@ sec('14. Appointment writes: scheduling rules against real D1');
   const finalList = await get('/api/appointments?limit=1000');
   t('the six fixtures plus the one protected appointment remain',
     finalList.body?.total === 7, finalList.body?.total);
+}
+
+sec('15. Inventory movements: atomic stock + ledger, against real D1');
+{
+  // A part of its own, created and removed by this section, so the fixtures'
+  // stock figures are never disturbed.
+  const part = await send('POST', '/api/parts', {
+    name: 'C-4 Movement Part', partNo: 'c4-mv-1', category: 'Filters', unit: 'pc',
+    purchasePrice: 100, sellingPrice: 150, minStock: 0,
+  });
+  t('a part for the movement tests', part.status === 201, part.body);
+  const P = part.body?.data?.id;
+  t('   ...starts at zero stock', part.body?.data?.stock === 0, part.body?.data);
+
+  const move = (body) => send('POST', '/api/inventory-transactions', { partId: P, ...body });
+  const stockOf = async (id = P) => (await get(`/api/parts/${id}`)).body?.data?.stock;
+  const ledgerFor = async (id = P) => {
+    const r = await get('/api/inventory-transactions?limit=1000');
+    return (r.body?.data ?? []).filter((x) => x.partId === id);
+  };
+
+  // ---- inbound ----
+  const inbound = await move({ type: 'purchase', quantity: 10, unitCost: 100, referenceId: 'PO-1' });
+  t('an inbound movement -> 201', inbound.status === 201, inbound.body);
+  t('   ...allocated a real STK id', /^STK-\d{4}$/.test(inbound.body?.data?.id || ''), inbound.body?.data?.id);
+  t('   ...prevStock is the balance before', inbound.body?.data?.prevStock === 0, inbound.body?.data);
+  t('   ...newStock is the balance after', inbound.body?.data?.newStock === 10, inbound.body?.data);
+  t('   ...referenceType is manual', inbound.body?.data?.referenceType === 'manual', inbound.body?.data);
+  t('   ...the manual reference survives', inbound.body?.data?.referenceId === 'PO-1', inbound.body?.data);
+  t('   ...and the part now holds 10', (await stockOf()) === 10, await stockOf());
+  t('   ...in the same shape the GET route returns',
+    JSON.stringify((await get(`/api/inventory-transactions/${inbound.body.data.id}`)).body?.data)
+      === JSON.stringify(inbound.body.data));
+
+  // ---- outbound ----
+  const outbound = await move({ type: 'sale', quantity: 4 });
+  t('an outbound movement -> 201', outbound.status === 201, outbound.body);
+  t('   ...snapshots 10 -> 6',
+    outbound.body?.data?.prevStock === 10 && outbound.body?.data?.newStock === 6, outbound.body?.data);
+  t('   ...and the part now holds 6', (await stockOf()) === 6, await stockOf());
+
+  // ---- every one of the eight types moves the balance the right way ----
+  for (const [type, delta] of [
+    ['purchase', 1], ['adjustment-in', 1], ['return', 1], ['initial-stock', 1],
+    ['sale', -1], ['job-card-use', -1], ['adjustment-out', -1], ['damaged', -1],
+  ]) {
+    const before = await stockOf();
+    const r = await move({ type, quantity: 1 });
+    const after = await stockOf();
+    t(`${type} -> 201`, r.status === 201, r.body);
+    t(`   ...moves stock by ${delta}`, after === before + delta, { before, after });
+    t('   ...and its snapshot agrees', r.body?.data?.prevStock === before
+      && r.body?.data?.newStock === after, r.body?.data);
+  }
+
+  // ---- negative stock protection ----
+  const current = await stockOf();
+  const tooMuch = await move({ type: 'sale', quantity: current + 1 });
+  t('an outbound movement larger than stock -> 409', tooMuch.status === 409, tooMuch.body);
+  t('   ...machine-readable reason', tooMuch.body?.error?.reason === 'insufficient_stock', tooMuch.body?.error);
+  t('   ...reports what is available', tooMuch.body?.error?.available === current, tooMuch.body?.error);
+  t('   ...and what was required', tooMuch.body?.error?.required === current + 1, tooMuch.body?.error);
+  t('   ...stock is unchanged', (await stockOf()) === current, await stockOf());
+  const afterRefusal = await ledgerFor();
+  t('   ...and NO ledger row was written', afterRefusal.every((x) => x.quantity !== current + 1),
+    afterRefusal.map((x) => [x.id, x.quantity]));
+
+  // Taking exactly the whole balance is allowed; one more is not.
+  const exact = await move({ type: 'sale', quantity: current });
+  t('taking exactly the whole balance -> 201', exact.status === 201, exact.body);
+  t('   ...leaving zero', (await stockOf()) === 0, await stockOf());
+  const fromZero = await move({ type: 'sale', quantity: 1 });
+  t('any outbound movement from zero -> 409', fromZero.status === 409, fromZero.body);
+  t('   ...stock never goes negative', (await stockOf()) === 0, await stockOf());
+
+  // ---- an unknown part ----
+  const ghost = await send('POST', '/api/inventory-transactions',
+    { partId: 'PRT-7777', type: 'purchase', quantity: 1 });
+  t('a movement against an unknown part -> 409', ghost.status === 409, ghost.body);
+  t('   ...reason', ghost.body?.error?.reason === 'part_not_found', ghost.body?.error);
+
+  // ---- server-owned fields ----
+  for (const [key, value] of [['prevStock', 99], ['newStock', 99], ['id', 'STK-9999'], ['jobCardId', 'JOB-9001']]) {
+    const r = await move({ type: 'purchase', quantity: 1, [key]: value });
+    t(`\`${key}\` in the body -> 422`, r.status === 422, r.body);
+  }
+  const jobRef = await move({ type: 'job-card-use', quantity: 1, referenceType: 'job-card', referenceId: 'JOB-9001' });
+  t('referenceType job-card -> 422 (C-5 writes those)', jobRef.status === 422, jobRef.body);
+
+  // ---- unit cost keeps null apart from zero, through the real column ----
+  await move({ type: 'purchase', quantity: 5 });
+  const free = await move({ type: 'purchase', quantity: 1, unitCost: 0 });
+  t('a zero unit cost is stored as 0', free.body?.data?.unitCost === 0, free.body?.data);
+  const noCost = await move({ type: 'purchase', quantity: 1 });
+  t('an absent unit cost is stored as null', noCost.body?.data?.unitCost === null, noCost.body?.data);
+
+  /* ---- CONCURRENCY: the reason none of this reads stock first ---- */
+
+  // Reset to a known balance.
+  const toZero = await stockOf();
+  if (toZero > 0) await move({ type: 'adjustment-out', quantity: toZero, reason: 'Recount' });
+  await move({ type: 'adjustment-in', quantity: 10, reason: 'Recount' });
+  t('the race starts from exactly 10', (await stockOf()) === 10, await stockOf());
+
+  // A. 10 in stock, OUT 8 and OUT 7 at once: exactly one may win.
+  {
+    const [a, b] = await Promise.all([
+      move({ type: 'sale', quantity: 8 }),
+      move({ type: 'sale', quantity: 7 }),
+    ]);
+    const codes = [a.status, b.status].sort();
+    t('OUT 8 + OUT 7 on 10: exactly one succeeds',
+      JSON.stringify(codes) === JSON.stringify([201, 409]), { a: a.status, b: b.status });
+    const left = await stockOf();
+    t('   ...the balance is 2 or 3, never negative and never 10',
+      left === 2 || left === 3, left);
+    const loser = a.status === 409 ? a : b;
+    t('   ...the loser says insufficient_stock',
+      loser.body?.error?.reason === 'insufficient_stock', loser.body?.error);
+    const rows = await ledgerFor();
+    const eight = rows.filter((x) => x.quantity === 8 && x.type === 'sale');
+    const seven = rows.filter((x) => x.quantity === 7 && x.type === 'sale');
+    t('   ...exactly one of the two wrote a ledger row',
+      eight.length + seven.length === 1, { eight: eight.length, seven: seven.length });
+  }
+
+  // B. Two outbound movements that exactly consume the balance: both win.
+  {
+    const now = await stockOf();
+    if (now < 10) await move({ type: 'adjustment-in', quantity: 10 - now, reason: 'Recount' });
+    t('reset to 10 for the second race', (await stockOf()) === 10, await stockOf());
+    const [a, b] = await Promise.all([
+      move({ type: 'sale', quantity: 5 }),
+      move({ type: 'sale', quantity: 5 }),
+    ]);
+    t('OUT 5 + OUT 5 on 10: both succeed', a.status === 201 && b.status === 201,
+      { a: a.status, b: b.status });
+    t('   ...and the balance lands on exactly 0', (await stockOf()) === 0, await stockOf());
+    t('   ...their snapshots chain, 10->5 and 5->0',
+      JSON.stringify([a.body.data.prevStock, a.body.data.newStock,
+        b.body.data.prevStock, b.body.data.newStock].sort((x, y) => x - y))
+        === JSON.stringify([0, 5, 5, 10]),
+      [a.body.data, b.body.data].map((d) => [d.prevStock, d.newStock]));
+  }
+
+  // C. Concurrent inbound: no lost update.
+  {
+    await move({ type: 'adjustment-in', quantity: 10, reason: 'Recount' });
+    t('reset to 10 for the inbound race', (await stockOf()) === 10, await stockOf());
+    const [a, b] = await Promise.all([
+      move({ type: 'purchase', quantity: 5 }),
+      move({ type: 'purchase', quantity: 7 }),
+    ]);
+    t('IN 5 + IN 7 on 10: both succeed', a.status === 201 && b.status === 201,
+      { a: a.status, b: b.status });
+    t('   ...and the balance is 22, not 15 or 17', (await stockOf()) === 22, await stockOf());
+    t('   ...neither snapshot claims the same starting balance',
+      a.body.data.prevStock !== b.body.data.prevStock,
+      [a.body.data.prevStock, b.body.data.prevStock]);
+  }
+
+  // D. A larger burst, to show the invariant holds under real contention.
+  {
+    const before = await stockOf();
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => move({ type: i % 2 ? 'purchase' : 'sale', quantity: 2 }))
+    );
+    const won = results.filter((r) => r.status === 201).length;
+    const lost = results.filter((r) => r.status === 409).length;
+    t('12 concurrent movements all resolve as 201 or 409', won + lost === 12, { won, lost });
+    t('   ...and none returned a 5xx', results.every((r) => r.status < 500), results.map((r) => r.status));
+    const after = await stockOf();
+    t('   ...the balance never went negative', after >= 0, after);
+
+    // The ledger must still reconcile: every snapshot is internally consistent,
+    // and the chain of committed movements adds up to the live balance.
+    const rows = (await ledgerFor()).sort((x, y) => x.id.localeCompare(y.id));
+    const consistent = rows.every((r) => {
+      const delta = ['purchase', 'adjustment-in', 'return', 'initial-stock'].includes(r.type)
+        ? r.quantity : -r.quantity;
+      return Math.abs((r.prevStock + delta) - r.newStock) < 1e-9;
+    });
+    t('   ...every ledger row is internally consistent (prev + delta === new)', consistent,
+      rows.filter((r) => {
+        const d = ['purchase', 'adjustment-in', 'return', 'initial-stock'].includes(r.type)
+          ? r.quantity : -r.quantity;
+        return Math.abs((r.prevStock + d) - r.newStock) >= 1e-9;
+      }));
+    const chained = rows.every((r, i) => i === 0 || r.prevStock === rows[i - 1].newStock);
+    t('   ...and the rows chain end to end with no lost update', chained,
+      rows.map((r) => [r.id, r.prevStock, r.newStock]));
+    t('   ...the last snapshot equals the live balance',
+      rows[rows.length - 1].newStock === after, { last: rows[rows.length - 1], after });
+  }
+
+  // ---- tear down: the ledger is append-only, so the rows go with the part ----
+  const blocked = await send('DELETE', `/api/parts/${P}`);
+  t('the part cannot be deleted while it has movements', blocked.status === 409, blocked.body);
+  t('   ...reason', blocked.body?.error?.reason === 'part_in_use', blocked.body?.error);
+  // Clearing the balance is not enough: the movements themselves still block it.
+  const bal = await stockOf();
+  if (bal > 0) await move({ type: 'adjustment-out', quantity: bal, reason: 'Recount' });
+  const stillBlocked = await send('DELETE', `/api/parts/${P}`);
+  t('   ...and still cannot once the balance is zero', stillBlocked.status === 409, stillBlocked.body);
+  t('   ...because the movements remain', (await ledgerFor()).length > 0);
+  // cleanup.sql's sweep removes both, in foreign-key order.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

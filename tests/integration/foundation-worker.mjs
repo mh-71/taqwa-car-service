@@ -168,6 +168,104 @@ export default {
           (await q("UPDATE services SET price = 1 WHERE id = 'SRV-NOPE'").run()).meta.changes === 0);
       }
 
+      /* ---------- C2. the C-4 movement batch rolls back as a unit ---------- */
+      // The inventory route's two statements are the first place in this API
+      // where a half-applied write would corrupt a running balance rather than
+      // just return badly. This runs the SAME shape the route builds and forces
+      // the ledger INSERT to fail, then checks parts.stock did not move.
+      {
+        await q(`INSERT INTO parts (id, name, part_no, category, unit, purchase_price,
+                   selling_price, stock, min_stock, status, created_at)
+                 VALUES ('PRT-9801','Rollback Probe','RB-1','Filters','pc',10,20,10,0,'Active',?1)`,
+          '2026-01-01T00:00:00Z').run();
+        await q(`INSERT INTO inventory_transactions (id, part_id, type, quantity,
+                   reference_type, prev_stock, new_stock, created_at)
+                 VALUES ('STK-9801','PRT-9801','purchase',10,'manual',0,10,?1)`,
+          '2026-01-01T00:00:00Z').run();
+
+        const stockNow = async () => (await q(
+          "SELECT stock FROM parts WHERE id = 'PRT-9801'").first()).stock;
+        const ledgerCount = async () => (await q(
+          "SELECT count(*) n FROM inventory_transactions WHERE part_id = 'PRT-9801'").first()).n;
+
+        t('the probe part starts at 10', (await stockNow()) === 10, await stockNow());
+
+        // A movement whose ledger INSERT violates the primary key. Everything
+        // else about the batch is exactly what the route sends.
+        let threw = null;
+        try {
+          await env.DB.batch([
+            q(`INSERT INTO inventory_transactions
+                 (id, part_id, type, quantity, unit_cost, reference_type, reference_id,
+                  reason, notes, prev_stock, new_stock, created_at)
+               SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, stock, stock + ?10, ?11
+                 FROM parts
+                WHERE id = ?2 AND stock + ?10 >= 0`,
+              'STK-9801', 'PRT-9801', 'sale', 4, null, 'manual', null,
+              '', '', -4, '2026-01-02T00:00:00Z'),   // STK-9801 already exists
+            q(`UPDATE parts SET stock = stock + ?2, updated_at = ?3
+                WHERE id = ?1 AND stock + ?2 >= 0`,
+              'PRT-9801', -4, '2026-01-02T00:00:00Z'),
+          ]);
+        } catch (e) { threw = String((e && e.message) || e); }
+
+        t('a movement whose ledger INSERT fails throws', threw !== null, threw);
+        t('   ...it is a UNIQUE violation', /UNIQUE constraint failed/.test(threw || ''), threw);
+        t('   ...and parts.stock did NOT move', (await stockNow()) === 10, await stockNow());
+        t('   ...and no extra ledger row survives', (await ledgerCount()) === 1, await ledgerCount());
+
+        // The mirror case: the UPDATE is the statement that fails.
+        let threw2 = null;
+        try {
+          await env.DB.batch([
+            q(`INSERT INTO inventory_transactions
+                 (id, part_id, type, quantity, reference_type, prev_stock, new_stock, created_at)
+               SELECT ?1, ?2, 'sale', 4, 'manual', stock, stock - 4, ?3
+                 FROM parts WHERE id = ?2`,
+              'STK-9802', 'PRT-9801', '2026-01-03T00:00:00Z'),
+            // CHECK (stock >= 0) refuses this outright rather than matching no rows.
+            q("UPDATE parts SET stock = -99 WHERE id = ?1", 'PRT-9801'),
+          ]);
+        } catch (e) { threw2 = String((e && e.message) || e); }
+        t('a movement whose stock UPDATE fails throws', threw2 !== null, threw2);
+        t('   ...and the ledger row was rolled back', (await ledgerCount()) === 1, await ledgerCount());
+        t('   ...and stock is still 10', (await stockNow()) === 10, await stockNow());
+
+        // And the ordinary success path commits both halves together.
+        const good = await env.DB.batch([
+          q(`INSERT INTO inventory_transactions
+               (id, part_id, type, quantity, reference_type, prev_stock, new_stock, created_at)
+             SELECT ?1, ?2, 'sale', 4, 'manual', stock, stock + ?3, ?4
+               FROM parts WHERE id = ?2 AND stock + ?3 >= 0`,
+            'STK-9803', 'PRT-9801', -4, '2026-01-04T00:00:00Z'),
+          q(`UPDATE parts SET stock = stock + ?2 WHERE id = ?1 AND stock + ?2 >= 0`,
+            'PRT-9801', -4),
+        ]);
+        t('a valid movement reports one change per statement',
+          good[0].meta.changes === 1 && good[1].meta.changes === 1,
+          good.map((r) => r.meta.changes));
+        t('   ...stock is now 6', (await stockNow()) === 6, await stockNow());
+        const snap = await q("SELECT prev_stock, new_stock FROM inventory_transactions WHERE id = 'STK-9803'").first();
+        t('   ...and the ledger snapshot matches the move',
+          snap.prev_stock === 10 && snap.new_stock === 6, snap);
+
+        // An outbound movement larger than stock matches nothing, both halves.
+        const refused = await env.DB.batch([
+          q(`INSERT INTO inventory_transactions
+               (id, part_id, type, quantity, reference_type, prev_stock, new_stock, created_at)
+             SELECT ?1, ?2, 'sale', 99, 'manual', stock, stock + ?3, ?4
+               FROM parts WHERE id = ?2 AND stock + ?3 >= 0`,
+            'STK-9804', 'PRT-9801', -99, '2026-01-05T00:00:00Z'),
+          q(`UPDATE parts SET stock = stock + ?2 WHERE id = ?1 AND stock + ?2 >= 0`,
+            'PRT-9801', -99),
+        ]);
+        t('an oversized outbound movement changes nothing, in either statement',
+          refused[0].meta.changes === 0 && refused[1].meta.changes === 0,
+          refused.map((r) => r.meta.changes));
+        t('   ...so it commits without a partial write', (await stockNow()) === 6, await stockNow());
+        t('   ...and writes no ledger row', (await ledgerCount()) === 2, await ledgerCount());
+      }
+
       /* ---------- D. the helpers behave the same inside workerd ---------- */
       {
         t('todayInDhaka works in workerd',
@@ -182,12 +280,19 @@ export default {
       /* ---------- cleanup, always ---------- */
       await env.DB.prepare("DELETE FROM services WHERE id LIKE 'SRV-98%'").run();
       await env.DB.prepare("DELETE FROM vehicles WHERE id LIKE 'VEH-989%'").run();
+      // The ledger rows hold an ON DELETE RESTRICT reference to the part, so
+      // they go first.
+      await env.DB.prepare("DELETE FROM inventory_transactions WHERE id LIKE 'STK-98%'").run();
+      await env.DB.prepare("DELETE FROM parts WHERE id LIKE 'PRT-98%'").run();
       await q('UPDATE id_counters SET last_value = ?1 WHERE collection = ?2',
         before.counter, 'services').run();
     }
 
     const left = await nProbe();
     t('every probe row was removed', left === 0, left);
+    t('   ...including the inventory probe rows',
+      (await q("SELECT count(*) n FROM parts WHERE id LIKE 'PRT-98%'").first()).n === 0
+      && (await q("SELECT count(*) n FROM inventory_transactions WHERE id LIKE 'STK-98%'").first()).n === 0);
     t('the services counter was restored',
       (await counter('services')) === before.counter, await counter('services'));
 

@@ -267,30 +267,53 @@ console.log('\n-- 9. Read-only --');
     ok_(`no ${verb} issued at runtime`, !db.calls.some((c) => new RegExp(`\\b${verb}\\b`, 'i').test(c.sql)));
   }
 
-  // Static check with comments stripped: this module's header discusses
-  // move() and the writes it performs, so a naive grep would match prose.
+  // C-4 added POST to this module, so the statics below are scoped to what
+  // they were always protecting: the READ path. The module-wide "no write
+  // verb" claim is replaced by a runtime one that says strictly more --
+  // a GET issues only SELECTs and never runs a batch -- because the module
+  // now legitimately contains an INSERT and an UPDATE inside its POST handler.
+  ok_('a GET runs no batch at all', (db.batches ?? []).length === 0);
+  ok_('a GET never queries parts', !db.calls.some((c) => /\bFROM parts\b/i.test(c.sql)), db.sql);
+  ok_('a GET never touches inventory arithmetic',
+    !db.calls.some((c) => /stock \+|stock -/.test(c.sql)), db.sql);
+
   const raw = readFileSync(join(ROOT, 'src/routes/inventory-transactions.js'), 'utf8');
   const code = raw.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
-  ok_('source contains no write verb outside comments',
-    !/\b(INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER)\b/i.test(code));
+  // Whatever writes the module does contain must be confined to the POST
+  // section: the read half is the header, COLUMNS and toRecord(). The split
+  // is made on the RAW source at the section marker, then comments stripped --
+  // splitting the stripped text would put readFields() (which contains a
+  // `delete` statement) on the wrong side of the line.
+  const postAt = raw.indexOf('/* ---------- POST:');
+  ok_('the module marks where its write half begins', postAt > 0, postAt);
+  const beforePost = raw.slice(0, postAt)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  ok_('the read half of the module contains no write verb',
+    !/\b(INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER)\b/i.test(beforePost), beforePost.slice(-200));
   ok_('the header prose does discuss writes, so the strip matters',
-    /write/i.test(raw) && !/\bINSERT\b/i.test(code));
+    /write/i.test(raw) && !/\bINSERT\b/i.test(beforePost));
   // The export names legitimately contain "Inventory", so check the imports
-  // themselves: the only one may be the shared factory.
+  // themselves: only shared libraries, never the frontend engine.
   const imports = [...code.matchAll(/^\s*import\s+[\s\S]*?from\s+'([^']+)'/gm)].map((m) => m[1]);
-  check('the module imports exactly one thing', imports, ['../lib/collection.js']);
+  check('the module imports only shared libraries', imports.sort(),
+    ['../lib/collection.js', '../lib/http.js', '../lib/write.js']);
   ok_('source never imports the inventory engine or utils', !/utils|Utils/.test(code));
   ok_('source never calls a move()/reconcile()/deduct() helper',
     !/\b(move|reconcileJobInventory|deductForJob|returnForJob)\s*\(/.test(code));
   ok_('source never touches localStorage', !/localStorage/.test(code));
-  ok_('source never reads parts', !/\bparts\b/.test(code.replace(/part_id|partId/g, '')));
+  ok_('the read half never reads parts',
+    !/\bparts\b/.test(beforePost.replace(/part_id|partId/g, '')), beforePost.slice(-200));
+  // And it still invents no aggregate, on either half.
+  ok_('nothing sums or groups the ledger', !/\b(SUM|GROUP BY)\b/i.test(code));
 }
 
 console.log('\n-- 10. Failure modes --');
 {
-  const r405 = await call('/api/inventory-transactions', { DB: stubDB({ rows: [] }) }, { method: 'POST' });
-  check('POST -> 405', r405.status, 405);
-  check('Allow header', r405.headers.get('allow'), 'GET');
+  // C-4 made POST a real route; PUT and DELETE are what the append-only
+  // ledger still refuses, and the Allow header now names POST.
+  const r405 = await call('/api/inventory-transactions', { DB: stubDB({ rows: [] }) }, { method: 'PATCH' });
+  check('PATCH -> 405', r405.status, 405);
+  check('Allow header now names POST', r405.headers.get('allow'), 'GET, POST');
   for (const method of ['PUT', 'PATCH', 'DELETE']) {
     const r = await call('/api/inventory-transactions', { DB: stubDB({ rows: [] }) }, { method });
     ok_(`${method} -> 405`, r.status === 405, `got ${r.status}`);
@@ -323,15 +346,16 @@ console.log('\n-- 11. Route registration --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db })).json()).data.routes;
-  check('health advertises 45 routes', routes.length, 45);
+  check('health advertises 46 routes', routes.length, 46);
   ok_('advertises the ledger list', routes.includes('GET /api/inventory-transactions'));
   ok_('advertises the ledger detail', routes.includes('GET /api/inventory-transactions/:id'));
-  // C-2 added write routes elsewhere; the LEDGER itself must still be
-  // GET-only, because stock moves in C-4 and nowhere else.
-  ok_('the ledger advertises no write route',
-    routes.filter((r) => r.includes('/api/inventory-transactions'))
-      .every((r) => r.startsWith('GET ')),
-    routes.filter((r) => r.includes('/api/inventory-transactions')));
+  // C-4 gave the ledger POST and nothing else: a movement is recorded and
+  // then never edited or removed.
+  ok_('advertises POST', routes.includes('POST /api/inventory-transactions'));
+  ok_('advertises no PUT', !routes.includes('PUT /api/inventory-transactions/:id'));
+  ok_('advertises no DELETE', !routes.includes('DELETE /api/inventory-transactions/:id'));
+  check('exactly three ledger routes',
+    routes.filter((r) => r.includes('/api/inventory-transactions')).length, 3);
   ok_('settings is still the last entry', routes[routes.length - 1] === 'GET /api/settings', routes[routes.length - 1]);
 
   // /api/inventory (the page's own name) is NOT a route — only the ledger is.

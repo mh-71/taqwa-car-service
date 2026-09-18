@@ -343,7 +343,8 @@ console.log('\n-- 11. Routing --');
     'GET /api/payments', 'GET /api/payments/:id',
     'GET /api/expenses', 'POST /api/expenses',
     'GET /api/expenses/:id', 'PUT /api/expenses/:id', 'DELETE /api/expenses/:id',
-    'GET /api/inventory-transactions', 'GET /api/inventory-transactions/:id',
+    'GET /api/inventory-transactions', 'POST /api/inventory-transactions',
+    'GET /api/inventory-transactions/:id',
     // Settings is a singleton: one entry, no /:id.
     'GET /api/settings',
   ]);
@@ -352,7 +353,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 45);
+  check('404 advertises every route', body.error.available.length, 46);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

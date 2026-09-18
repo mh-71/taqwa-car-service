@@ -25,6 +25,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-expenses.test.mjs` | `GET /api/expenses[/:id]`, including that Void rows are returned rather than filtered, no aggregate is invented, and an unconstrained category round-trips |
 | `api-inventory-transactions.test.mjs` | `GET /api/inventory-transactions[/:id]`, including that the ledger is history rather than a balance, no aggregate or per-part rollup is invented, snapshots are returned as stored, and `unitCost` keeps null apart from zero |
 | `api-appointments-write.test.mjs` | `POST`/`PUT`/`DELETE /api/appointments` — overlap scoped to the same mechanic **or** the same vehicle on the half-open interval, duplicate bookings, status transitions out of a terminal status, and the three delete blockers, none of which is a foreign key |
+| `api-inventory-transactions-write.test.mjs` | `POST /api/inventory-transactions` — that no SELECT of the stock precedes the write, that both batch statements carry the same `stock + delta >= 0` guard, that direction is derived from the type server-side, and that `prevStock`/`newStock` are computed in SQL rather than bound |
 | `write-crud.test.mjs` | `POST`/`PUT`/`DELETE` for the six simple entities — that PUT merges rather than replaces, that `stock` is writable nowhere on parts, that an active expense must be voided before it can be deleted, and that a referenced row's 409 comes from the schema's own foreign key |
 | `write-foundation.test.mjs` | `src/lib/write.js` and the two new `http.js` helpers — body parsing, the four field primitives, id formatting, the 409/422 responses, the constraint→status mapping, and the Asia/Dhaka date rule that audit Finding 2 turns on |
 | `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
@@ -96,8 +97,11 @@ is a **test-only Worker entry**, started on `PORT + 1` against the same
 local D1. It exists because `env.DB.batch()` rollback and concurrent
 `UPDATE ... RETURNING` allocation are D1's behaviour rather than ours, and
 no API route reaches them. It is never registered in `src/index.js` and
-never deployed. Its rows use the `SRV-98xx` / `VEH-989x` range, which the
-existing `9%` cleanup already covers.
+never deployed. Its rows use the `SRV-98xx` / `VEH-989x` / `PRT-98xx` /
+`STK-98xx` range, which the existing `9%` cleanup already covers. C-4 added a
+second reason for it: the inventory movement's two-statement batch has to be
+shown rolling back when either half fails, and a route that returns 409
+cleanly can never demonstrate that.
 
 Fixture ids live in the `9xxx` range (`SRV-9001`, `CUS-9001`, `VEH-9001`, …),
 which `id_counters` will not reach until a collection passes 9000 records.

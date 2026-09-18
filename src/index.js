@@ -38,7 +38,7 @@ import {
   listExpenses, getExpense, createExpense, updateExpense, deleteExpense,
 } from './routes/expenses.js';
 import {
-  listInventoryTransactions, getInventoryTransaction,
+  listInventoryTransactions, getInventoryTransaction, createInventoryTransaction,
 } from './routes/inventory-transactions.js';
 // Settings is a singleton the schema enforces (id INTEGER PRIMARY KEY
 // CHECK (id = 1)), so it has no list and no addressable detail. It is
@@ -92,9 +92,12 @@ const COLLECTIONS = {
     list: listExpenses, detail: getExpense,
     create: createExpense, update: updateExpense, remove: deleteExpense,
   },
+  // The ledger is append-only: a movement is recorded (POST) and never edited
+  // or removed, so there is no update or remove here and none is advertised.
   'inventory-transactions': {
     list: listInventoryTransactions,
     detail: getInventoryTransaction,
+    create: createInventoryTransaction,
   },
 };
 

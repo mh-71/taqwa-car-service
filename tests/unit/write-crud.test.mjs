@@ -495,9 +495,10 @@ for (const e of ENTITIES) {
 }
 
 console.log('\n-- 15. The read-only collections are still read-only --');
-// Appointments left this list in C-3; its writes are covered in
-// tests/unit/api-appointments-write.test.mjs.
-for (const e of ['job-cards', 'invoices', 'payments', 'inventory-transactions']) {
+// Appointments left this list in C-3. The ledger left the POST half of it in
+// C-4 -- it accepts a movement but is still append-only, so it is asserted
+// separately below.
+for (const e of ['job-cards', 'invoices', 'payments']) {
   const db = stubDB();
   const res = await post(`/api/${e}`, { anything: 1 }, db);
   ok_(`POST /api/${e} -> 405`, res.status === 405, `got ${res.status}`);
@@ -508,6 +509,18 @@ for (const e of ['job-cards', 'invoices', 'payments', 'inventory-transactions'])
     const r = await call(`/api/${e}/ABC-0001`, { DB: stubDB() }, m, { x: 1 });
     ok_(`${m} /api/${e}/:id -> 405`, r.status === 405, `got ${r.status}`);
     check(`   ...Allow names GET only`, r.headers.get('allow'), 'GET');
+  }
+}
+{
+  // The ledger accepts POST as of C-4 but remains append-only: a recorded
+  // movement is never edited or removed.
+  const db = stubDB();
+  const created = await post('/api/inventory-transactions', { partId: 'PRT-0001' }, db);
+  ok_('POST /api/inventory-transactions is a real route', created.status !== 405, `got ${created.status}`);
+  for (const m of ['PUT', 'DELETE']) {
+    const r = await call('/api/inventory-transactions/STK-0001', { DB: stubDB() }, m, { x: 1 });
+    ok_(`${m} /api/inventory-transactions/:id -> 405`, r.status === 405, `got ${r.status}`);
+    check('   ...Allow names GET only', r.headers.get('allow'), 'GET');
   }
 }
 {
