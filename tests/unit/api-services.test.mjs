@@ -162,13 +162,16 @@ console.log('\n-- 5. List failure modes --');
   check('missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-2 gave this collection writes, so the methods it still refuses are
+// fewer and the Allow header names the new ones. The writes themselves are
+// covered in tests/unit/write-crud.test.mjs.
+for (const m of ['PUT', 'DELETE', 'PATCH']) {
   const res = await call('/api/services', { DB: stubDB({ rows: [] }) }, { method: m });
   ok_(`${m} -> 405`, res.status === 405, `got ${res.status}`);
 }
 {
-  const res = await call('/api/services', { DB: stubDB({ rows: [] }) }, { method: 'POST' });
-  check('405 sets Allow', res.headers.get('allow'), 'GET');
+  const res = await call('/api/services', { DB: stubDB({ rows: [] }) }, { method: 'PATCH' });
+  check('405 Allow now names POST too', res.headers.get('allow'), 'GET, POST');
 }
 
 console.log('\n=== GET /api/services/:id ===');
@@ -268,13 +271,16 @@ console.log('\n-- 9. Detail SQL safety and failure modes --');
   check('missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-2 gave this collection writes, so the methods it still refuses are
+// fewer and the Allow header names the new ones. The writes themselves are
+// covered in tests/unit/write-crud.test.mjs.
+for (const m of ['POST', 'PATCH']) {
   const res = await call('/api/services/SRV-0001', { DB: stubDB({ rows: SEEDED }) }, { method: m });
   ok_(`${m} -> 405`, res.status === 405, `got ${res.status}`);
 }
 {
   const res = await call('/api/services/SRV-0001', { DB: stubDB({ rows: SEEDED }) }, { method: 'POST' });
-  check('405 sets Allow', res.headers.get('allow'), 'GET');
+  check('405 Allow names the write routes', res.headers.get('allow'), 'GET, PUT, DELETE');
 }
 
 /* ---------- 10. the shared abstraction keeps collections distinct ---------- */
@@ -318,16 +324,24 @@ console.log('\n-- 11. Routing --');
   check('health 200', res.status, 200);
   check('health lists every route, in registry order', body.data.routes, [
     'GET /api/health',
-    'GET /api/customers', 'GET /api/customers/:id',
-    'GET /api/vehicles', 'GET /api/vehicles/:id',
-    'GET /api/services', 'GET /api/services/:id',
-    'GET /api/mechanics', 'GET /api/mechanics/:id',
-    'GET /api/parts', 'GET /api/parts/:id',
+    // The six simple entities gained POST/PUT/DELETE in C-2; the rest stay
+    // read-only until their own phases.
+    'GET /api/customers', 'POST /api/customers',
+    'GET /api/customers/:id', 'PUT /api/customers/:id', 'DELETE /api/customers/:id',
+    'GET /api/vehicles', 'POST /api/vehicles',
+    'GET /api/vehicles/:id', 'PUT /api/vehicles/:id', 'DELETE /api/vehicles/:id',
+    'GET /api/services', 'POST /api/services',
+    'GET /api/services/:id', 'PUT /api/services/:id', 'DELETE /api/services/:id',
+    'GET /api/mechanics', 'POST /api/mechanics',
+    'GET /api/mechanics/:id', 'PUT /api/mechanics/:id', 'DELETE /api/mechanics/:id',
+    'GET /api/parts', 'POST /api/parts',
+    'GET /api/parts/:id', 'PUT /api/parts/:id', 'DELETE /api/parts/:id',
     'GET /api/appointments', 'GET /api/appointments/:id',
     'GET /api/job-cards', 'GET /api/job-cards/:id',
     'GET /api/invoices', 'GET /api/invoices/:id',
     'GET /api/payments', 'GET /api/payments/:id',
-    'GET /api/expenses', 'GET /api/expenses/:id',
+    'GET /api/expenses', 'POST /api/expenses',
+    'GET /api/expenses/:id', 'PUT /api/expenses/:id', 'DELETE /api/expenses/:id',
     'GET /api/inventory-transactions', 'GET /api/inventory-transactions/:id',
     // Settings is a singleton: one entry, no /:id.
     'GET /api/settings',
@@ -337,7 +351,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 24);
+  check('404 advertises every route', body.error.available.length, 42);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

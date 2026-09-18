@@ -323,10 +323,15 @@ console.log('\n-- 11. Route registration --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db })).json()).data.routes;
-  check('health advertises 24 routes', routes.length, 24);
+  check('health advertises 42 routes', routes.length, 42);
   ok_('advertises the ledger list', routes.includes('GET /api/inventory-transactions'));
   ok_('advertises the ledger detail', routes.includes('GET /api/inventory-transactions/:id'));
-  ok_('every advertised route is a GET', routes.every((r) => r.startsWith('GET ')));
+  // C-2 added write routes elsewhere; the LEDGER itself must still be
+  // GET-only, because stock moves in C-4 and nowhere else.
+  ok_('the ledger advertises no write route',
+    routes.filter((r) => r.includes('/api/inventory-transactions'))
+      .every((r) => r.startsWith('GET ')),
+    routes.filter((r) => r.includes('/api/inventory-transactions')));
   ok_('settings is still the last entry', routes[routes.length - 1] === 'GET /api/settings', routes[routes.length - 1]);
 
   // /api/inventory (the page's own name) is NOT a route — only the ledger is.
@@ -357,8 +362,9 @@ console.log('\n-- 12. The eleven collections are all now reachable --');
     ok_(`${name} has both routes`,
       routes.includes(`GET /api/${name}`) && routes.includes(`GET /api/${name}/:id`));
   }
-  ok_('11 collections x 2, plus health and settings, is 24',
-    routes.length === 11 * 2 + 2, `${routes.length}`);
+  ok_('11 collections x 2 GET, plus health and settings, is still 24 GETs',
+    routes.filter((r) => r.startsWith('GET ')).length === 11 * 2 + 2,
+    `${routes.filter((r) => r.startsWith('GET ')).length}`);
 }
 
 console.log(`\nGET /api/inventory-transactions unit: ${pass} passed, ${fail} failed`);

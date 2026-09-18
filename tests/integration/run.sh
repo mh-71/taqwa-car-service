@@ -154,19 +154,26 @@ echo "  schema applied"
 # This count is the only thing standing between the suite and a shop's own
 # saved settings: if the table holds anything, the run refuses rather than
 # overwriting it.
+#
+# id_counters is in the sum for the same reason, and it is what makes the
+# counter reset in cleanup.sql safe: the run starts only when every counter is
+# already 0, so putting them back to 0 afterwards restores exactly the state
+# found, never a real shop's sequence.
 say "Checking the local database is clear"
 COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM customers) + (SELECT count(*) FROM vehicles) + (SELECT count(*) FROM mechanics) + (SELECT count(*) FROM parts) + (SELECT count(*) FROM appointments) + (SELECT count(*) FROM job_cards) + (SELECT count(*) FROM job_card_services)
                     + (SELECT count(*) FROM job_card_parts) + (SELECT count(*) FROM invoices)
                     + (SELECT count(*) FROM invoice_services) + (SELECT count(*) FROM invoice_parts)
                     + (SELECT count(*) FROM payments) + (SELECT count(*) FROM expenses)
                     + (SELECT count(*) FROM inventory_transactions)
-                    + (SELECT count(*) FROM settings) AS n" \
+                    + (SELECT count(*) FROM settings)
+                    + (SELECT sum(last_value) FROM id_counters) AS n" \
          | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
 if [ "${COUNTS:-x}" != "0" ]; then
   cat >&2 <<MSG
 REFUSED: the fixture tables (services/customers/vehicles/mechanics/parts/
 appointments/job_cards/invoices/line tables/payments/expenses/settings/
-inventory_transactions) already hold ${COUNTS:-?} row(s).
+inventory_transactions) already hold rows, or id_counters is not at zero:
+${COUNTS:-?}.
 
 This suite asserts exact counts, so it only runs against an empty local
 database, and it will not delete rows it did not insert. Clear the local

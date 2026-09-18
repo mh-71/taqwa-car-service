@@ -16,6 +16,17 @@ async function get(path, init) {
   return { status: res.status, ct: res.headers.get('content-type'), allow: res.headers.get('allow'), body };
 }
 
+/** Same shape as get(), for the write verbs. */
+async function send(method, path, body) {
+  return get(path, {
+    method,
+    ...(body === undefined ? {} : {
+      headers: { 'content-type': 'application/json' },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    }),
+  });
+}
+
 sec('1. Health');
 {
   const r = await get('/api/health');
@@ -24,7 +35,13 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 24 routes', routes.length === 24, routes);
+  t('advertises 42 routes', routes.length === 42, routes);
+  {
+    const byMethod = {};
+    routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
+    t('24 GET, 6 POST, 6 PUT, 6 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 6, PUT: 6, DELETE: 6 }), byMethod);
+  }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
@@ -173,17 +190,21 @@ sec('7. Detail error paths');
 }
 
 sec('8. Method handling');
-for (const m of ['POST','PUT','DELETE','PATCH']) {
+// C-2 added POST here and PUT/DELETE on the detail; the Allow header names
+// them. Section 13 covers the writes themselves.
+for (const m of ['PUT','DELETE','PATCH']) {
   const rl = await get('/api/services', { method: m });
   t(`${m} list -> 405`, rl.status === 405, rl.status);
-  t(`${m} list sets Allow: GET`, rl.allow === 'GET', rl.allow);
+  t(`${m} list Allow names POST`, rl.allow === 'GET, POST', rl.allow);
+}
+for (const m of ['POST','PATCH']) {
   const rd = await get('/api/services/SRV-9001', { method: m });
   t(`${m} detail -> 405`, rd.status === 405, rd.status);
-  t(`${m} detail sets Allow: GET`, rd.allow === 'GET', rd.allow);
+  t(`${m} detail Allow names PUT and DELETE`, rd.allow === 'GET, PUT, DELETE', rd.allow);
 }
 {
   const r = await get('/api/services', { method: 'HEAD' });
-  t('HEAD -> 405 (only GET is implemented)', r.status === 405, r.status);
+  t('HEAD -> 405 (not implemented, write or read)', r.status === 405, r.status);
 }
 
 sec('9. Customers regression — unchanged by the shared factory');
@@ -216,8 +237,9 @@ sec('9. Customers regression — unchanged by the shared factory');
   t('services id on customers route -> 404', dCross.status === 404 && dCross.body?.error?.message === 'No customer with that id.');
   const p = await get('/api/customers?limit=1&offset=1');
   t('customers pagination unchanged', p.body?.count === 1 && p.body?.total === 2 && p.body.data[0].id === 'CUS-9001', p.body);
-  const m405 = await get('/api/customers', { method: 'POST' });
-  t('customers 405 unchanged', m405.status === 405 && m405.allow === 'GET');
+  const m405 = await get('/api/customers', { method: 'PATCH' });
+  t('customers still refuses PATCH, and Allow names POST',
+    m405.status === 405 && m405.allow === 'GET, POST', { status: m405.status, allow: m405.allow });
 }
 
 sec('10. Vehicles regression — unchanged by the shared factory');
@@ -243,8 +265,12 @@ sec('10. Vehicles regression — unchanged by the shared factory');
   t('vehicles 404 message unchanged', d404.status === 404 && d404.body?.error?.message === 'No vehicle with that id.', d404.body?.error);
   const dCross = await get('/api/vehicles/SRV-9001');
   t('services id on vehicles route -> 404', dCross.status === 404 && dCross.body?.error?.message === 'No vehicle with that id.');
-  const m405 = await get('/api/vehicles/VEH-9001', { method: 'DELETE' });
-  t('vehicles 405 unchanged', m405.status === 405 && m405.allow === 'GET');
+  // DELETE is a real route as of C-2; PATCH is the method this path still
+  // refuses. VEH-9001 is a fixture with job cards, so a real DELETE here
+  // would be a 409 — which section 13 covers deliberately.
+  const m405 = await get('/api/vehicles/VEH-9001', { method: 'PATCH' });
+  t('vehicles still refuses PATCH, and Allow names the writes',
+    m405.status === 405 && m405.allow === 'GET, PUT, DELETE', { status: m405.status, allow: m405.allow });
 }
 
 sec('10b. GET /api/mechanics — the new collection, over real HTTP');
@@ -338,11 +364,16 @@ sec('10b. GET /api/mechanics — the new collection, over real HTTP');
   const after = await get('/api/mechanics');
   t('mechanics table intact after injection attempt', after.body?.total === 3, after.body?.total);
 
-  for (const m of ['POST','PUT','DELETE','PATCH']) {
+  // C-2 gave this collection writes, so only the methods it still refuses are
+  // asserted here, and the Allow header now names the new ones. Section 13
+  // covers the writes themselves.
+  for (const m of ['PUT','DELETE','PATCH']) {
     const rl = await get('/api/mechanics', { method: m });
-    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET, POST', { status: rl.status, allow: rl.allow });
+  }
+  for (const m of ['POST','PATCH']) {
     const rd = await get('/api/mechanics/MEC-9001', { method: m });
-    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET, PUT, DELETE', { status: rd.status, allow: rd.allow });
   }
 }
 
@@ -454,11 +485,16 @@ sec('10c. GET /api/parts — stock comes from the column, not the ledger');
   const allAfter = await get('/api/parts');
   t('parts table intact after injection attempt', allAfter.body?.total === 3, allAfter.body?.total);
 
-  for (const m of ['POST','PUT','DELETE','PATCH']) {
+  // C-2 gave this collection writes, so only the methods it still refuses are
+  // asserted here, and the Allow header now names the new ones. Section 13
+  // covers the writes themselves.
+  for (const m of ['PUT','DELETE','PATCH']) {
     const rl = await get('/api/parts', { method: m });
-    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET, POST', { status: rl.status, allow: rl.allow });
+  }
+  for (const m of ['POST','PATCH']) {
     const rd = await get('/api/parts/PRT-9001', { method: m });
-    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET, PUT, DELETE', { status: rd.status, allow: rd.allow });
   }
 
   // B-13 shipped the ledger, so this is derived from what health advertises
@@ -1485,11 +1521,16 @@ sec('10h. GET /api/expenses — stored rows, Void included, no aggregates');
   const allAfter = await get('/api/expenses');
   t('expenses table intact after injection attempts', allAfter.body?.total === 5, allAfter.body?.total);
 
-  for (const m of ['POST','PUT','DELETE','PATCH']) {
+  // C-2 gave this collection writes, so only the methods it still refuses are
+  // asserted here, and the Allow header now names the new ones. Section 13
+  // covers the writes themselves.
+  for (const m of ['PUT','DELETE','PATCH']) {
     const rl = await get('/api/expenses', { method: m });
-    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET, POST', { status: rl.status, allow: rl.allow });
+  }
+  for (const m of ['POST','PATCH']) {
     const rd = await get('/api/expenses/EXP-9001', { method: m });
-    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET, PUT, DELETE', { status: rd.status, allow: rd.allow });
   }
 }
 
@@ -1740,12 +1781,186 @@ sec('12. Unknown routes');
   t('404 advertises exactly what health advertises',
     JSON.stringify(r.body?.error?.available) === JSON.stringify(advertised),
     { from404: r.body?.error?.available, fromHealth: advertised });
-  t('every advertised route is a GET', advertised.every(x => x.startsWith('GET ')), advertised);
+  // True through Phase B; C-2 made it false by design. The replacement says
+  // strictly more: only these four methods are ever advertised, and the
+  // collections that are still read-only advertise nothing but GET.
+  t('only GET/POST/PUT/DELETE are advertised',
+    advertised.every(x => ['GET', 'POST', 'PUT', 'DELETE'].includes(x.split(' ')[0])), advertised);
+  for (const readOnly of ['appointments', 'job-cards', 'invoices', 'payments',
+    'inventory-transactions', 'settings']) {
+    t(`${readOnly} advertises GET only`,
+      advertised.filter(x => x.endsWith(`/api/${readOnly}`) || x.endsWith(`/api/${readOnly}/:id`))
+        .every(x => x.startsWith('GET ')),
+      advertised.filter(x => x.includes(`/api/${readOnly}`)));
+  }
 
   const r2 = await get('/api/services/extra/segments');
   t('deep path under services -> 400 or 404, never 500', r2.status === 400 || r2.status === 404, r2.status);
   const r3 = await get('/nope');
   t('non-api path -> 404', r3.status === 404);
+}
+
+sec('13. Writes: the six simple entities, against real D1');
+{
+  // Everything created here is deleted again before the section ends, and
+  // run.sh resets id_counters afterwards -- see cleanup.sql for why that is
+  // safe. These ids are REAL sequential ones, not 9xxx fixtures.
+  const created = {};
+
+  // ---- create ----
+  const cust = await send('POST', '/api/customers',
+    { name: 'C-2 Write Test', phone: '01911-000111', email: 'w@t.com' });
+  t('POST /api/customers -> 201', cust.status === 201, cust.body);
+  created.customer = cust.body?.data?.id;
+  t('   ...allocated a real CUS id', /^CUS-\d{4}$/.test(created.customer || ''), created.customer);
+  t('   ...created_at was set', !!cust.body?.data?.createdAt, cust.body?.data);
+  t('   ...updated_at absent on create', !('updatedAt' in (cust.body?.data ?? {})), cust.body?.data);
+  t('   ...optional fields defaulted to \'\'', cust.body?.data?.address === '', cust.body?.data);
+
+  // The row is really there, through the read route.
+  const readBack = await get(`/api/customers/${created.customer}`);
+  t('   ...and is readable immediately', readBack.status === 200 && readBack.body?.data?.name === 'C-2 Write Test',
+    readBack.body);
+
+  // ---- sequential ids ----
+  const cust2 = await send('POST', '/api/customers', { name: 'Second', phone: '01911-000222' });
+  t('a second create gets the next id',
+    Number(cust2.body?.data?.id?.slice(4)) === Number(created.customer.slice(4)) + 1,
+    [created.customer, cust2.body?.data?.id]);
+  created.customer2 = cust2.body?.data?.id;
+
+  // ---- application-level uniqueness ----
+  const dup = await send('POST', '/api/customers', { name: 'Clash', phone: '+01911000111' });
+  t('a differently-formatted duplicate phone -> 409', dup.status === 409, dup.body);
+  t('   ...names the existing customer', dup.body?.error?.conflictsWith === created.customer, dup.body);
+
+  // ---- merge ----
+  const merged = await send('PUT', `/api/customers/${created.customer}`, { notes: 'merged note' });
+  t('PUT merges -> 200', merged.status === 200, merged.body);
+  t('   ...the supplied field changed', merged.body?.data?.notes === 'merged note', merged.body?.data);
+  t('   ...the untouched fields survive',
+    merged.body?.data?.name === 'C-2 Write Test' && merged.body?.data?.phone === '01911-000111',
+    merged.body?.data);
+  t('   ...updated_at now set', !!merged.body?.data?.updatedAt, merged.body?.data);
+  t('   ...created_at unchanged', merged.body?.data?.createdAt === cust.body?.data?.createdAt);
+
+  const ghost = await send('PUT', '/api/customers/CUS-7777', { notes: 'x' });
+  t('PUT on an unknown id -> 404', ghost.status === 404, ghost.status);
+
+  // ---- foreign keys are the database's job ----
+  const orphan = await send('POST', '/api/vehicles',
+    { customerId: 'CUS-7777', regNo: 'GHOST-1', brand: 'X', model: 'Y' });
+  t('a vehicle for a missing customer -> 409', orphan.status === 409, orphan.body);
+  t('   ...from the FK, with no table name leaked',
+    orphan.body?.error?.code === 'conflict' && !JSON.stringify(orphan.body).includes('SQLITE'),
+    orphan.body);
+
+  const veh = await send('POST', '/api/vehicles',
+    { customerId: created.customer, regNo: 'DHA-C2-01', brand: 'Toyota', model: 'Axio', year: 2019 });
+  t('POST /api/vehicles -> 201', veh.status === 201, veh.body);
+  created.vehicle = veh.body?.data?.id;
+  t('   ...year survives', veh.body?.data?.year === 2019, veh.body?.data);
+  t('   ...absent nullable numerics are null, not 0', veh.body?.data?.mileage === null, veh.body?.data);
+
+  const regDup = await send('POST', '/api/vehicles',
+    { customerId: created.customer, regNo: 'dha c2 01', brand: 'X', model: 'Y' });
+  t('a normalised duplicate registration -> 409', regDup.status === 409, regDup.body);
+
+  // ---- delete is blocked while referenced ----
+  const blocked = await send('DELETE', `/api/customers/${created.customer}`);
+  t('deleting a customer who still has a vehicle -> 409', blocked.status === 409, blocked.body);
+  const still = await get(`/api/customers/${created.customer}`);
+  t('   ...and the customer is still there', still.status === 200);
+
+  // ---- the rest of the six ----
+  const svc = await send('POST', '/api/services', { name: 'C-2 Service', category: 'Engine', price: 0 });
+  t('POST /api/services with price 0 -> 201', svc.status === 201, svc.body);
+  t('   ...price 0 stored as 0', svc.body?.data?.price === 0, svc.body?.data);
+  created.service = svc.body?.data?.id;
+  // Case-insensitive, trimmed — but NOT whitespace-collapsing, because
+  // services.js:260 compares `s.name.trim().toLowerCase()` and nothing more.
+  const svcDup = await send('POST', '/api/services', { name: '  c-2 service ', category: 'Engine', price: 5 });
+  t('same name+category, different case -> 409', svcDup.status === 409, svcDup.body);
+  const svcOtherCat = await send('POST', '/api/services', { name: 'C-2 Service', category: 'Brakes', price: 5 });
+  t('the same name in another category is allowed', svcOtherCat.status === 201, svcOtherCat.body);
+  created.service2 = svcOtherCat.body?.data?.id;
+
+  const mec = await send('POST', '/api/mechanics',
+    { name: 'C-2 Mechanic', phone: '01811-000111', specialization: 'Engine', experience: 0, commissionRate: 0 });
+  t('POST /api/mechanics -> 201', mec.status === 201, mec.body);
+  t('   ...experience 0 stays 0', mec.body?.data?.experience === 0, mec.body?.data);
+  t('   ...commissionRate 0 stays 0', mec.body?.data?.commissionRate === 0, mec.body?.data);
+  t('   ...absent salary is null', mec.body?.data?.salary === null, mec.body?.data);
+  created.mechanic = mec.body?.data?.id;
+
+  const part = await send('POST', '/api/parts',
+    { name: 'C-2   Part', partNo: 'c2-p-1', category: 'Filters', unit: 'pc',
+      purchasePrice: 100, sellingPrice: 150, minStock: 2 });
+  t('POST /api/parts -> 201', part.status === 201, part.body);
+  t('   ...stock starts at 0', part.body?.data?.stock === 0, part.body?.data);
+  t('   ...partNo upper-cased', part.body?.data?.partNo === 'C2-P-1', part.body?.data);
+  t('   ...name whitespace collapsed', part.body?.data?.name === 'C-2 Part', part.body?.data);
+  created.part = part.body?.data?.id;
+
+  const stockPost = await send('POST', '/api/parts',
+    { name: 'X', partNo: 'c2-p-2', category: 'F', unit: 'pc',
+      purchasePrice: 1, sellingPrice: 2, minStock: 0, stock: 99 });
+  t('POST /api/parts carrying stock -> 422', stockPost.status === 422, stockPost.body);
+  const stockPut = await send('PUT', `/api/parts/${created.part}`, { stock: 50 });
+  t('PUT /api/parts carrying stock -> 422', stockPut.status === 422, stockPut.body);
+  const stockCheck = await get(`/api/parts/${created.part}`);
+  t('   ...and the stored stock is untouched', stockCheck.body?.data?.stock === 0, stockCheck.body?.data);
+  const ledger = await get('/api/inventory-transactions');
+  t('   ...no inventory transaction was written by part CRUD',
+    (ledger.body?.data ?? []).every((x) => x.partId !== created.part), ledger.body?.count);
+
+  const exp = await send('POST', '/api/expenses',
+    { date: '2026-09-18', category: 'Tools', description: 'C-2 wrench', amount: 1500, method: 'Cash' });
+  t('POST /api/expenses -> 201', exp.status === 201, exp.body);
+  t('   ...created Active', exp.body?.data?.status === 'Active', exp.body?.data);
+  created.expense = exp.body?.data?.id;
+
+  const expDel = await send('DELETE', `/api/expenses/${created.expense}`);
+  t('deleting an Active expense -> 409', expDel.status === 409, expDel.body);
+  t('   ...with a machine-readable reason', expDel.body?.error?.reason === 'expense_is_active', expDel.body?.error);
+
+  const expEdit = await send('PUT', `/api/expenses/${created.expense}`, { amount: 99 });
+  t('editing an expense amount -> 422', expEdit.status === 422, expEdit.body);
+
+  const voided = await send('PUT', `/api/expenses/${created.expense}`, { status: 'Void' });
+  t('voiding an expense -> 200', voided.status === 200, voided.body);
+  t('   ...the amount is preserved', voided.body?.data?.amount === 1500, voided.body?.data);
+  t('   ...status is Void', voided.body?.data?.status === 'Void', voided.body?.data);
+
+  // ---- tear down, newest reference first ----
+  const delExp = await send('DELETE', `/api/expenses/${created.expense}`);
+  t('deleting a Void expense -> 200', delExp.status === 200, delExp.body);
+
+  const delPart = await send('DELETE', `/api/parts/${created.part}`);
+  t('deleting an unused part -> 200', delPart.status === 200, delPart.body);
+
+  for (const [label, path] of [
+    ['service', `/api/services/${created.service}`],
+    ['second service', `/api/services/${created.service2}`],
+    ['mechanic', `/api/mechanics/${created.mechanic}`],
+    ['vehicle', `/api/vehicles/${created.vehicle}`],
+    ['customer', `/api/customers/${created.customer}`],
+    ['second customer', `/api/customers/${created.customer2}`],
+  ]) {
+    const r = await send('DELETE', path);
+    t(`deleting the ${label} -> 200`, r.status === 200, r.body);
+    const after = await get(path);
+    t(`   ...and it is gone`, after.status === 404, after.status);
+  }
+
+  // Nothing this section created is left behind.
+  for (const [name, n] of [
+    ['customers', 2], ['vehicles', 2], ['services', 6], ['mechanics', 3],
+    ['parts', 3], ['expenses', 5],
+  ]) {
+    const r = await get(`/api/${name}`);
+    t(`${name} is back to its ${n} fixture rows`, r.body?.total === n, r.body?.total);
+  }
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

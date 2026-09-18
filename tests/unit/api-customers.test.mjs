@@ -162,7 +162,10 @@ console.log('\n-- 5. D1 failure --');
 
 /* ---- 6. method handling ---- */
 console.log('\n-- 6. Methods and routing --');
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-2 gave this collection writes, so the methods it still refuses are
+// fewer and the Allow header names the new ones. The writes themselves are
+// covered in tests/unit/write-crud.test.mjs.
+for (const m of ['PUT', 'DELETE', 'PATCH']) {
   const res = await call('/api/customers', { DB: stubDB({ rows: [] }) }, { method: m });
   ok_(`${m} -> 405`, res.status === 405, `got ${res.status}`);
   if (m === 'POST') {
@@ -314,13 +317,16 @@ console.log('\n-- 13. Detail route: failure modes --');
   check('missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-2 gave this collection writes, so the methods it still refuses are
+// fewer and the Allow header names the new ones. The writes themselves are
+// covered in tests/unit/write-crud.test.mjs.
+for (const m of ['POST', 'PATCH']) {
   const res = await call('/api/customers/CUS-0001', { DB: stubDB({ rows: SEEDED }) }, { method: m });
   ok_(`${m} -> 405`, res.status === 405, `got ${res.status}`);
 }
 {
   const res = await call('/api/customers/CUS-0001', { DB: stubDB({ rows: SEEDED }) }, { method: 'POST' });
-  check('405 sets Allow header', res.headers.get('allow'), 'GET');
+  check('405 Allow names the write routes', res.headers.get('allow'), 'GET, PUT, DELETE');
 }
 
 console.log('\n-- 14. List route regression (unchanged by B-2) --');

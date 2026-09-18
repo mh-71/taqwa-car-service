@@ -10,18 +10,30 @@
    ============================================================ */
 
 import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
-import { listCustomers, getCustomer } from './routes/customers.js';
-import { listVehicles, getVehicle } from './routes/vehicles.js';
-import { listServices, getService } from './routes/services.js';
-import { listMechanics, getMechanic } from './routes/mechanics.js';
-import { listParts, getPart } from './routes/parts.js';
+import {
+  listCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer,
+} from './routes/customers.js';
+import {
+  listVehicles, getVehicle, createVehicle, updateVehicle, deleteVehicle,
+} from './routes/vehicles.js';
+import {
+  listServices, getService, createService, updateService, deleteService,
+} from './routes/services.js';
+import {
+  listMechanics, getMechanic, createMechanic, updateMechanic, deleteMechanic,
+} from './routes/mechanics.js';
+import {
+  listParts, getPart, createPart, updatePart, deletePart,
+} from './routes/parts.js';
 import { listAppointments, getAppointment } from './routes/appointments.js';
 // Job cards have child line tables, so they do not go through collectionRoutes();
 // the module exports the same two handler shapes regardless.
 import { listJobCards, getJobCard } from './routes/job-cards.js';
 import { listInvoices, getInvoice } from './routes/invoices.js';
 import { listPayments, getPayment } from './routes/payments.js';
-import { listExpenses, getExpense } from './routes/expenses.js';
+import {
+  listExpenses, getExpense, createExpense, updateExpense, deleteExpense,
+} from './routes/expenses.js';
 import {
   listInventoryTransactions, getInventoryTransaction,
 } from './routes/inventory-transactions.js';
@@ -36,29 +48,63 @@ import { getSettings } from './routes/settings.js';
  * /api/<name> and a detail at /api/<name>/<id>. Registering them
  * here keeps the path parsing in one place — adding a collection is
  * one line plus its route module, not another branch in the router.
+ *
+ * `create`/`update`/`remove` are optional. A collection that has them
+ * accepts POST on its list path and PUT/DELETE on its detail path; one
+ * that does not answers 405 there, with an Allow header naming only what
+ * it really takes. The six simple entities have writes as of C-2;
+ * appointments, job cards, invoices, payments and the ledger are still
+ * read-only because their writes carry business logic that belongs in
+ * their own phases.
  */
 const COLLECTIONS = {
-  customers: { list: listCustomers, detail: getCustomer },
-  vehicles: { list: listVehicles, detail: getVehicle },
-  services: { list: listServices, detail: getService },
-  mechanics: { list: listMechanics, detail: getMechanic },
-  parts: { list: listParts, detail: getPart },
+  customers: {
+    list: listCustomers, detail: getCustomer,
+    create: createCustomer, update: updateCustomer, remove: deleteCustomer,
+  },
+  vehicles: {
+    list: listVehicles, detail: getVehicle,
+    create: createVehicle, update: updateVehicle, remove: deleteVehicle,
+  },
+  services: {
+    list: listServices, detail: getService,
+    create: createService, update: updateService, remove: deleteService,
+  },
+  mechanics: {
+    list: listMechanics, detail: getMechanic,
+    create: createMechanic, update: updateMechanic, remove: deleteMechanic,
+  },
+  parts: {
+    list: listParts, detail: getPart,
+    create: createPart, update: updatePart, remove: deletePart,
+  },
   appointments: { list: listAppointments, detail: getAppointment },
   'job-cards': { list: listJobCards, detail: getJobCard },
   invoices: { list: listInvoices, detail: getInvoice },
   payments: { list: listPayments, detail: getPayment },
-  expenses: { list: listExpenses, detail: getExpense },
+  expenses: {
+    list: listExpenses, detail: getExpense,
+    create: createExpense, update: updateExpense, remove: deleteExpense,
+  },
   'inventory-transactions': {
     list: listInventoryTransactions,
     detail: getInventoryTransaction,
   },
 };
 
+/** Methods a collection accepts on /api/<name> and on /api/<name>/:id. */
+const listMethods = (c) => (c.create ? ['GET', 'POST'] : ['GET']);
+const detailMethods = (c) => [
+  'GET',
+  ...(c.update ? ['PUT'] : []),
+  ...(c.remove ? ['DELETE'] : []),
+];
+
 const ROUTES = [
   'GET /api/health',
-  ...Object.keys(COLLECTIONS).flatMap((name) => [
-    `GET /api/${name}`,
-    `GET /api/${name}/:id`,
+  ...Object.entries(COLLECTIONS).flatMap(([name, c]) => [
+    ...listMethods(c).map((m) => `${m} /api/${name}`),
+    ...detailMethods(c).map((m) => `${m} /api/${name}/:id`),
   ]),
   // One entry, not two: a singleton has nothing to address. Listed last so
   // the advertised order stays the order the routes shipped in.
@@ -146,8 +192,14 @@ export default {
       const collection = COLLECTIONS[name];
 
       if (collection) {
-        // No trailing segment at all -> the list route.
-        if (rawId === undefined) return collection.list(request, env, url);
+        // No trailing segment at all -> the list path.
+        if (rawId === undefined) {
+          if (request.method === 'GET') return collection.list(request, env, url);
+          if (request.method === 'POST' && collection.create) {
+            return collection.create(request, env);
+          }
+          return methodNotAllowed(listMethods(collection));
+        }
 
         let id;
         try {
@@ -156,7 +208,15 @@ export default {
         } catch {
           return fail('invalid_id', 'Record id is not valid URL encoding.', 400);
         }
-        return collection.detail(request, env, id);
+
+        if (request.method === 'GET') return collection.detail(request, env, id);
+        if (request.method === 'PUT' && collection.update) {
+          return collection.update(request, env, id);
+        }
+        if (request.method === 'DELETE' && collection.remove) {
+          return collection.remove(request, env, id);
+        }
+        return methodNotAllowed(detailMethods(collection));
       }
     }
 

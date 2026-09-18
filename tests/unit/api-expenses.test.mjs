@@ -338,20 +338,25 @@ console.log('\n-- 7. Failure modes --');
   check('detail missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-2 gave expenses POST on the list and PUT/DELETE on the detail, so only
+// the genuinely unsupported methods are asserted here. The writes themselves
+// are covered in tests/unit/write-crud.test.mjs.
+for (const m of ['PUT', 'DELETE', 'PATCH']) {
   const rl = await call('/api/expenses', { DB: stubDB({ rows: SEEDED }) }, { method: m });
   ok_(`${m} list -> 405`, rl.status === 405, `got ${rl.status}`);
+}
+for (const m of ['POST', 'PATCH']) {
   const rd = await call('/api/expenses/EXP-0001', { DB: stubDB({ rows: SEEDED }) }, { method: m });
   ok_(`${m} detail -> 405`, rd.status === 405, `got ${rd.status}`);
 }
 {
-  const rl = await call('/api/expenses', { DB: stubDB({ rows: SEEDED }) }, { method: 'POST' });
-  check('405 sets Allow on the list', rl.headers.get('allow'), 'GET');
-  const rd = await call('/api/expenses/EXP-0001', { DB: stubDB({ rows: SEEDED }) }, { method: 'POST' });
-  check('405 sets Allow on the detail', rd.headers.get('allow'), 'GET');
+  const rl = await call('/api/expenses', { DB: stubDB({ rows: SEEDED }) }, { method: 'PATCH' });
+  check('405 Allow on the list now names POST', rl.headers.get('allow'), 'GET, POST');
+  const rd = await call('/api/expenses/EXP-0001', { DB: stubDB({ rows: SEEDED }) }, { method: 'PATCH' });
+  check('405 Allow on the detail names PUT and DELETE', rd.headers.get('allow'), 'GET, PUT, DELETE');
   const db = stubDB({ rows: SEEDED });
-  await call('/api/expenses', { DB: db }, { method: 'DELETE' });
-  check('a rejected DELETE prepares no statement', db.calls.length, 0);
+  await call('/api/expenses', { DB: db }, { method: 'PATCH' });
+  check('a rejected method prepares no statement', db.calls.length, 0);
 }
 
 console.log('\n=== GET /api/expenses/:id ===');
@@ -500,7 +505,7 @@ console.log('\n-- 12. Routing --');
     body.data.routes.includes('GET /api/expenses')
       && body.data.routes.includes('GET /api/expenses/:id'),
     JSON.stringify(body.data.routes));
-  check('the registry now advertises 24 routes', body.data.routes.length, 24);
+  check('the registry now advertises 42 routes', body.data.routes.length, 42);
 }
 {
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });

@@ -39,6 +39,9 @@
    ============================================================ */
 
 import { collectionRoutes } from '../lib/collection.js';
+import { collectionWrite, fieldSet } from '../lib/collection-write.js';
+import { readString, readNumber, readEnum } from '../lib/write.js';
+import { conflict } from '../lib/http.js';
 
 const COLUMNS = `
   id, name, part_no, category, brand, supplier, location, unit,
@@ -86,6 +89,136 @@ function toRecord(row) {
   };
 }
 
+/* ---------- writes ----------------------------------------------------- */
+
+const STATUSES = ['Active', 'Inactive'];
+
+/**
+ * `stock` is not writable through this route, in either direction.
+ *
+ * B-6 established that parts.stock is the authoritative balance and that the
+ * ledger is its history. The app keeps the two in step through exactly one
+ * door: Utils.Inventory.move() writes the transaction and the new stock
+ * together. inventory.js creates a part with `{ ...master, stock: 0 }`
+ * (:342) and its edit path says "stock deliberately untouched" (:373) --
+ * an opening balance is recorded as a real audited movement, never as a field.
+ *
+ * So a body carrying `stock` is refused by name rather than ignored: silently
+ * dropping it would let a caller believe it had set a balance that the ledger
+ * knows nothing about. Stock moves in C-4, through
+ * POST /api/inventory-transactions, and nowhere else.
+ */
+const STOCK_IS_NOT_WRITABLE =
+  '`stock` cannot be set here. Stock changes are recorded as inventory transactions.';
+
+function readFields(body, mode) {
+  const f = fieldSet(body, mode);
+  const required = mode === 'create';
+
+  if (body.stock !== undefined) f.reject('stock', STOCK_IS_NOT_WRITABLE);
+  // The frontend's own field name for an opening balance, refused for the
+  // same reason: inventory.js turns it into a movement, not a column write.
+  if (body.openingStock !== undefined) f.reject('openingStock', STOCK_IS_NOT_WRITABLE);
+
+  f.take('name', 'name', readString(body, 'name', { required, max: 160 }));
+  f.take('part_no', 'partNo', readString(body, 'partNo', { required, max: 80 }));
+  f.take('category', 'category', readString(body, 'category', { required, max: 80 }));
+  f.take('brand', 'brand', readString(body, 'brand', { max: 80 }));
+  f.take('supplier', 'supplier', readString(body, 'supplier', { max: 160 }));
+  f.take('location', 'location', readString(body, 'location', { max: 80 }));
+  f.take('unit', 'unit', readString(body, 'unit', { required, max: 20 }));
+  f.take('purchase_price', 'purchasePrice', readNumber(body, 'purchasePrice', { required, min: 0 }));
+  f.take('selling_price', 'sellingPrice', readNumber(body, 'sellingPrice', { required, min: 0 }));
+  f.take('min_stock', 'minStock', readNumber(body, 'minStock', { required, min: 0 }));
+  f.take('reorder_qty', 'reorderQty', readNumber(body, 'reorderQty', { min: 0 }));
+  f.take('notes', 'notes', readString(body, 'notes', { max: 1000 }));
+  f.take('status', 'status', readEnum(body, 'status', STATUSES, { fallback: 'Active' }));
+
+  // inventory.js:281-282 normalises both before storing, so the same values
+  // reach the database whichever door they came through.
+  if (f.values.part_no !== undefined) f.values.part_no = f.values.part_no.toUpperCase();
+  if (f.values.name !== undefined) f.values.name = f.values.name.replace(/\s+/g, ' ');
+
+  return f;
+}
+
+/**
+ * inventory.js:298 — one ACTIVE part per part number.
+ *
+ * ux_parts_part_no_active enforces this already, but case-sensitively, while
+ * the form uppercases before comparing. readFields() uppercases too, so the
+ * two now agree; this check exists to name the clashing part the way the form
+ * does, and the index remains the backstop for a race.
+ */
+async function beforeWrite(env, values, { id }) {
+  if (values.part_no === undefined || values.part_no === '') return null;
+
+  const clash = await env.DB.prepare(
+    `SELECT id, name FROM parts
+      WHERE status = 'Active'
+        AND upper(part_no) = ?1
+        AND (?2 IS NULL OR id <> ?2)
+      LIMIT 1`
+  )
+    .bind(values.part_no, id)
+    .first();
+
+  if (clash) {
+    return conflict(`An active part with this part number already exists (${clash.name}).`,
+      { conflictsWith: clash.id, field: 'partNo' });
+  }
+  return null;
+}
+
+/**
+ * inventory.js:548-552 blocks the delete when the part has job-card usage,
+ * stock movements beyond its opening balance, or any stock left. Two of those
+ * three are foreign keys and would raise anyway; all three are read here in
+ * ONE query so the caller learns which rule stopped it rather than getting a
+ * bare constraint failure.
+ */
+async function beforeDelete(env, id) {
+  const state = await env.DB.prepare(
+    `SELECT
+       (SELECT stock FROM parts WHERE id = ?1) AS stock,
+       (SELECT count(*) FROM inventory_transactions
+         WHERE part_id = ?1 AND type <> 'initial-stock') AS movements,
+       (SELECT count(*) FROM job_card_parts WHERE part_id = ?1) AS usage_count`
+  )
+    .bind(id)
+    .first();
+
+  if (!state || state.stock === null) return null;   // let the DELETE 404
+
+  const reasons = [];
+  if (state.usage_count > 0) reasons.push(`${state.usage_count} job card line(s)`);
+  if (state.movements > 0) reasons.push(`${state.movements} stock transaction(s)`);
+  if (Number(state.stock) > 0) reasons.push(`${state.stock} still in stock`);
+
+  if (reasons.length) {
+    return conflict(`This part cannot be deleted: ${reasons.join(', ')}.`, {
+      reason: 'part_in_use',
+      usageCount: state.usage_count,
+      movements: state.movements,
+      stock: state.stock,
+    });
+  }
+  return null;
+}
+
+/**
+ * A part that passes the guard may still own its opening-stock rows, which
+ * hold an ON DELETE RESTRICT reference to it. inventory.js:577-580 removes
+ * those first and then the part; both statements go in one batch so a part is
+ * never left without its ledger, nor a ledger without its part.
+ */
+function deleteStatements(env, id) {
+  return [
+    env.DB.prepare('DELETE FROM inventory_transactions WHERE part_id = ?1').bind(id),
+    env.DB.prepare('DELETE FROM parts WHERE id = ?1').bind(id),
+  ];
+}
+
 const routes = collectionRoutes({
   table: 'parts',
   columns: COLUMNS,
@@ -94,5 +227,21 @@ const routes = collectionRoutes({
   plural: 'parts',
 });
 
+const writes = collectionWrite({
+  table: 'parts',
+  columns: COLUMNS,
+  toRecord,
+  singular: 'part',
+  plural: 'parts',
+  collection: 'parts',
+  readFields,
+  beforeWrite,
+  beforeDelete,
+  deleteStatements,
+});
+
 export const listParts = routes.list;
 export const getPart = routes.detail;
+export const createPart = writes.create;
+export const updatePart = writes.update;
+export const deletePart = writes.remove;

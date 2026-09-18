@@ -387,10 +387,22 @@ console.log('\n-- 14. Route registration --');
   const b = await res.json();
   const routes = b.data.routes;
 
-  check('health advertises 24 routes', routes.length, 24);
+  check('health advertises 42 routes', routes.length, 42);
   ok_('advertises GET /api/settings', routes.includes('GET /api/settings'));
   ok_('does NOT advertise a settings detail route', !routes.includes('GET /api/settings/:id'));
-  ok_('every advertised route is a GET', routes.every((r) => r.startsWith('GET ')));
+  // Was "every route is a GET" through Phase B. C-2 made that false by
+  // design, so the assertion is now the exact method distribution -- which
+  // says strictly more than the old one did.
+  {
+    const byMethod = {};
+    routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
+    check('24 GET, 6 POST, 6 PUT, 6 DELETE', byMethod,
+      { GET: 24, POST: 6, PUT: 6, DELETE: 6 });
+    ok_('no other method is advertised',
+      routes.every((r) => ['GET', 'POST', 'PUT', 'DELETE'].includes(r.split(' ')[0])));
+    ok_('settings itself is GET-only',
+      routes.filter((r) => r.endsWith('/api/settings')).every((r) => r.startsWith('GET ')));
+  }
   check('settings is advertised last', routes[routes.length - 1], 'GET /api/settings');
   ok_('exactly one settings entry', routes.filter((r) => r.includes('/api/settings')).length === 1);
 
@@ -419,13 +431,18 @@ console.log('\n-- 15. The existing ten collections are untouched --');
       routes.includes(`GET /api/${name}`) && routes.includes(`GET /api/${name}/:id`));
   }
   check('health is still first', routes[0], 'GET /api/health');
-  ok_('the 21 pre-existing routes are unchanged',
-    routes.slice(0, 21).join('|') === [
+  // Every GET route Phase B shipped is still advertised, in the same relative
+  // order. C-2 interleaved write routes between them but removed none.
+  {
+    const gets = routes.filter((r) => r.startsWith('GET '));
+    check('all 24 GET routes survive, in order', gets, [
       'GET /api/health',
       ...['customers', 'vehicles', 'services', 'mechanics', 'parts', 'appointments',
-        'job-cards', 'invoices', 'payments', 'expenses']
+        'job-cards', 'invoices', 'payments', 'expenses', 'inventory-transactions']
         .flatMap((n) => [`GET /api/${n}`, `GET /api/${n}/:id`]),
-    ].join('|'), routes.slice(0, 21).join('|'));
+      'GET /api/settings',
+    ]);
+  }
 
   // Settings must not have leaked into the collection registry.
   const listShaped = await call('/api/settings?limit=5&offset=2', { DB: stubDB({ row: FULL }) });

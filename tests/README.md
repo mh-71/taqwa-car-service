@@ -24,6 +24,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-payments.test.mjs` | `GET /api/payments[/:id]`, including the four reference combinations, advance vs voided vs released-advance, and that a GET never reaches into invoices |
 | `api-expenses.test.mjs` | `GET /api/expenses[/:id]`, including that Void rows are returned rather than filtered, no aggregate is invented, and an unconstrained category round-trips |
 | `api-inventory-transactions.test.mjs` | `GET /api/inventory-transactions[/:id]`, including that the ledger is history rather than a balance, no aggregate or per-part rollup is invented, snapshots are returned as stored, and `unitCost` keeps null apart from zero |
+| `write-crud.test.mjs` | `POST`/`PUT`/`DELETE` for the six simple entities — that PUT merges rather than replaces, that `stock` is writable nowhere on parts, that an active expense must be voided before it can be deleted, and that a referenced row's 409 comes from the schema's own foreign key |
 | `write-foundation.test.mjs` | `src/lib/write.js` and the two new `http.js` helpers — body parsing, the four field primitives, id formatting, the 409/422 responses, the constraint→status mapping, and the Asia/Dhaka date rule that audit Finding 2 turns on |
 | `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
@@ -82,10 +83,12 @@ Three safeguards worth knowing about:
 2. **Cleanup runs from an `EXIT` trap**, so fixtures are removed even when a
    test fails or the run is interrupted — then it verifies none are left.
 3. **A 5xx from the Worker fails the run**, even if every assertion passed.
-4. **`id_counters` must total 0 afterwards.** From C-2 onward a write test
-   allocates real sequential ids; deleting the row it created hides that,
-   but the counter it advanced does not reset itself. A non-zero total
-   fails the run.
+4. **`id_counters` must total 0 both before and after.** From C-2 the suite
+   POSTs real records, whose ids are allocated rather than chosen and so fall
+   outside the `9%` range. The preflight therefore also requires every counter
+   to start at 0; that is what makes `cleanup.sql` safe to reset them, and to
+   sweep any real-id row an interrupted write test left behind. Both are
+   restoring the state the run found, never rewinding a real sequence.
 
 `run.sh` has a second phase after the API suite: `foundation-worker.mjs`
 is a **test-only Worker entry**, started on `PORT + 1` against the same

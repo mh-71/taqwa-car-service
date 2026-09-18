@@ -37,3 +37,33 @@ DELETE FROM expenses  WHERE id LIKE 'EXP-9%';
 -- only because run.sh refuses to seed unless the table was empty first, so the
 -- row deleted here is always the row this suite inserted.
 DELETE FROM settings WHERE id = 1;
+
+-- From C-2 the suite also POSTs real records, whose ids are allocated rather
+-- than chosen, so they fall outside the `9%` range every DELETE above targets.
+-- If a run is interrupted part-way through the write section, those rows would
+-- otherwise survive. run.sh refuses to start unless all of these tables are
+-- empty, so at this point anything still present was created by this run and
+-- is safe to remove. Order follows the foreign keys, as above.
+DELETE FROM payments;
+DELETE FROM invoice_services;
+DELETE FROM invoice_parts;
+DELETE FROM job_card_services;
+DELETE FROM job_card_parts;
+DELETE FROM invoices;
+DELETE FROM job_cards;
+DELETE FROM appointments;
+DELETE FROM inventory_transactions;
+DELETE FROM vehicles;
+DELETE FROM customers;
+DELETE FROM services;
+DELETE FROM mechanics;
+DELETE FROM parts;
+DELETE FROM expenses;
+DELETE FROM settings;
+
+-- From C-2 the suite POSTs real records, which draw real sequential ids from
+-- id_counters. Deleting those rows does not rewind the counters, so they are
+-- reset here. This is safe only because run.sh refuses to start unless every
+-- counter is already 0 -- so this restores the state the run found, and can
+-- never rewind a real shop's sequence.
+UPDATE id_counters SET last_value = 0;

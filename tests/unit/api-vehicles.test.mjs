@@ -168,13 +168,16 @@ console.log('\n-- 5. List failure modes --');
   check('missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-2 gave this collection writes, so the methods it still refuses are
+// fewer and the Allow header names the new ones. The writes themselves are
+// covered in tests/unit/write-crud.test.mjs.
+for (const m of ['PUT', 'DELETE', 'PATCH']) {
   const res = await call('/api/vehicles', { DB: stubDB({ rows: [] }) }, { method: m });
   ok_(`${m} -> 405`, res.status === 405, `got ${res.status}`);
 }
 {
-  const res = await call('/api/vehicles', { DB: stubDB({ rows: [] }) }, { method: 'POST' });
-  check('405 sets Allow', res.headers.get('allow'), 'GET');
+  const res = await call('/api/vehicles', { DB: stubDB({ rows: [] }) }, { method: 'PATCH' });
+  check('405 Allow now names POST too', res.headers.get('allow'), 'GET, POST');
 }
 
 console.log('\n=== GET /api/vehicles/:id ===');
@@ -278,13 +281,16 @@ console.log('\n-- 9. Detail SQL safety and failure modes --');
   check('missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-2 gave this collection writes, so the methods it still refuses are
+// fewer and the Allow header names the new ones. The writes themselves are
+// covered in tests/unit/write-crud.test.mjs.
+for (const m of ['POST', 'PATCH']) {
   const res = await call('/api/vehicles/VEH-0001', { DB: stubDB({ rows: SEEDED }) }, { method: m });
   ok_(`${m} -> 405`, res.status === 405, `got ${res.status}`);
 }
 {
   const res = await call('/api/vehicles/VEH-0001', { DB: stubDB({ rows: SEEDED }) }, { method: 'POST' });
-  check('405 sets Allow', res.headers.get('allow'), 'GET');
+  check('405 Allow names the write routes', res.headers.get('allow'), 'GET, PUT, DELETE');
 }
 
 /* ---------- 10. routing regression ---------- */

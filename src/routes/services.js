@@ -15,6 +15,9 @@
    ============================================================ */
 
 import { collectionRoutes } from '../lib/collection.js';
+import { collectionWrite, fieldSet } from '../lib/collection-write.js';
+import { readString, readNumber, readEnum } from '../lib/write.js';
+import { conflict } from '../lib/http.js';
 
 const COLUMNS = `
   id, name, category, description, est_time, price,
@@ -43,6 +46,73 @@ function toRecord(row) {
   };
 }
 
+/* ---------- writes ----------------------------------------------------- */
+
+const STATUSES = ['Active', 'Inactive'];
+
+function readFields(body, mode) {
+  const f = fieldSet(body, mode);
+  const required = mode === 'create';
+
+  f.take('name', 'name', readString(body, 'name', { required, max: 120 }));
+  // services.js:248 requires a category on the form even though the column is
+  // nullable, so the API requires it on create too.
+  f.take('category', 'category', readString(body, 'category', { required, max: 80 }));
+  f.take('description', 'description', readString(body, 'description', { max: 1000 }));
+  // est_time's CHECK is "NULL or > 0": absent stays null, a supplied value
+  // must be positive. services.js:254 says the same.
+  f.take('est_time', 'estTime', readNumber(body, 'estTime', { min: 1, integer: true }));
+  // Price is required on create and defaults to 0 nowhere: services.js:249
+  // treats a blank price as an error rather than a free service.
+  f.take('price', 'price', readNumber(body, 'price', { required, min: 0 }));
+  f.take('status', 'status', readEnum(body, 'status', STATUSES, { fallback: 'Active' }));
+
+  return f;
+}
+
+/**
+ * services.js:260 — one service name per category, compared case-insensitively
+ * and after trimming. Nothing in the schema enforces this, so it is entirely
+ * an application rule and lives here.
+ *
+ * A merge update that changes only one of the pair still has to be judged
+ * against the stored other half, so the row is read when exactly one side is
+ * supplied. That is the one extra SELECT in this file and it only happens on
+ * an update that touches name or category.
+ */
+async function beforeWrite(env, values, { id }) {
+  const touchesName = values.name !== undefined;
+  const touchesCategory = values.category !== undefined;
+  if (!touchesName && !touchesCategory) return null;
+
+  let { name, category } = values;
+  if (id && (name === undefined || category === undefined)) {
+    const current = await env.DB.prepare(
+      'SELECT name, category FROM services WHERE id = ?1'
+    ).bind(id).first();
+    if (!current) return null;            // the UPDATE itself will 404
+    if (name === undefined) name = current.name;
+    if (category === undefined) category = current.category;
+  }
+  if (!name || !category) return null;
+
+  const clash = await env.DB.prepare(
+    `SELECT id FROM services
+      WHERE category = ?1
+        AND lower(trim(name)) = lower(trim(?2))
+        AND (?3 IS NULL OR id <> ?3)
+      LIMIT 1`
+  )
+    .bind(category, name, id)
+    .first();
+
+  if (clash) {
+    return conflict('This service already exists in this category.',
+      { conflictsWith: clash.id, field: 'name' });
+  }
+  return null;
+}
+
 const routes = collectionRoutes({
   table: 'services',
   columns: COLUMNS,
@@ -51,5 +121,22 @@ const routes = collectionRoutes({
   plural: 'services',
 });
 
+// job_card_services.service_id and appointments.service_id are both
+// ON DELETE RESTRICT, which is exactly the "already used in historical
+// records" guard services.js:341 shows. The constraint becomes the 409.
+const writes = collectionWrite({
+  table: 'services',
+  columns: COLUMNS,
+  toRecord,
+  singular: 'service',
+  plural: 'services',
+  collection: 'services',
+  readFields,
+  beforeWrite,
+});
+
 export const listServices = routes.list;
 export const getService = routes.detail;
+export const createService = writes.create;
+export const updateService = writes.update;
+export const deleteService = writes.remove;
