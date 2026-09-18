@@ -24,13 +24,14 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 11 routes', routes.length === 11, routes);
+  t('advertises 13 routes', routes.length === 13, routes);
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
   t('advertises customers routes', routes.includes('GET /api/customers') && routes.includes('GET /api/customers/:id'));
   t('advertises vehicles routes', routes.includes('GET /api/vehicles') && routes.includes('GET /api/vehicles/:id'));
   t('advertises mechanics routes', routes.includes('GET /api/mechanics') && routes.includes('GET /api/mechanics/:id'));
   t('advertises parts routes', routes.includes('GET /api/parts') && routes.includes('GET /api/parts/:id'));
+  t('advertises appointments routes', routes.includes('GET /api/appointments') && routes.includes('GET /api/appointments/:id'));
 }
 
 sec('2. GET /api/services — list');
@@ -458,11 +459,188 @@ sec('10c. GET /api/parts — stock comes from the column, not the ledger');
   }
 }
 
+sec('10d. GET /api/appointments — references stay as ids, values as stored');
+{
+  const SOURCES = ['Admin','Phone','Walk-in','Facebook','Website'];
+  const r = await get('/api/appointments');
+  t('200', r.status === 200, r.status);
+  t('count 6', r.body?.count === 6, r.body?.count);
+  t('total 6', r.body?.total === 6, r.body?.total);
+  t('meta keys match the other collections',
+    JSON.stringify(Object.keys(r.body).sort()) === JSON.stringify(['count','data','limit','offset','total']),
+    Object.keys(r.body));
+  t('newest first by created_at, not by appointment date',
+    JSON.stringify(r.body.data.map(a => a.id)) ===
+      JSON.stringify(['APT-9006','APT-9005','APT-9004','APT-9003','APT-9002','APT-9001']),
+    r.body.data.map(a => a.id));
+
+  const byId = Object.fromEntries(r.body.data.map(a => [a.id, a]));
+
+  const full = byId['APT-9002'];
+  t('full appointment record shape', JSON.stringify(full) === JSON.stringify({
+    id:'APT-9002', customerId:'CUS-9001', vehicleId:'VEH-9001', serviceId:'SRV-9002',
+    mechanicId:'MEC-9001', jobCardId:null, date:'2026-09-21', time:'09:30', duration:60,
+    status:'Confirmed', source:'Phone', complaint:'Battery draining overnight',
+    notes:'Call before arrival', reminderSent:true, createdAt:'2026-09-11T09:00:00',
+    updatedAt:'2026-09-12T10:00:00' }), full);
+  t('camelCase keys only', Object.keys(full).every(k => !k.includes('_')), Object.keys(full));
+
+  const sparse = byId['APT-9001'];
+  t('NULL mechanic_id -> null, not ""', sparse.mechanicId === null, sparse.mechanicId);
+  t('NULL job_card_id -> null, not ""', sparse.jobCardId === null, sparse.jobCardId);
+  t('NULL complaint -> ""', sparse.complaint === '', sparse.complaint);
+  t('NULL notes -> ""', sparse.notes === '', sparse.notes);
+  t('sparse appointment omits updatedAt', !('updatedAt' in sparse), Object.keys(sparse));
+  t('NOT NULL references always present',
+    Boolean(sparse.customerId && sparse.vehicleId && sparse.serviceId),
+    { c: sparse.customerId, v: sparse.vehicleId, s: sparse.serviceId });
+
+  // reminder_sent is INTEGER 0/1 in D1 and a boolean in the app.
+  t('reminder_sent 1 -> true', full.reminderSent === true, full.reminderSent);
+  t('reminder_sent 0 -> false', sparse.reminderSent === false, sparse.reminderSent);
+  t('reminderSent is a boolean over the wire, never 0/1',
+    r.body.data.every(a => typeof a.reminderSent === 'boolean'),
+    r.body.data.map(a => a.reminderSent));
+
+  // Job card link, observed in both states against a real foreign key.
+  const linked = byId['APT-9004'];
+  t('a linked appointment reports its job card id', linked.jobCardId === 'JOB-9001', linked.jobCardId);
+  t('the link is an id, not an embedded job card object', typeof linked.jobCardId === 'string');
+  t('unlinked appointments report null, not the linked id',
+    r.body.data.filter(a => a.jobCardId === null).length === 5,
+    r.body.data.map(a => a.jobCardId));
+
+  // Nothing is joined: no customer/vehicle/service/mechanic/job-card fields.
+  const keys = new Set(r.body.data.flatMap(a => Object.keys(a)));
+  t('no joined customer data', !['customerName','customer','customerPhone'].some(k => keys.has(k)), [...keys]);
+  t('no joined vehicle data', !['vehicleName','vehicle','regNo','brand'].some(k => keys.has(k)), [...keys]);
+  t('no joined service data', !['serviceName','service','price'].some(k => keys.has(k)), [...keys]);
+  t('no joined mechanic data', !['mechanicName','mechanic','salary'].some(k => keys.has(k)), [...keys]);
+  t('no joined job card data', !['jobCard','jobCardStatus','total'].some(k => keys.has(k)), [...keys]);
+  t('exactly the five reference ids',
+    ['customerId','vehicleId','serviceId','mechanicId','jobCardId'].every(k => keys.has(k)), [...keys]);
+
+  // All five canonical sources, returned exactly as stored.
+  const sources = r.body.data.map(a => a.source);
+  t('Admin present', sources.includes('Admin'));
+  t('Phone present', sources.includes('Phone'));
+  t('Walk-in present', sources.includes('Walk-in'));
+  t('Facebook present — not rewritten to Website', sources.includes('Facebook'), sources);
+  t('Website present — not inferred from anything else', sources.includes('Website'), sources);
+  t('every source is canonical', sources.every(s => SOURCES.includes(s)), sources);
+  t('no source gained a suffix', sources.every(s => s === s.trim() && !s.includes('-api')), sources);
+  t('Facebook and Website are distinct rows',
+    byId['APT-9004'].source === 'Facebook' && byId['APT-9005'].source === 'Website');
+
+  // Statuses, returned exactly as stored.
+  const statuses = r.body.data.map(a => a.status);
+  for (const s of ['Scheduled','Confirmed','In Progress','Completed','Cancelled','No Show']) {
+    t(`status "${s}" round-trips`, statuses.includes(s), statuses);
+  }
+  t('"In Progress" keeps its space', byId['APT-9003'].status === 'In Progress', byId['APT-9003'].status);
+  t('"No Show" keeps its space', byId['APT-9006'].status === 'No Show', byId['APT-9006'].status);
+
+  // Date and time: stored text, returned unchanged. Midnight and 23:59 are
+  // where a UTC round trip would move the day for Dhaka (UTC+6).
+  t('midnight stays midnight on its own date',
+    sparse.date === '2026-09-20' && sparse.time === '00:00', { d: sparse.date, t: sparse.time });
+  t('23:59 stays on its own date',
+    linked.date === '2026-09-23' && linked.time === '23:59', { d: linked.date, t: linked.time });
+  t('an early-morning slot is not shifted',
+    byId['APT-9006'].date === '2026-09-25' && byId['APT-9006'].time === '05:30');
+  t('every date is a plain yyyy-mm-dd string',
+    r.body.data.every(a => /^\d{4}-\d{2}-\d{2}$/.test(a.date)), r.body.data.map(a => a.date));
+  t('every time is a plain HH:MM string',
+    r.body.data.every(a => /^\d{2}:\d{2}$/.test(a.time)), r.body.data.map(a => a.time));
+  t('no date became an ISO timestamp',
+    !r.body.data.some(a => a.date.includes('T') || a.date.endsWith('Z')), r.body.data.map(a => a.date));
+  t('duration is always a number', r.body.data.every(a => typeof a.duration === 'number'),
+    r.body.data.map(a => a.duration));
+  t('the 600-minute maximum survives', byId['APT-9006'].duration === 600, byId['APT-9006'].duration);
+
+  // Pagination.
+  const p1 = await get('/api/appointments?limit=2');
+  t('limit=2 returns 2', p1.body?.data?.length === 2, p1.body?.data?.length);
+  t('total still 6', p1.body?.total === 6, p1.body?.total);
+  const p2 = await get('/api/appointments?limit=2&offset=2');
+  t('offset=2 returns the next page',
+    JSON.stringify(p2.body.data.map(a => a.id)) === JSON.stringify(['APT-9004','APT-9003']),
+    p2.body.data.map(a => a.id));
+  t('pages do not overlap', !p2.body.data.some(a => p1.body.data.find(x => x.id === a.id)));
+  const p3 = await get('/api/appointments?offset=99');
+  t('offset past end -> empty array, still 200', p3.status === 200 && p3.body.data.length === 0);
+  const p4 = await get('/api/appointments?limit=1000');
+  t('limit at the maximum accepted', p4.status === 200, p4.status);
+  for (const [q, why] of [['limit=0','limit below min'], ['limit=1001','limit above max'],
+                          ['limit=abc','limit not a number'], ['offset=-1','offset negative']]) {
+    const bad = await get('/api/appointments?' + q);
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_parameter', { q, status: bad.status });
+  }
+
+  // Detail.
+  const d = await get('/api/appointments/APT-9002');
+  t('detail 200', d.status === 200, d.status);
+  t('detail matches the list record', JSON.stringify(d.body.data) === JSON.stringify(full));
+  t('no list meta on detail', d.body.count === undefined && d.body.limit === undefined);
+  const dLinked = await get('/api/appointments/APT-9004');
+  t('linked detail reports the job card id', dLinked.body?.data?.jobCardId === 'JOB-9001', dLinked.body?.data?.jobCardId);
+  const dSparse = await get('/api/appointments/APT-9001');
+  t('sparse detail keeps mechanicId null', dSparse.body?.data?.mechanicId === null, dSparse.body?.data?.mechanicId);
+
+  const d404 = await get('/api/appointments/APT-8888');
+  t('unknown id -> 404', d404.status === 404, d404.status);
+  t('404 message names an appointment',
+    d404.body?.error?.message === 'No appointment with that id.', d404.body?.error?.message);
+  // Every id this appointment actually references is well-formed but elsewhere.
+  for (const other of ['CUS-9001','VEH-9001','SRV-9001','MEC-9001','JOB-9001','PRT-9001']) {
+    const x = await get('/api/appointments/' + other);
+    t(`${other} on the appointments route -> 404, not 400`, x.status === 404, x.status);
+  }
+  const aOnPart = await get('/api/parts/APT-9001');
+  t('appointment id on the parts route -> 404',
+    aOnPart.status === 404 && aOnPart.body?.error?.message === 'No part with that id.');
+
+  for (const [id, why] of [['nonsense','no prefix shape'], ['APT-','no number'], ['-9001','no prefix'],
+                           ['APPOINTMENT-9001','prefix too long'], ['A-1','prefix too short']]) {
+    const bad = await get('/api/appointments/' + encodeURIComponent(id));
+    t(`${why} -> 400`, bad.status === 400 && bad.body?.error?.code === 'invalid_id', { id, status: bad.status });
+  }
+  const dEmpty = await get('/api/appointments/');
+  t('trailing slash -> 400', dEmpty.status === 400 && dEmpty.body?.error?.code === 'invalid_id');
+  const dEsc = await fetch(BASE + '/api/appointments/%zz');
+  t('malformed percent-escape -> 400', dEsc.status === 400, dEsc.status);
+
+  // An injection that would rewrite a source, and one that would cancel
+  // everything, with the data re-read afterwards to prove neither landed.
+  const injSource = await get('/api/appointments/' + encodeURIComponent("APT-9004'; UPDATE appointments SET source='Website' --"));
+  t('source-rewriting injection rejected -> 400', injSource.status === 400, injSource.status);
+  const injStatus = await get('/api/appointments/' + encodeURIComponent("APT-9001'; UPDATE appointments SET status='Cancelled' --"));
+  t('status-rewriting injection rejected -> 400', injStatus.status === 400, injStatus.status);
+  const after = await get('/api/appointments');
+  t('Facebook source survived the injection attempt',
+    after.body.data.find(a => a.id === 'APT-9004')?.source === 'Facebook');
+  t('statuses survived the injection attempt',
+    after.body.data.filter(a => a.status === 'Cancelled').length === 1,
+    after.body.data.map(a => a.status));
+  t('appointments table intact after injection attempts', after.body?.total === 6, after.body?.total);
+
+  for (const m of ['POST','PUT','DELETE','PATCH']) {
+    const rl = await get('/api/appointments', { method: m });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    const rd = await get('/api/appointments/APT-9002', { method: m });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+  }
+
+  // Job cards are not exposed in this phase, even though a row exists.
+  const jc = await get('/api/job-cards');
+  t('/api/job-cards is not a route -> 404', jc.status === 404, jc.status);
+}
+
 sec('11. Collections stay separate over the wire');
 {
-  const [s, c, v, m, p] = await Promise.all([
+  const [s, c, v, m, p, a] = await Promise.all([
     get('/api/services'), get('/api/customers'), get('/api/vehicles'),
-    get('/api/mechanics'), get('/api/parts')]);
+    get('/api/mechanics'), get('/api/parts'), get('/api/appointments')]);
   t('services returns only SRV ids', s.body.data.every(x => x.id.startsWith('SRV-')));
   t('customers returns only CUS ids', c.body.data.every(x => x.id.startsWith('CUS-')));
   t('vehicles returns only VEH ids', v.body.data.every(x => x.id.startsWith('VEH-')));
@@ -477,6 +655,12 @@ sec('11. Collections stay separate over the wire');
     ![...s.body.data, ...c.body.data, ...v.body.data, ...m.body.data].some(x => 'stock' in x));
   t('parts rows carry no salary or service fields',
     !p.body.data.some(x => 'salary' in x || 'estTime' in x));
+  t('appointments returns only APT ids', a.body.data.every(x => x.id.startsWith('APT-')));
+  t('no other collection carries a source or reminderSent',
+    ![...s.body.data, ...c.body.data, ...v.body.data, ...m.body.data, ...p.body.data]
+      .some(x => 'source' in x || 'reminderSent' in x));
+  t('appointments rows carry no stock or salary',
+    !a.body.data.some(x => 'stock' in x || 'salary' in x));
   t('salary never appears outside mechanics',
     ![...s.body.data, ...c.body.data, ...v.body.data].some(x => 'salary' in x || 'commissionRate' in x));
 }

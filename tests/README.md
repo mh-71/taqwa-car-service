@@ -18,6 +18,7 @@ Two kinds, deliberately separated by what they need to run.
 | `api-services.test.mjs` | `GET /api/services[/:id]`, plus the one exact check of the full route list |
 | `api-mechanics.test.mjs` | `GET /api/mechanics[/:id]`, including the null-versus-zero rule for salary and commission |
 | `api-parts.test.mjs` | `GET /api/parts[/:id]`, including that stock is read from the column and never derived from the ledger |
+| `api-appointments.test.mjs` | `GET /api/appointments[/:id]`, including that references stay as ids, all five sources and six statuses round-trip verbatim, and date/time are never converted |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
 | `finding7.test.cjs` | Audit Finding 7 — voiding an invoice releases its payments |
@@ -48,8 +49,8 @@ Drop a file in `tests/unit/` named `<name>.test.mjs` or `<name>.test.cjs`.
 The runner discovers it — there is no list to update. Print a final
 `<label>: N passed, M failed` line and `process.exit(fail ? 1 : 0)`.
 
-For a new collection's API suite, copy `api-parts.test.mjs`: it is the newest
-and exercises the shared factory in `src/lib/collection.js` most fully.
+For a new collection's API suite, copy `api-appointments.test.mjs`: it is the
+newest and exercises the shared factory in `src/lib/collection.js` most fully.
 Assert only your own collection's routes. The single exact full-route-list
 check is kept in `api-services.test.mjs` — one designated suite, so adding a
 collection means editing two lines in one file rather than every suite.
@@ -72,7 +73,7 @@ Three safeguards worth knowing about:
    test fails or the run is interrupted — then it verifies none are left.
 3. **A 5xx from the Worker fails the run**, even if every assertion passed.
 
-Fixture ids live in the `9xxx` range (`SRV-9001`, `CUS-9001`, `VEH-9001`),
+Fixture ids live in the `9xxx` range (`SRV-9001`, `CUS-9001`, `VEH-9001`, …),
 which `id_counters` will not reach until a collection passes 9000 records.
 
 First run needs the schema:
