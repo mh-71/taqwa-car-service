@@ -152,20 +152,65 @@
     return { ok: true, invoice };
   }
 
-  /** Void an invoice (soft-cancel). Clears the Job Card's invoiceId if it still points here. */
+  /** Non-Void payments currently linked to an invoice. */
+  function linkedActivePayments(invoiceId) {
+    return Storage.getData('payments')
+      .filter(p => p.invoiceId === invoiceId && p.status !== 'Void')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id));
+  }
+
+  /**
+   * Void an invoice (soft-cancel).
+   *
+   * Voiding cancels the DOCUMENT, never the money. Money that was actually
+   * collected stays collected: each linked payment keeps its amount, date,
+   * method and customer, and is RELEASED back to an advance (invoiceId null)
+   * so it remains reachable by Payments' "Link to Invoice" flow and can be
+   * applied to a corrected invoice. Voiding the payments instead would assert
+   * the cash never arrived, which Payments -- the source of truth for what was
+   * collected -- would then contradict.
+   *
+   * The invoice's own paid/due are deliberately NOT erased: they stay frozen
+   * as the historical record of what this invoice had collected before it was
+   * cancelled, and the delete guard in openDeleteModal() depends on them.
+   *
+   * Also clears the Job Card's invoiceId if it still points here, returning
+   * the job to its un-invoiced state so a corrected invoice can be issued.
+   *
+   * Payments are reached through the public Storage API only -- the same way
+   * this module already updates Job Cards (payments.js and invoices.js never
+   * load on the same page, so neither can call into the other).
+   *
+   * Returns { ok: true, released } where `released` lists the payments that
+   * became advances, so the caller can report exactly what moved.
+   */
   function voidInvoice(id) {
     const inv = Storage.getById('invoices', id);
     if (!inv) return { ok: false, reason: 'Invoice not found.' };
     if (inv.status === 'Void') return { ok: false, reason: 'Invoice is already void.' };
 
+    // Read the links before the status flips, while the invoice is still live.
+    const released = linkedActivePayments(id);
+
     Storage.updateData('invoices', id, { status: 'Void' });
+
+    released.forEach(p => {
+      Storage.updateData('payments', p.id, {
+        invoiceId: null,
+        // A payment recorded against an invoice carries no jobCardId of its
+        // own, so inherit the invoice's: without it Reports can no longer
+        // trace the collection to a Job Card, and therefore to a mechanic.
+        jobCardId: p.jobCardId || inv.jobCardId || null
+      });
+    });
+
     if (inv.jobCardId) {
       const job = Storage.getById('jobCards', inv.jobCardId);
       if (job && job.invoiceId === id) {
         Storage.updateData('jobCards', inv.jobCardId, { invoiceId: null });
       }
     }
-    return { ok: true };
+    return { ok: true, released };
   }
 
   /* ---------- summary cards ---------- */
@@ -368,17 +413,59 @@
   function openVoidModal(id) {
     const inv = Storage.getById('invoices', id);
     if (!inv) return;
-    Modal.confirm({
+    const linked = linkedActivePayments(id);
+
+    const apply = () => {
+      const res = voidInvoice(id);
+      if (!res.ok) { toast(res.reason || 'Could not void invoice.', 'error'); return; }
+      refresh();
+      const n = (res.released || []).length;
+      toast(n
+        ? `Invoice ${id} voided. ${n} payment${n > 1 ? 's' : ''} released as advances.`
+        : `Invoice ${id} voided.`, 'warning');
+    };
+
+    const intro = `Void <strong>${esc(inv.id)}</strong> for ${esc(custName(inv.customerId))}? The invoice record is kept for
+                   history but marked Void, and its Job Card becomes eligible for a corrected invoice. This cannot be undone.`;
+
+    // No payments on this invoice -- keep the confirmation simple.
+    if (!linked.length) {
+      Modal.confirm({ title: 'Void invoice?', message: intro, confirmText: 'Void Invoice', onConfirm: apply });
+      return;
+    }
+
+    // Payments exist -- say exactly which ones move, and where they go.
+    const releasedTotal = linked.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const ov = Modal.open({
       title: 'Void invoice?',
-      message: `Void <strong>${esc(inv.id)}</strong> for ${esc(custName(inv.customerId))}? The invoice record is kept for
-                history but marked Void, and its Job Card becomes eligible for a corrected invoice. This cannot be undone.`,
-      confirmText: 'Void Invoice',
-      onConfirm: () => {
-        const res = voidInvoice(id);
-        if (!res.ok) { toast(res.reason || 'Could not void invoice.', 'error'); return; }
-        refresh();
-        toast(`Invoice ${id} voided.`, 'warning');
-      }
+      body: `
+        <p style="margin:0">${intro}</p>
+        <p style="margin:14px 0 8px">
+          ${linked.length === 1 ? 'This payment' : `These ${linked.length} payments`}
+          (<strong>${money(releasedTotal)}</strong>) will be kept and released as
+          <strong>Advance Payments</strong>:
+        </p>
+        <div class="table-wrap"><table class="table table--compact">
+          <thead><tr><th>Payment</th><th>Date</th><th>Method</th><th class="num">Amount</th></tr></thead>
+          <tbody>${linked.map(p => `
+            <tr>
+              <td class="cell-main">${esc(p.id)}</td>
+              <td>${fmtDate(p.date)}</td>
+              <td>${esc(p.method)}</td>
+              <td class="num">${money(p.amount)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+        <p style="margin:12px 0 0;color:var(--text-2);font-size:.84rem">
+          No money is written off. Each stays on the books as collected revenue and can be
+          re-applied to a replacement invoice from Payments &rarr; Link to Invoice.
+        </p>`,
+      footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
+               <button class="btn btn--danger" data-confirm-void>Void Invoice</button>`
+    });
+    ov.querySelector('[data-confirm-void]').addEventListener('click', () => {
+      Modal.close();
+      apply();
     });
   }
 

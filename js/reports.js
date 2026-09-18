@@ -156,19 +156,28 @@
     };
   }
 
-  /** Invoice paid/due recomputed live from non-Void Payments -- never trusted from the stored field, per spec. A Void invoice's numbers are shown as the frozen historical record instead (there's nothing live to recompute for a cancelled invoice). */
+  /**
+   * Invoice paid/due recomputed live from non-Void Payments -- never trusted
+   * from the stored field, per spec, for a Void invoice as much as a live one.
+   *
+   * Voiding an invoice releases its payments back to advances (invoices.js),
+   * so a Void invoice normally has nothing linked and its live collected
+   * figure is 0, while the money itself stays in the Revenue report and in
+   * Payments' Outstanding Advances. Reading its FROZEN `paid` here instead
+   * would count the same cash twice -- once against the cancelled invoice and
+   * again against the advance, or the replacement invoice it is re-applied to.
+   * That frozen figure stays on the invoice record as history; it is simply
+   * not a live collection. A Void invoice is never owed, so liveDue stays 0.
+   */
   function computeInvoiceReport(range) {
     const invoices = Storage.getData('invoices').filter(i => inRange(i.date, range));
     const allPayments = Storage.getData('payments');
     const rows = invoices.map(inv => {
-      if (inv.status === 'Void') {
-        return { ...inv, livePaid: inv.paid, liveDue: 0 };
-      }
       const total = Number(inv.total) || 0;
       const paid = Math.min(total, allPayments
         .filter(p => p.invoiceId === inv.id && p.status !== 'Void')
         .reduce((s, p) => s + (Number(p.amount) || 0), 0));
-      return { ...inv, livePaid: paid, liveDue: Math.max(total - paid, 0) };
+      return { ...inv, livePaid: paid, liveDue: inv.status === 'Void' ? 0 : Math.max(total - paid, 0) };
     });
     return {
       rows,
