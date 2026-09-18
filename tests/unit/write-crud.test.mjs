@@ -495,7 +495,9 @@ for (const e of ENTITIES) {
 }
 
 console.log('\n-- 15. The read-only collections are still read-only --');
-for (const e of ['appointments', 'job-cards', 'invoices', 'payments', 'inventory-transactions']) {
+// Appointments left this list in C-3; its writes are covered in
+// tests/unit/api-appointments-write.test.mjs.
+for (const e of ['job-cards', 'invoices', 'payments', 'inventory-transactions']) {
   const db = stubDB();
   const res = await post(`/api/${e}`, { anything: 1 }, db);
   ok_(`POST /api/${e} -> 405`, res.status === 405, `got ${res.status}`);

@@ -10,6 +10,37 @@
 -- collection passes 9000 records -- at which point the fixture ids must move.
 -- payments hold RESTRICT references to both invoices and job_cards, so they go
 -- before either.
+-- ---------------------------------------------------------------------------
+-- The sweep runs FIRST, and it has to.
+-- ---------------------------------------------------------------------------
+-- From C-2 the suite POSTs real records, whose ids are allocated rather than
+-- chosen and so fall outside the `9%` range the targeted deletes below use.
+-- Those real-id rows hold ON DELETE RESTRICT references to the fixtures --
+-- an appointment created by a test points at SRV-9001 -- so removing the
+-- fixtures while they still exist fails on a foreign key and aborts the whole
+-- file, leaving everything behind. Clearing them first makes the targeted
+-- deletes below harmless no-ops that still document what the suite inserts.
+--
+-- run.sh refuses to start unless all of these tables are empty, so anything
+-- present here was created by this run and is safe to remove. Order follows
+-- the foreign keys.
+DELETE FROM payments;
+DELETE FROM invoice_services;
+DELETE FROM invoice_parts;
+DELETE FROM job_card_services;
+DELETE FROM job_card_parts;
+DELETE FROM invoices;
+DELETE FROM job_cards;
+DELETE FROM appointments;
+DELETE FROM inventory_transactions;
+DELETE FROM vehicles;
+DELETE FROM customers;
+DELETE FROM services;
+DELETE FROM mechanics;
+DELETE FROM parts;
+DELETE FROM expenses;
+DELETE FROM settings;
+
 DELETE FROM payments WHERE id LIKE 'PAY-9%';
 -- Child lines cascade from their parent, but they are removed explicitly so a
 -- partial fixture (lines without their parent) is still cleaned up.
@@ -38,28 +69,7 @@ DELETE FROM expenses  WHERE id LIKE 'EXP-9%';
 -- row deleted here is always the row this suite inserted.
 DELETE FROM settings WHERE id = 1;
 
--- From C-2 the suite also POSTs real records, whose ids are allocated rather
--- than chosen, so they fall outside the `9%` range every DELETE above targets.
--- If a run is interrupted part-way through the write section, those rows would
--- otherwise survive. run.sh refuses to start unless all of these tables are
--- empty, so at this point anything still present was created by this run and
--- is safe to remove. Order follows the foreign keys, as above.
-DELETE FROM payments;
-DELETE FROM invoice_services;
-DELETE FROM invoice_parts;
-DELETE FROM job_card_services;
-DELETE FROM job_card_parts;
-DELETE FROM invoices;
-DELETE FROM job_cards;
-DELETE FROM appointments;
-DELETE FROM inventory_transactions;
-DELETE FROM vehicles;
-DELETE FROM customers;
-DELETE FROM services;
-DELETE FROM mechanics;
-DELETE FROM parts;
-DELETE FROM expenses;
-DELETE FROM settings;
+
 
 -- From C-2 the suite POSTs real records, which draw real sequential ids from
 -- id_counters. Deleting those rows does not rewind the counters, so they are

@@ -336,7 +336,8 @@ console.log('\n-- 11. Routing --');
     'GET /api/mechanics/:id', 'PUT /api/mechanics/:id', 'DELETE /api/mechanics/:id',
     'GET /api/parts', 'POST /api/parts',
     'GET /api/parts/:id', 'PUT /api/parts/:id', 'DELETE /api/parts/:id',
-    'GET /api/appointments', 'GET /api/appointments/:id',
+    'GET /api/appointments', 'POST /api/appointments',
+    'GET /api/appointments/:id', 'PUT /api/appointments/:id', 'DELETE /api/appointments/:id',
     'GET /api/job-cards', 'GET /api/job-cards/:id',
     'GET /api/invoices', 'GET /api/invoices/:id',
     'GET /api/payments', 'GET /api/payments/:id',
@@ -351,7 +352,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 42);
+  check('404 advertises every route', body.error.available.length, 45);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

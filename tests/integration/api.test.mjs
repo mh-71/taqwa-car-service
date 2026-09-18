@@ -35,12 +35,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 42 routes', routes.length === 42, routes);
+  t('advertises 45 routes', routes.length === 45, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('24 GET, 6 POST, 6 PUT, 6 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 6, PUT: 6, DELETE: 6 }), byMethod);
+    t('24 GET, 7 POST, 7 PUT, 7 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 7, PUT: 7, DELETE: 7 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -681,11 +681,15 @@ sec('10d. GET /api/appointments — references stay as ids, values as stored');
     after.body.data.map(a => a.status));
   t('appointments table intact after injection attempts', after.body?.total === 6, after.body?.total);
 
-  for (const m of ['POST','PUT','DELETE','PATCH']) {
+  // C-3 gave appointments writes; only the methods it still refuses are
+  // asserted here. Section 14 covers the writes themselves.
+  for (const m of ['PUT','DELETE','PATCH']) {
     const rl = await get('/api/appointments', { method: m });
-    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET, POST', { status: rl.status, allow: rl.allow });
+  }
+  for (const m of ['POST','PATCH']) {
     const rd = await get('/api/appointments/APT-9002', { method: m });
-    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET, PUT, DELETE', { status: rd.status, allow: rd.allow });
   }
 
   // The appointment's job card link is an id; the job card itself is a
@@ -1786,7 +1790,8 @@ sec('12. Unknown routes');
   // collections that are still read-only advertise nothing but GET.
   t('only GET/POST/PUT/DELETE are advertised',
     advertised.every(x => ['GET', 'POST', 'PUT', 'DELETE'].includes(x.split(' ')[0])), advertised);
-  for (const readOnly of ['appointments', 'job-cards', 'invoices', 'payments',
+  // Appointments left this list in C-3.
+  for (const readOnly of ['job-cards', 'invoices', 'payments',
     'inventory-transactions', 'settings']) {
     t(`${readOnly} advertises GET only`,
       advertised.filter(x => x.endsWith(`/api/${readOnly}`) || x.endsWith(`/api/${readOnly}/:id`))
@@ -1961,6 +1966,188 @@ sec('13. Writes: the six simple entities, against real D1');
     const r = await get(`/api/${name}`);
     t(`${name} is back to its ${n} fixture rows`, r.body?.total === n, r.body?.total);
   }
+}
+
+sec('14. Appointment writes: scheduling rules against real D1');
+{
+  // Each scenario gets its OWN far-future date. Sharing one date made every
+  // scenario a neighbour of every other, which is exactly the interference
+  // the overlap rule is designed to catch -- correct behaviour, useless test.
+  const made = [];
+  const book = (date, body) => send('POST', '/api/appointments', {
+    customerId: 'CUS-9001', vehicleId: 'VEH-9001', serviceId: 'SRV-9001',
+    mechanicId: 'MEC-9001', date, time: '10:00', duration: 60, source: 'Phone',
+    ...body,
+  });
+  const keep = (r) => { if (r.status === 201 && r.body?.data?.id) made.push(r.body.data.id); return r; };
+
+  // ---- 1. create ----------------------------------------------------------
+  const D1 = '2099-01-05';
+  const first = keep(await book(D1, {}));
+  t('POST /api/appointments -> 201', first.status === 201, first.body);
+  const firstId = first.body?.data?.id;
+  t('   ...allocated a real APT id', /^APT-\d{4}$/.test(firstId || ''), firstId);
+  t('   ...status defaults to Scheduled', first.body?.data?.status === 'Scheduled', first.body?.data);
+  t('   ...reminderSent is a boolean, not 0', first.body?.data?.reminderSent === false, first.body?.data);
+  t('   ...jobCardId is null', first.body?.data?.jobCardId === null, first.body?.data);
+  t('   ...date and time stored verbatim',
+    first.body?.data?.date === D1 && first.body?.data?.time === '10:00', first.body?.data);
+  t('   ...createdAt set, updatedAt absent',
+    !!first.body?.data?.createdAt && !('updatedAt' in (first.body?.data ?? {})), first.body?.data);
+  const readBack = await get(`/api/appointments/${firstId}`);
+  t('   ...and reads back identically',
+    JSON.stringify(readBack.body?.data) === JSON.stringify(first.body?.data), readBack.body);
+
+  // ---- 2. overlap, and the half-open boundary -----------------------------
+  const clash = await book(D1, { time: '10:30', duration: 30, serviceId: 'SRV-9002' });
+  t('an overlapping slot for the same mechanic -> 409', clash.status === 409, clash.body);
+  t('   ...machine-readable reason', clash.body?.error?.reason === 'schedule_conflict', clash.body?.error);
+  t('   ...names the appointment', clash.body?.error?.conflictsWith === firstId, clash.body?.error);
+  t('   ...and the resource', clash.body?.error?.resource === 'mechanic', clash.body?.error);
+
+  const after = keep(await book(D1, { time: '11:00', duration: 30, serviceId: 'SRV-9002' }));
+  t('a slot starting exactly when the first ends -> 201', after.status === 201, after.body);
+  const beforeIt = keep(await book(D1, { time: '09:00', duration: 60, serviceId: 'SRV-9003' }));
+  t('a slot ending exactly when the first starts -> 201', beforeIt.status === 201, beforeIt.body);
+
+  // ---- 3. overlap scope: mechanic OR vehicle, never workshop-wide ---------
+  const D2 = '2099-02-05';
+  keep(await book(D2, {}));                       // MEC-9001 + VEH-9001 at 10:00
+  const otherBoth = keep(await book(D2, { time: '10:15', duration: 15, mechanicId: 'MEC-9002',
+    vehicleId: 'VEH-9002', customerId: 'CUS-9002', serviceId: 'SRV-9004' }));
+  t('a different mechanic AND vehicle does not clash', otherBoth.status === 201, otherBoth.body);
+
+  const sameVehicle = await book(D2, { time: '10:15', duration: 15, mechanicId: 'MEC-9003',
+    serviceId: 'SRV-9005' });
+  t('the same VEHICLE clashes even with a different mechanic', sameVehicle.status === 409, sameVehicle.body);
+  t('   ...and says so', sameVehicle.body?.error?.resource === 'vehicle', sameVehicle.body?.error);
+
+  const sameMechanic = await book(D2, { time: '10:15', duration: 15, vehicleId: 'VEH-9002',
+    customerId: 'CUS-9002', serviceId: 'SRV-9005' });
+  t('the same MECHANIC clashes even with a different vehicle', sameMechanic.status === 409, sameMechanic.body);
+  t('   ...and says so', sameMechanic.body?.error?.resource === 'mechanic', sameMechanic.body?.error);
+
+  // A null mechanic drops the mechanic half of the rule and keeps the vehicle half.
+  const D3 = '2099-03-05';
+  keep(await book(D3, { mechanicId: null }));     // VEH-9001 at 10:00, no mechanic
+  const nullVsVehicle = await book(D3, { time: '10:15', duration: 15, mechanicId: null,
+    serviceId: 'SRV-9002' });
+  t('a null mechanic still clashes on the vehicle', nullVsVehicle.status === 409, nullVsVehicle.body);
+  t('   ...on the vehicle, necessarily', nullVsVehicle.body?.error?.resource === 'vehicle',
+    nullVsVehicle.body?.error);
+  const nullFree = keep(await book(D3, { time: '10:15', duration: 15, mechanicId: null,
+    vehicleId: 'VEH-9002', customerId: 'CUS-9002', serviceId: 'SRV-9002' }));
+  t('a null mechanic on another vehicle is free', nullFree.status === 201, nullFree.body);
+
+  // ---- 4. terminal statuses never occupy the schedule ---------------------
+  const D4 = '2099-04-05';
+  const toCancel = keep(await book(D4, {}));
+  await send('PUT', `/api/appointments/${toCancel.body?.data?.id}`, { status: 'Cancelled' });
+  const overCancelled = keep(await book(D4, { serviceId: 'SRV-9002' }));
+  t('a Cancelled appointment does not occupy its slot', overCancelled.status === 201, overCancelled.body);
+
+  // ---- 5. duplicate booking, isolated from any overlap --------------------
+  // Same customer, vehicle, service, date and time -- but the only appointment
+  // it could overlap is the identical one, so the duplicate rule is what fires.
+  const D5 = '2099-05-05';
+  keep(await book(D5, { mechanicId: null }));
+  const dup = await book(D5, { mechanicId: null });
+  t('an identical booking -> 409', dup.status === 409, dup.body);
+  t('   ...as a schedule conflict, which is checked first',
+    dup.body?.error?.reason === 'schedule_conflict', dup.body?.error);
+  // With the slot itself free, the duplicate rule is the one left standing:
+  // a Cancelled twin does not occupy the slot but DOES still count as a
+  // duplicate, because :123 ignores only Cancelled for overlap, not identity.
+  const D6 = '2099-06-05';
+  const twin = keep(await book(D6, { mechanicId: null }));
+  await send('PUT', `/api/appointments/${twin.body?.data?.id}`, { status: 'Cancelled' });
+  const dupOfCancelled = await book(D6, { mechanicId: null });
+  t('an identical booking over a CANCELLED twin is allowed',
+    dupOfCancelled.status === 201, dupOfCancelled.body);
+  keep(dupOfCancelled);
+
+  // ---- 6. referential rules ----------------------------------------------
+  const D7 = '2099-07-05';
+  const wrongOwner = await book(D7, { vehicleId: 'VEH-9002' });
+  t('a vehicle belonging to another customer -> 422', wrongOwner.status === 422, wrongOwner.body);
+  t('   ...names the field', !!wrongOwner.body?.error?.fields?.vehicleId, wrongOwner.body?.error);
+  const ghostService = await book(D7, { serviceId: 'SRV-7777' });
+  t('a missing service -> 409 from the foreign key', ghostService.status === 409, ghostService.body);
+  t('   ...with no table name leaked',
+    !JSON.stringify(ghostService.body).includes('SQLITE'), ghostService.body);
+
+  // ---- 7. all five sources round-trip ------------------------------------
+  const SOURCES = ['Admin', 'Phone', 'Walk-in', 'Facebook', 'Website'];
+  for (let i = 0; i < SOURCES.length; i++) {
+    const r = keep(await book(`2098-0${i + 1}-11`, { source: SOURCES[i], mechanicId: null }));
+    t(`source ${SOURCES[i]} accepted`, r.status === 201, r.body);
+    t(`   ...and stored verbatim`, r.body?.data?.source === SOURCES[i], r.body?.data);
+  }
+  const badSource = await book('2098-09-11', { source: 'Instagram' });
+  t('an unknown source -> 422', badSource.status === 422, badSource.body);
+
+  // ---- 8. merge -----------------------------------------------------------
+  const merged = await send('PUT', `/api/appointments/${firstId}`, { notes: 'customer called back' });
+  t('PUT merges -> 200', merged.status === 200, merged.body);
+  t('   ...the supplied field changed', merged.body?.data?.notes === 'customer called back', merged.body?.data);
+  t('   ...date, time and duration survive',
+    merged.body?.data?.date === D1 && merged.body?.data?.time === '10:00'
+      && merged.body?.data?.duration === 60, merged.body?.data);
+  t('   ...as does the mechanic', merged.body?.data?.mechanicId === 'MEC-9001', merged.body?.data);
+  t('   ...updatedAt now set', !!merged.body?.data?.updatedAt, merged.body?.data);
+  t('   ...and it did not conflict with itself', merged.status !== 409);
+
+  const grow = await send('PUT', `/api/appointments/${firstId}`, { duration: 120 });
+  t('growing into the next appointment -> 409', grow.status === 409, grow.body);
+  t('   ...naming the neighbour', grow.body?.error?.conflictsWith === after.body?.data?.id, grow.body?.error);
+
+  // ---- 9. status transitions ---------------------------------------------
+  const bad = await send('PUT', `/api/appointments/${firstId}`, { status: 'Completed' });
+  t('Scheduled -> Completed -> 409', bad.status === 409, bad.body);
+  t('   ...reason', bad.body?.error?.reason === 'illegal_status_transition', bad.body?.error);
+  t('Scheduled -> Confirmed -> 200',
+    (await send('PUT', `/api/appointments/${firstId}`, { status: 'Confirmed' })).status === 200);
+  t('Confirmed -> In Progress -> 200',
+    (await send('PUT', `/api/appointments/${firstId}`, { status: 'In Progress' })).status === 200);
+
+  // ---- 10. delete guards --------------------------------------------------
+  const busy = await send('DELETE', `/api/appointments/${firstId}`);
+  t('deleting an In Progress appointment -> 409', busy.status === 409, busy.body);
+  t('   ...reason', busy.body?.error?.reason === 'appointment_in_progress', busy.body?.error);
+
+  const linked = await get('/api/appointments?limit=1000');
+  const withJob = (linked.body?.data ?? []).find((a) => a.jobCardId);
+  t('a fixture appointment is linked to a job card', !!withJob, withJob);
+  if (withJob) {
+    const r = await send('DELETE', `/api/appointments/${withJob.id}`);
+    t('deleting a job-card-linked appointment -> 409', r.status === 409, r.body);
+    t('   ...reason', r.body?.error?.reason === 'linked_to_job_card', r.body?.error);
+  }
+  const jobLink = await send('PUT', `/api/appointments/${firstId}`, { jobCardId: 'JOB-9001' });
+  t('setting jobCardId through the API -> 422', jobLink.status === 422, jobLink.body);
+
+  // firstId is In Progress; Cancelled is a legal move from Confirmed but not
+  // from In Progress, so the only legal exit is Completed -- which cannot be
+  // deleted. Proving that, then leaving it to cleanup.sql's sweep.
+  await send('PUT', `/api/appointments/${firstId}`, { status: 'Completed' });
+  const doneDel = await send('DELETE', `/api/appointments/${firstId}`);
+  t('deleting a Completed appointment -> 409', doneDel.status === 409, doneDel.body);
+  t('   ...reason', doneDel.body?.error?.reason === 'appointment_completed', doneDel.body?.error);
+
+  // ---- 11. tear down ------------------------------------------------------
+  let removed = 0;
+  for (const id of made) {
+    if (id === firstId) continue;                 // Completed, protected by design
+    const r = await send('DELETE', `/api/appointments/${id}`);
+    if (r.status === 200) removed++;
+    else t(`deleting ${id} -> 200`, false, { status: r.status, body: r.body });
+  }
+  t(`removed every appointment this section created but the protected one`,
+    removed === made.length - 1, { removed, made: made.length });
+
+  const finalList = await get('/api/appointments?limit=1000');
+  t('the six fixtures plus the one protected appointment remain',
+    finalList.body?.total === 7, finalList.body?.total);
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

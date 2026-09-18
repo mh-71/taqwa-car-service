@@ -323,7 +323,7 @@ console.log('\n-- 11. Route registration --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db })).json()).data.routes;
-  check('health advertises 42 routes', routes.length, 42);
+  check('health advertises 45 routes', routes.length, 45);
   ok_('advertises the ledger list', routes.includes('GET /api/inventory-transactions'));
   ok_('advertises the ledger detail', routes.includes('GET /api/inventory-transactions/:id'));
   // C-2 added write routes elsewhere; the LEDGER itself must still be

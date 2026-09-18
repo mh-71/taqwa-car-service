@@ -25,7 +25,10 @@ import {
 import {
   listParts, getPart, createPart, updatePart, deletePart,
 } from './routes/parts.js';
-import { listAppointments, getAppointment } from './routes/appointments.js';
+import {
+  listAppointments, getAppointment,
+  createAppointment, updateAppointment, deleteAppointment,
+} from './routes/appointments.js';
 // Job cards have child line tables, so they do not go through collectionRoutes();
 // the module exports the same two handler shapes regardless.
 import { listJobCards, getJobCard } from './routes/job-cards.js';
@@ -78,7 +81,10 @@ const COLLECTIONS = {
     list: listParts, detail: getPart,
     create: createPart, update: updatePart, remove: deletePart,
   },
-  appointments: { list: listAppointments, detail: getAppointment },
+  appointments: {
+    list: listAppointments, detail: getAppointment,
+    create: createAppointment, update: updateAppointment, remove: deleteAppointment,
+  },
   'job-cards': { list: listJobCards, detail: getJobCard },
   invoices: { list: listInvoices, detail: getInvoice },
   payments: { list: listPayments, detail: getPayment },
