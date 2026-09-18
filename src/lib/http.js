@@ -47,6 +47,36 @@ export const noDatabase = () =>
   fail('no_database', 'No D1 binding named DB. Check wrangler.jsonc.', 503);
 
 /**
+ * Validate a record id taken from the URL path.
+ *
+ * The app's ids are human-readable and prefixed (CUS-0001, JOB-0007), so the
+ * shape is checkable: letters, a hyphen, digits. Anything else — an empty
+ * segment, a quote, a semicolon, a path traversal — is rejected before it
+ * reaches the database.
+ *
+ * Deliberately NOT prefix-specific: `VEH-0001` on a customers route is a
+ * well-formed id that simply does not exist there, which is a 404, not a 400.
+ * Only genuinely malformed input is a 400.
+ *
+ * Returns { value } or { error }.
+ */
+const RECORD_ID = /^[A-Za-z]{2,5}-\d{1,10}$/;
+const MAX_ID_LENGTH = 32;
+
+export function readRecordId(raw) {
+  if (raw === null || raw === undefined || raw === '') {
+    return { error: 'A record id is required.' };
+  }
+  if (raw.length > MAX_ID_LENGTH) {
+    return { error: 'Record id is too long.' };
+  }
+  if (!RECORD_ID.test(raw)) {
+    return { error: 'Record id must look like CUS-0001.' };
+  }
+  return { value: raw };
+}
+
+/**
  * Read a bounded non-negative integer from the query string.
  * Returns { value } or { error } — never throws, never trusts the input.
  */

@@ -17,7 +17,9 @@
       localStorage for fetch() without a single UI module changing.
    ============================================================ */
 
-import { ok, fail, methodNotAllowed, noDatabase, readIntParam } from '../lib/http.js';
+import {
+  ok, fail, methodNotAllowed, noDatabase, readIntParam, readRecordId,
+} from '../lib/http.js';
 
 // Spelled out deliberately -- see rule 1 above.
 const COLUMNS = `
@@ -89,5 +91,44 @@ export async function listCustomers(request, env, url) {
     // to the Worker log, not across the wire.
     console.error('GET /api/customers failed:', err);
     return fail('database_error', 'Could not read customers.', 500);
+  }
+}
+
+/**
+ * GET /api/customers/:id
+ *
+ * One customer by its human-readable id (CUS-0001). Returns the same record
+ * shape as the list route, wrapped as { data: {...} } rather than an array.
+ *
+ * The id is validated for shape before any query is prepared, and is then
+ * bound as a parameter — it is never concatenated into the SQL.
+ */
+export async function getCustomer(request, env, rawId) {
+  if (request.method !== 'GET') return methodNotAllowed(['GET']);
+  if (!env.DB) return noDatabase();
+
+  const id = readRecordId(rawId);
+  if (id.error) return fail('invalid_id', id.error, 400);
+
+  try {
+    const row = await env.DB.prepare(
+      `SELECT ${COLUMNS}
+         FROM customers
+        WHERE id = ?1
+        LIMIT 1`
+    )
+      .bind(id.value)
+      .first();
+
+    if (!row) {
+      // A well-formed id that simply is not here. The message names no table
+      // and echoes nothing back that could confirm internals.
+      return fail('not_found', 'No customer with that id.', 404);
+    }
+
+    return ok(toRecord(row));
+  } catch (err) {
+    console.error('GET /api/customers/:id failed:', err);
+    return fail('database_error', 'Could not read customer.', 500);
   }
 }

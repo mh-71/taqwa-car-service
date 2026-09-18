@@ -10,9 +10,18 @@
    ============================================================ */
 
 import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
-import { listCustomers } from './routes/customers.js';
+import { listCustomers, getCustomer } from './routes/customers.js';
 
-const ROUTES = ['GET /api/health', 'GET /api/customers'];
+const ROUTES = [
+  'GET /api/health',
+  'GET /api/customers',
+  'GET /api/customers/:id',
+];
+
+// Matches /api/customers/<anything>, including an empty segment so that
+// /api/customers/ is answered by the id validator (400) rather than falling
+// through to a confusing 404.
+const CUSTOMER_DETAIL = /^\/api\/customers\/(.*)$/;
 
 /**
  * GET /api/health
@@ -70,16 +79,27 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    switch (url.pathname) {
-      case '/api/health':
-        if (request.method !== 'GET') return methodNotAllowed(['GET']);
-        return health(env);
-
-      case '/api/customers':
-        return listCustomers(request, env, url);
-
-      default:
-        return notFound(ROUTES);
+    if (url.pathname === '/api/health') {
+      if (request.method !== 'GET') return methodNotAllowed(['GET']);
+      return health(env);
     }
+
+    if (url.pathname === '/api/customers') {
+      return listCustomers(request, env, url);
+    }
+
+    const detail = CUSTOMER_DETAIL.exec(url.pathname);
+    if (detail) {
+      let id;
+      try {
+        // A malformed escape (%zz) throws rather than returning garbage.
+        id = decodeURIComponent(detail[1]);
+      } catch {
+        return fail('invalid_id', 'Record id is not valid URL encoding.', 400);
+      }
+      return getCustomer(request, env, id);
+    }
+
+    return notFound(ROUTES);
   },
 };
