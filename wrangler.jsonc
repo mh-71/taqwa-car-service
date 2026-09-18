@@ -1,0 +1,57 @@
+{
+  // ==========================================================================
+  // Taqwa Automobile Service Center — Cloudflare Worker API
+  // --------------------------------------------------------------------------
+  // Phase A of the D1 migration: schema + local database + a health endpoint.
+  // The frontend still runs entirely on localStorage and is untouched by this.
+  //
+  // LOCAL vs PRODUCTION
+  // `wrangler dev` always uses a local SQLite file under .wrangler/state/ --
+  // it never reaches Cloudflare. Production is a SEPARATE database that does
+  // not exist yet and is deliberately not configured here, so there is nothing
+  // for a stray command to point at. When it is created, add its binding under
+  // env.production (see the commented block below) rather than changing the
+  // top-level binding, so the default target stays local.
+  //
+  // Never run `wrangler dev --remote` or `wrangler d1 ... --remote` until the
+  // production database exists and a backup plan is in place.
+  // ==========================================================================
+
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "taqwa-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "taqwa-local",
+      // Local development only. `wrangler dev` and any `--local` command use
+      // the on-disk SQLite file, not this id, so this placeholder is never
+      // dialled out to. It exists because the field is required.
+      "database_id": "local-development-only",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+
+  // --------------------------------------------------------------------------
+  // PRODUCTION — do not uncomment until the database is created and backed up.
+  //
+  // "env": {
+  //   "production": {
+  //     "d1_databases": [
+  //       {
+  //         "binding": "DB",
+  //         "database_name": "taqwa-prod",
+  //         "database_id": "<paste the real id from: wrangler d1 create taqwa-prod>",
+  //         "migrations_dir": "migrations"
+  //       }
+  //     ]
+  //   }
+  // }
+  // --------------------------------------------------------------------------
+}

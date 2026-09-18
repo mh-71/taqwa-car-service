@@ -1,0 +1,16 @@
+{
+  "name": "taqwa-car-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Taqwa Automobile Service Center — management software. Static frontend plus a Cloudflare Worker API backed by D1.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply taqwa-local --local",
+    "db:list:local": "wrangler d1 execute taqwa-local --local --command \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\"",
+    "db:shell:local": "wrangler d1 execute taqwa-local --local --command"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

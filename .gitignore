@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# Node / tooling
+# ---------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+.npm/
+
+# ---------------------------------------------------------------------------
+# Cloudflare Wrangler
+# ---------------------------------------------------------------------------
+# .wrangler/ holds the LOCAL D1 SQLite file and dev state. It is machine-local
+# scratch data, never the source of truth -- the schema in migrations/ is.
+.wrangler/
+
+# Local secrets for `wrangler dev`. Must never be committed.
+.dev.vars
+.dev.vars.*
+
+# ---------------------------------------------------------------------------
+# Database exports / backups
+# ---------------------------------------------------------------------------
+# Backups taken from the app's Settings -> Export Data, or from
+# `wrangler d1 export`, contain real customer names, phone numbers, addresses
+# and the full financial ledger. Keep them out of the repository.
+*.sqlite
+*.sqlite3
+*.db
+backup*.sql
+taqwa-export-*.json
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
