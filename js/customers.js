@@ -199,13 +199,13 @@
         <button class="btn btn--ghost" data-modal-close>Cancel</button>
         <button class="btn btn--primary" data-save>Save Customer</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#custForm');
       const values = readForm(form);
       const { valid, errors } = validate(values);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
-      const record = Storage.addData('customers', {
+      const res = await Storage.create('customers', {
         name: values.name.trim(),
         phone: values.phone.trim(),
         altPhone: values.altPhone.trim(),
@@ -214,10 +214,14 @@
         notes: values.notes.trim(),
         status: 'Active'
       });
+      if (!Utils.wrote(res, form)) return;
+
+      // The id is the server's, not ours, so it is read off the saved record.
+      const record = res.record;
       Modal.close();
       renderList();
       toast(`Customer ${record.name} added (${record.id}).`);
-    });
+    }));
   }
 
   function openEditModal(id) {
@@ -230,13 +234,13 @@
         <button class="btn btn--ghost" data-modal-close>Cancel</button>
         <button class="btn btn--primary" data-save>Save Changes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#custForm');
       const values = readForm(form);
       const { valid, errors } = validate(values, id);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
-      Storage.updateData('customers', id, {
+      const res = await Storage.update('customers', id, {
         name: values.name.trim(),
         phone: values.phone.trim(),
         altPhone: values.altPhone.trim(),
@@ -244,10 +248,12 @@
         address: values.address.trim(),
         notes: values.notes.trim()
       });
+      if (!Utils.wrote(res, form)) return;
+
       Modal.close();
       renderList();
       toast(`Customer ${values.name.trim()} updated.`);
-    });
+    }));
   }
 
   /* ============================================================
@@ -278,8 +284,11 @@
       title: 'Delete customer?',
       message: `This will permanently delete <strong>${esc(c.name)}</strong> (${esc(c.id)}). This cannot be undone.`,
       confirmText: 'Delete Customer',
-      onConfirm: () => {
-        Storage.deleteData('customers', id);
+      onConfirm: async () => {
+        // The related-records guard above is the UI's; the server has its
+        // own, backed by the schema's foreign keys, and gets the last word.
+        const res = await Storage.remove('customers', id);
+        if (!Utils.wrote(res)) return;
         renderList();
         toast(`Customer ${c.name} deleted.`, 'warning');
       }
@@ -382,7 +391,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     renderList();
     // Deep link: customers.html?view=CUS-0001 opens details directly

@@ -280,7 +280,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Service</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#svcForm');
       const values = readForm(form);
       const { valid, errors } = validate(values);
@@ -290,11 +290,13 @@
           ? errors.name : 'Please fix the highlighted fields.', 'error');
         return;
       }
-      const rec = Storage.addData('services', values);
+      const res = await Storage.create('services', values);
+      if (!Utils.wrote(res, form)) return;
+      const rec = res.record;
       Modal.close();
       refresh();
       toast(`Service "${rec.name}" added (${rec.id}).`);
-    });
+    }));
   }
 
   function openEditModal(id) {
@@ -306,25 +308,27 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#svcForm');
       const values = readForm(form);
       const { valid, errors } = validate(values, id);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
-      Storage.updateData('services', id, values);
+      const res = await Storage.update('services', id, values);
+      if (!Utils.wrote(res, form)) return;
       Modal.close();
       refresh();
       toast(`Service "${values.name}" updated.`);
-    });
+    }));
   }
 
   /* ---------- activate / deactivate ---------- */
 
-  function toggleStatus(id) {
+  async function toggleStatus(id) {
     const s = Storage.getById('services', id);
     if (!s) return;
     const next = (s.status || 'Active') === 'Active' ? 'Inactive' : 'Active';
-    Storage.updateData('services', id, { status: next });
+    const res = await Storage.update('services', id, { status: next });
+    if (!Utils.wrote(res)) return;
     refresh();
     toast(`Service "${s.name}" ${next === 'Active' ? 'activated' : 'deactivated'}.`,
       next === 'Active' ? 'success' : 'info');
@@ -356,8 +360,11 @@
       title: 'Delete service?',
       message: `Are you sure you want to delete <strong>${esc(s.name)}</strong> (${esc(s.id)})? This cannot be undone.`,
       confirmText: 'Delete Service',
-      onConfirm: () => {
-        Storage.deleteData('services', id);
+      onConfirm: async () => {
+        // The historical-reference guard above is the UI's; the schema's
+        // foreign keys are what actually stop it, and they get the last word.
+        const res = await Storage.remove('services', id);
+        if (!Utils.wrote(res)) return;
         refresh();
         toast(`Service "${s.name}" deleted.`, 'warning');
       }
@@ -430,7 +437,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const viewId = new URLSearchParams(location.search).get('view');

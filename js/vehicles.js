@@ -310,7 +310,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Vehicle</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
       const { valid, errors } = validate(values);
@@ -320,11 +320,13 @@
           ? errors.regNo : 'Please fix the highlighted fields.', 'error');
         return;
       }
-      const rec = Storage.addData('vehicles', values);
+      const res = await Storage.create('vehicles', values);
+      if (!Utils.wrote(res, form)) return;
+      const rec = res.record;
       Modal.close();
       refresh();
       toast(`Vehicle ${rec.regNo} added (${rec.id}).`);
-    });
+    }));
   }
 
   function openEditModal(id) {
@@ -336,16 +338,17 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
       const { valid, errors } = validate(values, id);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
-      Storage.updateData('vehicles', id, values);
+      const res = await Storage.update('vehicles', id, values);
+      if (!Utils.wrote(res, form)) return;
       Modal.close();
       refresh();
       toast(`Vehicle ${values.regNo} updated.`);
-    });
+    }));
   }
 
   /* ============================================================
@@ -372,12 +375,13 @@
                Mark the vehicle inactive instead to hide it from day-to-day use while keeping its history.</p>`,
         footer: `<button class="btn btn--ghost" data-modal-close>Close</button>
                  <button class="btn btn--primary" data-mark-inactive>Mark Inactive</button>`
-      }).querySelector('[data-mark-inactive]').addEventListener('click', () => {
-        Storage.updateData('vehicles', id, { status: 'Inactive' });
+      }).querySelector('[data-mark-inactive]').addEventListener('click', Utils.saving(async () => {
+        const res = await Storage.update('vehicles', id, { status: 'Inactive' });
+        if (!Utils.wrote(res)) return;
         Modal.close();
         refresh();
         toast(`Vehicle ${v.regNo} marked inactive.`, 'info');
-      });
+      }));
       return;
     }
 
@@ -385,8 +389,9 @@
       title: 'Delete vehicle?',
       message: `Are you sure you want to delete <strong>${esc(v.regNo)}</strong> (${esc(v.brand)} ${esc(v.model)})? This cannot be undone.`,
       confirmText: 'Delete Vehicle',
-      onConfirm: () => {
-        Storage.deleteData('vehicles', id);
+      onConfirm: async () => {
+        const res = await Storage.remove('vehicles', id);
+        if (!Utils.wrote(res)) return;
         refresh();
         toast(`Vehicle ${v.regNo} deleted.`, 'warning');
       }
@@ -521,7 +526,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     // Deep link: vehicles.html?view=VEH-0001 opens details directly

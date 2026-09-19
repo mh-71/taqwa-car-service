@@ -528,22 +528,27 @@
                <button class="btn btn--primary" data-save>Book Appointment</button>`
     });
     bindCascade(ov);
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#aptForm');
       const values = readForm(form);
       const { valid, errors } = validate(values);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
+      // The overlap check below is the UI's, run against the hydrated copy.
+      // The server runs the same rule over the live table and gets the last
+      // word -- which is what catches a booking someone else made meanwhile.
       if (scheduleProblems(values, null, ov)) return;
 
-      const rec = Storage.addData('appointments', {
+      const res = await Storage.create('appointments', {
         ...values,
         reminderSent: false,
         jobCardId: null
       });
+      if (!Utils.wrote(res, form)) return;
+      const rec = res.record;
       Modal.close();
       refresh();
       toast(`Appointment ${rec.id} booked for ${custName(rec.customerId)}.`);
-    });
+    }));
   }
 
   function openEditModal(id) {
@@ -560,7 +565,7 @@
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
     bindCascade(ov);
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#aptForm');
       const values = readForm(form);
       const { valid, errors } = validate(values, a);
@@ -570,11 +575,12 @@
       if (!allowed.includes(values.status)) values.status = normStatus(a.status);
       if (scheduleProblems(values, id, ov)) return;
 
-      Storage.updateData('appointments', id, values); // preserves id + createdAt, sets updatedAt
+      const res = await Storage.update('appointments', id, values); // a merge: id and createdAt are untouched
+      if (!Utils.wrote(res, form)) return;
       Modal.close();
       refresh();
       toast(`Appointment ${id} updated.`);
-    });
+    }));
   }
 
   /* ---------- status changes ---------- */
@@ -587,8 +593,9 @@
       toast(`Cannot change ${current} appointment to ${next}.`, 'error');
       return;
     }
-    const apply = () => {
-      Storage.updateData('appointments', id, { status: next });
+    const apply = async () => {
+      const res = await Storage.update('appointments', id, { status: next });
+      if (!Utils.wrote(res)) return;
       refresh();
       const verbs = { 'Confirmed': 'confirmed', 'In Progress': 'started', 'Completed': 'completed', 'Cancelled': 'cancelled', 'No Show': 'marked as no-show' };
       toast(`Appointment ${id} ${verbs[next] || 'updated'}.`,
@@ -640,8 +647,11 @@
       title: 'Delete appointment?',
       message: `Permanently delete <strong>${esc(a.id)}</strong> (${esc(custName(a.customerId))}, ${fmtDate(a.date)} ${fmtTime(a.time)})? If the customer may return, cancelling keeps better history.`,
       confirmText: 'Delete Appointment',
-      onConfirm: () => {
-        Storage.deleteData('appointments', id);
+      onConfirm: async () => {
+        // The status guards above are the UI's. The server has its own three
+        // delete blockers, none of them a foreign key, and gets the last word.
+        const res = await Storage.remove('appointments', id);
+        if (!Utils.wrote(res)) return;
         refresh();
         toast(`Appointment ${id} deleted.`, 'warning');
       }
@@ -744,7 +754,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const viewId = new URLSearchParams(location.search).get('view');

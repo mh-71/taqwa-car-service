@@ -80,8 +80,19 @@
    * 'invoices' collection -- via Storage.updateData, exactly like Invoices
    * already update Job Cards.
    */
+  /**
+   * Local mode only.
+   *
+   * With a backend this cannot happen from here and must not: an invoice's
+   * paid/due are refused by name on PUT /api/invoices, because they are a
+   * cache of its payments rather than a field. The server recomputes them
+   * with this same arithmetic, in the same transaction as the payment that
+   * moved them -- which is what stops two concurrent payments both reading
+   * the same balance and both fitting.
+   */
   function recomputeInvoiceBalance(invoiceId) {
     if (!invoiceId) return;
+    if (Storage.isApi()) return;
     const inv = Storage.getById('invoices', invoiceId);
     if (!inv || inv.status === 'Void') return;
     const total = Number(inv.total) || 0;
@@ -139,6 +150,28 @@
     const check = validatePayment({ invoiceId, customerId, jobCardId, amount });
     if (!check.ok) return check;
 
+    // On the server the payment and its invoice's new balance are one batch,
+    // and the overpayment rule is the INSERT's own WHERE rather than a check
+    // that could be raced. So this sends the payment and nothing else; the
+    // invoice comes back re-read, not recalculated here.
+    if (Storage.isApi()) {
+      return (async () => {
+        const res = await Storage.create('payments', {
+          invoiceId: invoiceId || null,
+          customerId,
+          jobCardId: jobCardId || null,
+          date: date || Utils.todayStr(),
+          amount: Number(amount),
+          method: METHODS.includes(method) ? method : 'Cash',
+          notes: (notes || '').trim(),
+          status: 'Active'
+        });
+        if (!res.ok) return { ok: false, reason: res.message, response: res };
+        if (res.record.invoiceId) await Storage.reload('invoices');
+        return { ok: true, payment: res.record };
+      })();
+    }
+
     const payment = Storage.addData('payments', {
       invoiceId: invoiceId || null,
       customerId,
@@ -166,6 +199,15 @@
     });
     if (!check.ok) return check;
 
+    if (Storage.isApi()) {
+      // A named action, not a field change: linking re-checks the invoice's
+      // room for THIS payment's amount, read from the stored row rather than
+      // the request, and moves the balance in the same transaction.
+      return Storage.action('payments', paymentId, 'link', { invoiceId }, ['invoices'])
+        .then(res => res.ok ? { ok: true }
+                            : { ok: false, reason: res.message, response: res });
+    }
+
     Storage.updateData('payments', paymentId, { invoiceId });
     recomputeInvoiceBalance(invoiceId);
     return { ok: true };
@@ -176,6 +218,13 @@
     const payment = Storage.getById('payments', id);
     if (!payment) return { ok: false, reason: 'Payment not found.' };
     if (payment.status === 'Void') return { ok: false, reason: 'Payment is already void.' };
+
+    if (Storage.isApi()) {
+      return Storage.action('payments', id, 'void', {},
+        payment.invoiceId ? ['invoices'] : [])
+        .then(res => res.ok ? { ok: true }
+                            : { ok: false, reason: res.message, response: res });
+    }
 
     Storage.updateData('payments', id, { status: 'Void' });
     if (payment.invoiceId) recomputeInvoiceBalance(payment.invoiceId);
@@ -407,7 +456,7 @@
       toast(reason, 'error');
     }
 
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const type = typeSel.value;
       const customerId = custSel.value;
       const invoiceId = type === 'invoice' ? invSel.value : '';
@@ -420,14 +469,14 @@
       if (type === 'invoice' && !invoiceId) { showErrors('Please select an invoice.'); return; }
       if (!customerId) { showErrors('Please select a customer.'); return; }
 
-      const result = recordPayment({ invoiceId: invoiceId || null, customerId, jobCardId: jobCardId || null, date, amount, method, notes });
+      const result = await recordPayment({ invoiceId: invoiceId || null, customerId, jobCardId: jobCardId || null, date, amount, method, notes });
       if (!result.ok) { showErrors(result.reason); return; }
 
       Modal.close();
       refresh();
       toast(`Payment ${result.payment.id} recorded for ${custName(result.payment.customerId)}.`);
       openDetailModal(result.payment.id);
-    });
+    }));
   }
 
   /* ---------- link-to-invoice modal (for an unlinked advance) ---------- */
@@ -456,16 +505,16 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Link Payment</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const invoiceId = ov.querySelector('#pf-link-invoice').value;
       if (!invoiceId) { toast('Please select an invoice.', 'error'); return; }
-      const result = linkPaymentToInvoice(id, invoiceId);
+      const result = await linkPaymentToInvoice(id, invoiceId);
       if (!result.ok) { toast(result.reason, 'error'); return; }
       Modal.close();
       refresh();
       toast(`Payment ${id} linked to ${invoiceId}.`);
       openDetailModal(id);
-    });
+    }));
   }
 
   /* ---------- notes edit ---------- */
@@ -481,12 +530,15 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Notes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
-      Storage.updateData('payments', id, { notes: ov.querySelector('#pf-notes-edit').value });
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
+      // notes is the only editable field: amount, date, method and both links
+      // are historical, and the API refuses each of them by name.
+      const res = await Storage.update('payments', id, { notes: ov.querySelector('#pf-notes-edit').value });
+      if (!Utils.wrote(res, ov)) return;
       Modal.close();
       refresh();
       toast(`Payment ${id} notes updated.`);
-    });
+    }));
   }
 
   /* ---------- void / delete ---------- */
@@ -499,8 +551,8 @@
       message: `Void <strong>${esc(payment.id)}</strong> (${money(payment.amount)}) for ${esc(custName(payment.customerId))}?
                 ${payment.invoiceId ? `The linked invoice's balance will be recalculated without it.` : ''} This cannot be undone.`,
       confirmText: 'Void Payment',
-      onConfirm: () => {
-        const res = voidPayment(id);
+      onConfirm: async () => {
+        const res = await voidPayment(id);
         if (!res.ok) { toast(res.reason, 'error'); return; }
         refresh();
         toast(`Payment ${id} voided.`, 'warning');
@@ -523,7 +575,15 @@
       title: 'Delete payment?',
       message: `Permanently delete voided payment <strong>${esc(payment.id)}</strong>? This cannot be undone.`,
       confirmText: 'Delete Payment',
-      onConfirm: () => {
+      onConfirm: async () => {
+        if (Storage.isApi()) {
+          const res = await Storage.remove('payments', id);
+          if (!Utils.wrote(res)) return;
+          if (payment.invoiceId) await Storage.reload('invoices');
+          refresh();
+          toast(`Payment ${id} deleted.`, 'warning');
+          return;
+        }
         Storage.deleteData('payments', id);
         // Defensive: a Void payment is already excluded from its invoice's
         // sum, but recompute anyway in case void's recompute never ran.
@@ -669,7 +729,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const params = new URLSearchParams(location.search);

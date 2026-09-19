@@ -63,11 +63,11 @@
   /* ---------- create / edit ---------- */
 
   /** Records a new expense. Validates fully before writing anything. */
-  function createExpense({ date, category, description, amount, method, payee, reference, notes }) {
+  async function createExpense({ date, category, description, amount, method, payee, reference, notes }) {
     const check = validateExpense({ date, category, description, amount, method });
     if (!check.ok) return check;
 
-    const expense = Storage.addData('expenses', {
+    const res = await Storage.create('expenses', {
       date,
       category,
       description: description.trim(),
@@ -78,15 +78,17 @@
       notes: (notes || '').trim(),
       status: 'Active'
     });
-    return { ok: true, expense };
+    if (!res.ok) return res;
+    return { ok: true, expense: res.record };
   }
 
   /** Void an expense (soft-cancel). Financial totals exclude it from this point on; the record itself is preserved. */
-  function voidExpense(id) {
+  async function voidExpense(id) {
     const expense = Storage.getById('expenses', id);
     if (!expense) return { ok: false, reason: 'Expense not found.' };
     if (expense.status === 'Void') return { ok: false, reason: 'Expense is already void.' };
-    Storage.updateData('expenses', id, { status: 'Void' });
+    const res = await Storage.update('expenses', id, { status: 'Void' });
+    if (!res.ok) return { ok: false, reason: res.message };
     return { ok: true };
   }
 
@@ -288,7 +290,7 @@
                <button class="btn btn--primary" data-save>Add Expense</button>`
     });
 
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const values = {
         date: ov.querySelector('#ef-date').value,
         category: ov.querySelector('#ef-category').value,
@@ -299,13 +301,18 @@
         reference: ov.querySelector('#ef-reference').value,
         notes: ov.querySelector('#ef-notes').value
       };
-      const result = createExpense(values);
-      if (!result.ok) { showErrors(ov, result.errors); toast('Please fix the highlighted fields.', 'error'); return; }
+      const result = await createExpense(values);
+      if (!result.ok) {
+        // Either the form's own validation (errors) or the server's refusal.
+        if (result.errors) { showErrors(ov, result.errors); toast('Please fix the highlighted fields.', 'error'); }
+        else Utils.wrote(result, ov);
+        return;
+      }
       Modal.close();
       refresh();
       toast(`Expense ${result.expense.id} recorded.`);
       openDetailModal(result.expense.id);
-    });
+    }));
   }
 
   /* ---------- notes edit (the only editable field on an existing expense) ---------- */
@@ -321,12 +328,13 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Notes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
-      Storage.updateData('expenses', id, { notes: ov.querySelector('#ef-notes-edit').value });
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
+      const res = await Storage.update('expenses', id, { notes: ov.querySelector('#ef-notes-edit').value });
+      if (!Utils.wrote(res, ov)) return;
       Modal.close();
       refresh();
       toast(`Expense ${id} notes updated.`);
-    });
+    }));
   }
 
   /* ---------- void / delete ---------- */
@@ -339,8 +347,8 @@
       message: `Are you sure you want to void <strong>${esc(expense.id)}</strong> (${money(expense.amount)})?
                 The record is kept for history but excluded from all financial totals. This cannot be undone.`,
       confirmText: 'Void Expense',
-      onConfirm: () => {
-        const res = voidExpense(id);
+      onConfirm: async () => {
+        const res = await voidExpense(id);
         if (!res.ok) { toast(res.reason, 'error'); return; }
         refresh();
         toast(`Expense ${id} voided.`, 'warning');
@@ -363,8 +371,9 @@
       title: 'Delete expense?',
       message: `Permanently delete voided expense <strong>${esc(expense.id)}</strong>? This cannot be undone.`,
       confirmText: 'Delete Expense',
-      onConfirm: () => {
-        Storage.deleteData('expenses', id);
+      onConfirm: async () => {
+        const res = await Storage.remove('expenses', id);
+        if (!Utils.wrote(res)) return;
         refresh();
         toast(`Expense ${id} deleted.`, 'warning');
       }
@@ -495,7 +504,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const params = new URLSearchParams(location.search);

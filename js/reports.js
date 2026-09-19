@@ -670,7 +670,7 @@
     document.getElementById('printReportBtn').addEventListener('click', printReport);
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     const today = Utils.todayStr();
     document.getElementById('repFrom').value = today;
     document.getElementById('repTo').value = today;

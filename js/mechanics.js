@@ -319,7 +319,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Mechanic</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#mecForm');
       const values = readForm(form);
       const { valid, errors } = validate(values);
@@ -329,11 +329,13 @@
           ? errors.phone : 'Please fix the highlighted fields.', 'error');
         return;
       }
-      const rec = Storage.addData('mechanics', values);
+      const res = await Storage.create('mechanics', values);
+      if (!Utils.wrote(res, form)) return;
+      const rec = res.record;
       Modal.close();
       refresh();
       toast(`Mechanic ${rec.name} added (${rec.id}).`);
-    });
+    }));
   }
 
   function openEditModal(id) {
@@ -345,25 +347,27 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#mecForm');
       const values = readForm(form);
       const { valid, errors } = validate(values, id);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
-      Storage.updateData('mechanics', id, values);
+      const res = await Storage.update('mechanics', id, values);
+      if (!Utils.wrote(res, form)) return;
       Modal.close();
       refresh();
       toast(`Mechanic ${values.name} updated.`);
-    });
+    }));
   }
 
   /* ---------- activate / deactivate ---------- */
 
-  function toggleStatus(id) {
+  async function toggleStatus(id) {
     const m = Storage.getById('mechanics', id);
     if (!m) return;
     const next = (m.status || 'Active') === 'Active' ? 'Inactive' : 'Active';
-    Storage.updateData('mechanics', id, { status: next });
+    const res = await Storage.update('mechanics', id, { status: next });
+    if (!Utils.wrote(res)) return;
     refresh();
     toast(`Mechanic ${m.name} ${next === 'Active' ? 'activated' : 'deactivated'}.`,
       next === 'Active' ? 'success' : 'info');
@@ -400,8 +404,9 @@
       title: 'Delete mechanic?',
       message: `Are you sure you want to delete <strong>${esc(m.name)}</strong> (${esc(m.id)})? This cannot be undone.`,
       confirmText: 'Delete Mechanic',
-      onConfirm: () => {
-        Storage.deleteData('mechanics', id);
+      onConfirm: async () => {
+        const res = await Storage.remove('mechanics', id);
+        if (!Utils.wrote(res)) return;
         refresh();
         toast(`Mechanic ${m.name} deleted.`, 'warning');
       }
@@ -507,7 +512,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const viewId = new URLSearchParams(location.search).get('view');

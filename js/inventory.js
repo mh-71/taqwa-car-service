@@ -332,27 +332,37 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Part</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#partForm');
       const v = readForm(form, false);
       const { valid, errors } = validate(v);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
       const { openingStock, ...master } = v;
-      const rec = Storage.addData('parts', { ...master, stock: 0 });
+      const created = await Storage.create('parts', { ...master, stock: 0 });
+      if (!Utils.wrote(created, form)) return;
+      const rec = created.record;
       // Opening stock is a proper audited transaction, never a silent field write
       if (openingStock > 0) {
-        Inventory.move({
+        const moved = await Inventory.move({
           partId: rec.id, type: 'initial-stock', quantity: openingStock,
           unitCost: v.purchasePrice, referenceType: 'manual', referenceId: null,
           reason: 'Initial Stock', notes: 'Opening stock'
         });
+        // The part exists either way; only its opening balance failed, and
+        // saying so is better than implying the whole save was lost.
+        if (!moved.ok) {
+          Modal.close();
+          refresh();
+          toast(`Part "${rec.name}" added, but its opening stock was not recorded: ${moved.error}`, 'error');
+          return;
+        }
       }
       marginWarning(v);
       Modal.close();
       refresh();
       toast(`Part "${rec.name}" added (${rec.id}).`);
-    });
+    }));
   }
 
   function openEditModal(id) {
@@ -364,18 +374,21 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#partForm');
       const v = readForm(form, true);
       const { valid, errors } = validate(v, id);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
       const { openingStock, ...master } = v;
-      Storage.updateData('parts', id, master);   // stock deliberately untouched
+      // stock is deliberately not in `master`, and the API would refuse it
+      // anyway: a balance only moves through the ledger.
+      const res = await Storage.update('parts', id, master);
+      if (!Utils.wrote(res, form)) return;
       marginWarning(v);
       Modal.close();
       refresh();
       toast(`Part "${v.name}" updated.`);
-    });
+    }));
   }
 
   /* ---------- receive stock ---------- */
@@ -433,7 +446,7 @@
     });
     if (partId) ov.querySelector('#rf-part').dispatchEvent(new Event('change'));
 
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#recvForm');
       const errors = {};
       const pid = form.partId.value;
@@ -444,7 +457,7 @@
       if (cost != null && cost < 0) errors.unitCost = 'Unit cost cannot be negative.';
       if (Object.keys(errors).length) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
-      const res = Inventory.move({
+      const res = await Inventory.move({
         partId: pid, type: 'purchase', quantity: qty, unitCost: cost,
         referenceType: 'manual', referenceId: form.reference.value.trim() || null,
         notes: [form.supplier.value.trim() && `Supplier: ${form.supplier.value.trim()}`, form.notes.value.trim()].filter(Boolean).join(' — ')
@@ -453,7 +466,7 @@
       Modal.close();
       refresh();
       toast(`Stock received. New stock: ${res.newStock}.`);
-    });
+    }));
   }
 
   /* ---------- stock adjustment ---------- */
@@ -496,7 +509,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Apply Adjustment</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#adjForm');
       const errors = {};
       const qty = Number(form.quantity.value);
@@ -509,7 +522,7 @@
       if (type === 'adjustment-out' && form.reason.value === 'Damaged') type = 'damaged';
       if (type === 'adjustment-in' && form.reason.value === 'Return') type = 'return';
 
-      const res = Inventory.move({
+      const res = await Inventory.move({
         partId, type, quantity: qty,
         referenceType: 'manual', referenceId: null,
         reason: form.reason.value, notes: form.notes.value.trim()
@@ -518,16 +531,17 @@
       Modal.close();
       refresh();
       toast(`Adjustment applied. New stock: ${res.newStock}.`);
-    });
+    }));
   }
 
   /* ---------- activate / deactivate ---------- */
 
-  function toggleStatus(id) {
+  async function toggleStatus(id) {
     const p = Storage.getById('parts', id);
     if (!p) return;
     const next = isActive(p) ? 'Inactive' : 'Active';
-    Storage.updateData('parts', id, { status: next });
+    const res = await Storage.update('parts', id, { status: next });
+    if (!Utils.wrote(res)) return;
     refresh();
     toast(`Part "${p.name}" ${next === 'Active' ? 'activated' : 'deactivated'}.`, next === 'Active' ? 'success' : 'info');
   }
@@ -572,7 +586,30 @@
       title: 'Delete part?',
       message: `Permanently delete <strong>${esc(p.name)}</strong> (${esc(p.id)})? This cannot be undone.`,
       confirmText: 'Delete Part',
-      onConfirm: () => {
+      onConfirm: async () => {
+        if (Storage.isApi()) {
+          // The ledger is append-only on the server and inventory_transactions
+          // .part_id is ON DELETE RESTRICT, so an initial-stock row makes the
+          // part undeletable -- deliberately: erasing stock history to tidy up
+          // a catalogue entry is exactly what that constraint exists to stop.
+          // The guard above already sends every part that HAS history down the
+          // "deactivate instead" path; this is the one case it let through.
+          const res = await Storage.remove('parts', id);
+          if (!res.ok) {
+            Modal.open({
+              title: 'Cannot delete part',
+              body: `<p style="margin:0">${esc(res.message)}</p>
+                     <p style="margin:12px 0 0;color:var(--text-2);font-size:.84rem">
+                     Deactivate the part instead — it stays in history but can't be added to new job cards.</p>`,
+              footer: `<button class="btn btn--ghost" data-modal-close>Close</button>`
+            });
+            return;
+          }
+          await Storage.reload('inventoryTransactions');
+          refresh();
+          toast(`Part "${p.name}" deleted.`, 'warning');
+          return;
+        }
         // remove its initial-stock audit rows too (the only txns it can have here)
         Storage.getData('inventoryTransactions')
           .filter(t => t.partId === id)
@@ -702,7 +739,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const viewId = new URLSearchParams(location.search).get('view');

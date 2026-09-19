@@ -19,7 +19,7 @@ function makeElement(id) {
     dataset: {}, style: {}, setAttribute(){}, focus(){} };
 }
 
-function boot({ modules = [], tz }) {
+function boot({ modules = [], tz, fetch: fetchStub, origin } = {}) {
   if (tz) process.env.TZ = tz;
   const store = new Map();
   const els = new Map();
@@ -31,6 +31,7 @@ function boot({ modules = [], tz }) {
     querySelector() { return null; }, querySelectorAll() { return []; },
     createElement(tag) { return makeElement(tag); },
     body: makeElement('body'), documentElement: makeElement('html'),
+    readyState: 'loading',
   };
   doc.body.dataset = {}; doc.documentElement.dataset = {};
 
@@ -45,22 +46,27 @@ function boot({ modules = [], tz }) {
     window: { matchMedia: () => ({ matches: false, addEventListener() {} }), addEventListener() {} },
     requestAnimationFrame: cb => cb(), setTimeout, clearTimeout,
     Date, Math, JSON, Number, String, Object, Array, Map, Set, isNaN, parseInt, parseFloat,
-    URLSearchParams, location: { search: '' },
+    URLSearchParams, location: { search: '', origin: origin || '' },
+    Promise, AbortController, TextEncoder, Error, Boolean, Symbol,
+    fetch: fetchStub,
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
 
-  for (const m of ['js/seed-data.js', 'js/storage.js', 'js/utils.js', ...modules]) {
+  for (const m of ['js/api.js', 'js/seed-data.js', 'js/storage.js', 'js/utils.js', ...modules]) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, m), 'utf8'), ctx, { filename: m });
   }
   // Top-level const/let in a VM script live in the context's global LEXICAL
   // scope -- shared between scripts, but not properties of the context object.
   // Copy the module singletons onto globalThis so the host side can reach them.
   vm.runInContext(
-    ['Storage', 'Utils', 'SeedData', 'App'].map(n =>
+    ['Api', 'Storage', 'Utils', 'SeedData', 'App'].map(n =>
       `try { globalThis.${n} = ${n}; } catch (e) {}`).join('\n'), ctx);
 
-  return { ctx, els, fireReady: () => listeners.forEach(cb => cb()) };
+  // fireReady() is "the page finished parsing": the document stops being
+  // 'loading' and the DOMContentLoaded handlers run -- which is where the
+  // modules' Storage.ready() gate picks up.
+  return { ctx, els, fireReady: () => { doc.readyState = 'complete'; listeners.forEach(cb => cb()); } };
 }
 
 /* tiny assertion runner */

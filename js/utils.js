@@ -201,10 +201,19 @@ const Utils = (() => {
     const OUT_TYPES = ['sale', 'job-card-use', 'adjustment-out', 'damaged'];
 
     /**
-     * Atomically apply a stock movement and record its transaction.
+     * Apply a stock movement and record its transaction, together.
      * Returns { ok, error?, transaction?, newStock? }.
+     *
+     * With a backend that is ONE request: the Worker writes the ledger row
+     * and moves parts.stock in a single batch, derives the direction from
+     * the type itself, and computes prevStock/newStock in SQL from the live
+     * row -- which is why none of those three is sent. The shortage rule is
+     * a guard inside that write (`stock + delta >= 0`), so two people
+     * issuing the last unit cannot both succeed. The checks below still run
+     * first, because refusing an obviously impossible movement without a
+     * round trip is kinder than waiting for the server to say the same.
      */
-    function move({ partId, type, quantity, unitCost = null, referenceType = 'manual', referenceId = null, reason = '', notes = '' }) {
+    async function move({ partId, type, quantity, unitCost = null, referenceType = 'manual', referenceId = null, reason = '', notes = '' }) {
       const part = Storage.getById('parts', partId);
       if (!part) return { ok: false, error: 'Part not found.' };
       const qty = Number(quantity);
@@ -217,6 +226,20 @@ const Utils = (() => {
       const newStock = prevStock + dir * qty;
       if (newStock < 0) {
         return { ok: false, error: `Insufficient stock for ${part.name}. Available: ${prevStock}, Required: ${qty}.` };
+      }
+
+      if (Storage.isApi()) {
+        const res = await Storage.create('inventoryTransactions', {
+          partId, type, quantity: qty,
+          unitCost: unitCost != null && unitCost !== '' ? Number(unitCost) : null,
+          referenceType, referenceId, reason, notes
+        });
+        if (!res.ok) return { ok: false, error: res.message };
+        // The stock the server settled on, re-read rather than assumed.
+        await Storage.reload('parts');
+        const after = Storage.getById('parts', partId);
+        return { ok: true, transaction: res.record,
+                 newStock: after ? Number(after.stock) : res.record.newStock };
       }
 
       // Validate everything BEFORE writing, then write transaction + stock
@@ -285,19 +308,19 @@ const Utils = (() => {
      * ping-pong (In Progress ⇄ Waiting for Parts) never double-deducts.
      * Returns { ok, shortages, deducted }.
      */
-    function deductForJob(job) {
+    async function deductForJob(job) {
       const shortages = checkJobStock(job);
       if (shortages.length) return { ok: false, shortages, deducted: 0 };
       let deducted = 0;
-      (job.partsUsed || []).forEach(line => {
-        if (!line.partId || hasJobDeduction(job.id, line.partId)) return;
-        const res = move({
+      for (const line of (job.partsUsed || [])) {
+        if (!line.partId || hasJobDeduction(job.id, line.partId)) continue;
+        const res = await move({
           partId: line.partId, type: 'job-card-use', quantity: line.qty,
           referenceType: 'job-card', referenceId: job.id,
           notes: `Used on ${job.id}`
         });
         if (res.ok) deducted++;
-      });
+      }
       return { ok: true, shortages: [], deducted };
     }
 
@@ -310,7 +333,7 @@ const Utils = (() => {
      * Idempotent: a part with nothing outstanding is simply skipped,
      * so calling this twice never double-returns.
      */
-    function returnForJob(job) {
+    async function returnForJob(job) {
       const partIds = new Set();
       (job.partsUsed || []).forEach(line => { if (line.partId) partIds.add(line.partId); });
       // Also cover parts removed from partsUsed that still carry an
@@ -320,16 +343,16 @@ const Utils = (() => {
         .forEach(t => partIds.add(t.partId));
 
       let returned = 0;
-      partIds.forEach(partId => {
+      for (const partId of partIds) {
         const outstanding = getIssuedQtyForJobPart(job.id, partId);
-        if (outstanding <= 0) return;
-        const res = move({
+        if (outstanding <= 0) continue;
+        const res = await move({
           partId, type: 'return', quantity: outstanding,
           referenceType: 'job-card', referenceId: job.id,
           notes: `Returned — ${job.id} cancelled`
         });
         if (res.ok) returned++;
-      });
+      }
       return returned;
     }
 
@@ -358,7 +381,7 @@ const Utils = (() => {
      * Returns { ok: true, applied: [{partId, name, delta}] } or
      * { ok: false, shortages: [{partId, name, available, required}] }.
      */
-    function reconcileJobInventory(existingJob, proposedJob) {
+    async function reconcileJobInventory(existingJob, proposedJob) {
       const jobId = existingJob.id;
 
       // Required qty per part in the proposed lines — duplicate partId
@@ -400,14 +423,14 @@ const Utils = (() => {
       // All clear — apply deltas through move(), which writes the audit
       // transaction and updates part.stock together for each line.
       const applied = [];
-      plan.forEach(({ partId, delta }) => {
+      for (const { partId, delta } of plan) {
         const part = Storage.getById('parts', partId);
         const name = part ? part.name : partId;
         const res = delta > 0
-          ? move({ partId, type: 'job-card-use', quantity: delta, referenceType: 'job-card', referenceId: jobId, notes: `Adjusted on ${jobId} (qty change)` })
-          : move({ partId, type: 'return', quantity: -delta, referenceType: 'job-card', referenceId: jobId, notes: `Adjusted on ${jobId} (qty change)` });
+          ? await move({ partId, type: 'job-card-use', quantity: delta, referenceType: 'job-card', referenceId: jobId, notes: `Adjusted on ${jobId} (qty change)` })
+          : await move({ partId, type: 'return', quantity: -delta, referenceType: 'job-card', referenceId: jobId, notes: `Adjusted on ${jobId} (qty change)` });
         if (res.ok) applied.push({ partId, name, delta });
-      });
+      }
       return { ok: true, applied };
     }
 
@@ -480,17 +503,94 @@ const Utils = (() => {
           <button class="btn btn--ghost" data-modal-close>Cancel</button>
           <button class="btn btn--danger" data-confirm>${esc(confirmText)}</button>`
       });
-      ov.querySelector('[data-confirm]').addEventListener('click', () => {
+      // The confirm button waits for onConfirm, which now usually means
+      // waiting for the server. Closing first -- as this did while writes
+      // were synchronous and could not fail -- would take the dialog away
+      // before anyone knew whether the thing had actually been deleted, and
+      // would leave a second click free to send the request twice.
+      ov.querySelector('[data-confirm]').addEventListener('click', saving(async () => {
+        if (onConfirm) await onConfirm();
         close();
-        if (onConfirm) onConfirm();
-      });
+      }));
     }
 
     return { open, close, confirm };
   })();
 
+  /* ============================================================
+     Writing through the Storage layer
+     ------------------------------------------------------------
+     A write used to be a synchronous call that could not fail:
+     localStorage either took it or the browser was out of quota.
+     Against the API it is a round trip that can be refused for
+     reasons the browser cannot know in advance -- a duplicate
+     registration the local copy had not seen yet, a job card
+     someone else already invoiced, a token that is missing.
+
+     These two helpers are what stop that difference being
+     re-handled, slightly differently, at forty call sites.
+     ============================================================ */
+
+  /**
+   * Wrap a handler that performs a write.
+   *
+   * Holds the control disabled from the click until the server has
+   * answered, so an impatient second click cannot submit the form twice --
+   * the failure mode the old synchronous writes could not have.
+   */
+  function saving(handler) {
+    let busy = false;
+    return async function (ev) {
+      if (busy) return;
+      busy = true;
+      const btn = ev && (ev.currentTarget || ev.target);
+      const label = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        await handler(ev);
+      } catch (e) {
+        // A bug in the handler, not a refusal from the server. The user
+        // gets a plain sentence; the detail goes to the console, because a
+        // stack trace in a toast helps nobody and can carry a URL.
+        console.error('Write failed:', e);
+        toast('Something went wrong. Please try again.', 'error');
+      } finally {
+        busy = false;
+        if (btn) { btn.disabled = false; if (label !== null) btn.textContent = label; }
+      }
+    };
+  }
+
+  /**
+   * Report a write's outcome and say whether it succeeded, so a caller
+   * reads: `if (!Utils.wrote(res, form)) return;`
+   *
+   * A 422 carries a field map in the same shape the local validate()
+   * functions produce, so the server's objection lands on the same input
+   * the browser's own would have.
+   */
+  function wrote(res, form = null) {
+    if (res && res.ok) return true;
+    const fields = res && res.fields;
+    if (fields && form && form.querySelectorAll) {
+      form.querySelectorAll('.field').forEach(f => f.classList.remove('field--error'));
+      form.querySelectorAll('[data-err]').forEach(el => { el.textContent = ''; });
+      Object.entries(fields).forEach(([key, msg]) => {
+        const errEl = form.querySelector(`[data-err="${key}"]`);
+        if (errEl) {
+          errEl.textContent = msg;
+          const field = errEl.closest('.field');
+          if (field) field.classList.add('field--error');
+        }
+      });
+    }
+    toast((res && res.message) || 'Could not save. Please try again.', 'error');
+    return false;
+  }
+
   return {
     money, fmtDate, fmtTime, todayStr, toDateStr, esc, badge, toast, Modal,
+    saving, wrote,
     liveJobBalance, liveJobPaid, liveJobDue, sumJobsDue, sumJobsPaid,
     customerName, mechanicName, vehicleLabel, vehicleReg, serviceName,
     ACTIVE_JOB_STATUSES, DONE_JOB_STATUSES,

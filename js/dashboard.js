@@ -163,7 +163,7 @@
 
   /* ---------- init ---------- */
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     // App.init (in app.js) runs first and seeds data + builds shell
     renderStats();
     renderRevenueChart();

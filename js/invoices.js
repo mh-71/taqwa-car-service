@@ -116,10 +116,35 @@
    * Card record. Does NOT touch inventory — that was already
    * resolved when the Job Card's parts were issued.
    */
+  /**
+   * Returns { ok, invoice } -- or a PROMISE of it when there is a backend.
+   * Callers await it either way; without one the answer is immediate, which
+   * is what keeps the offline path, and the tests that drive it, unchanged.
+   */
   function createInvoiceFromJobCard(jobCardId, { date, notes } = {}) {
     const check = checkEligibility(jobCardId);
     if (!check.ok) return check;
     const { job } = check;
+
+    // With a backend, an invoice is COPIED from its job card by the server,
+    // in one transaction that also stamps the job card's invoiceId. Every
+    // figure below -- totals, tax, paid, due, the line items -- is refused by
+    // name if sent, precisely so a client cannot invent an invoice that does
+    // not match the job card it claims to bill. So only the two fields that
+    // are genuinely the user's are sent, and the eligibility rules are the
+    // server's `ux_invoices_live_job_card` and its status checks.
+    if (Storage.isApi()) {
+      return (async () => {
+        const res = await Storage.create('invoices', {
+          jobCardId: job.id,
+          ...(date ? { date } : {}),
+          ...(notes && notes.trim() ? { notes: notes.trim() } : {})
+        });
+        if (!res.ok) return { ok: false, reason: res.message, response: res };
+        await Storage.reload('jobCards');
+        return { ok: true, invoice: res.record };
+      })();
+    }
 
     const services = (job.services || []).map(l => ({ ...l }));
     const partsUsed = (job.partsUsed || []).map(l => ({ ...l }));
@@ -191,6 +216,16 @@
 
     // Read the links before the status flips, while the invoice is still live.
     const released = linkedActivePayments(id);
+
+    // On the server this is one transaction: the status, the release of each
+    // linked Active payment to an advance inheriting this invoice's job card
+    // (audit Finding 7), and the job card's invoiceId. paid/due are written
+    // by none of it -- they stay frozen at what this invoice had collected.
+    if (Storage.isApi()) {
+      return Storage.action('invoices', id, 'void', {}, ['payments', 'jobCards'])
+        .then(res => res.ok ? { ok: true, released }
+                            : { ok: false, reason: res.message, response: res });
+    }
 
     Storage.updateData('invoices', id, { status: 'Void' });
 
@@ -371,10 +406,10 @@
                <button class="btn btn--primary" data-save>Create Invoice</button>`
     });
 
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const date = ov.querySelector('#invc-date').value || defaultDate;
       const notes = ov.querySelector('#invc-notes').value;
-      const result = createInvoiceFromJobCard(jobCardId, { date, notes });
+      const result = await createInvoiceFromJobCard(jobCardId, { date, notes });
       if (!result.ok) {
         toast(result.reason || 'Could not create invoice.', 'error');
         Modal.close();
@@ -384,7 +419,7 @@
       refresh();
       toast(`Invoice ${result.invoice.id} created for ${custName(result.invoice.customerId)}.`);
       openDetailModal(result.invoice.id);
-    });
+    }));
   }
 
   /* ---------- notes edit (the only editable field on an existing invoice) ---------- */
@@ -400,12 +435,13 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Notes</button>`
     });
-    ov.querySelector('[data-save]').addEventListener('click', () => {
-      Storage.updateData('invoices', id, { notes: ov.querySelector('#invc-notes-edit').value });
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
+      const res = await Storage.update('invoices', id, { notes: ov.querySelector('#invc-notes-edit').value });
+      if (!Utils.wrote(res, ov)) return;
       Modal.close();
       refresh();
       toast(`Invoice ${id} notes updated.`);
-    });
+    }));
   }
 
   /* ---------- void / delete ---------- */
@@ -415,8 +451,8 @@
     if (!inv) return;
     const linked = linkedActivePayments(id);
 
-    const apply = () => {
-      const res = voidInvoice(id);
+    const apply = async () => {
+      const res = await voidInvoice(id);
       if (!res.ok) { toast(res.reason || 'Could not void invoice.', 'error'); return; }
       refresh();
       const n = (res.released || []).length;
@@ -492,7 +528,17 @@
       title: 'Delete invoice?',
       message: `Permanently delete voided invoice <strong>${esc(inv.id)}</strong>? This cannot be undone.`,
       confirmText: 'Delete Invoice',
-      onConfirm: () => {
+      onConfirm: async () => {
+        if (Storage.isApi()) {
+          // The job card's invoiceId is cleared by the same delete on the
+          // server; the two tables' mutual foreign keys are deferred for it.
+          const res = await Storage.remove('invoices', id);
+          if (!Utils.wrote(res)) return;
+          if (inv.jobCardId) await Storage.reload('jobCards');
+          refresh();
+          toast(`Invoice ${id} deleted.`, 'warning');
+          return;
+        }
         if (inv.jobCardId) {
           const job = Storage.getById('jobCards', inv.jobCardId);
           if (job && job.invoiceId === id) Storage.updateData('jobCards', inv.jobCardId, { invoiceId: null });
@@ -675,7 +721,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const params = new URLSearchParams(location.search);

@@ -2,9 +2,46 @@
    storage.js — Centralized data layer for Taqwa Automobile SC
    ------------------------------------------------------------
    ALL persistence goes through this file. UI code never touches
-   localStorage directly. To migrate to a backend later, replace
-   the bodies of these functions with fetch() calls — the rest
-   of the app stays unchanged.
+   localStorage and never touches fetch(); it calls the same
+   getData / getById / addData / updateData / deleteData it always
+   has.
+
+   ---- two sources, one interface ----
+
+   MODE 'api'    the Worker + D1 are answering. D1 is the source of
+                 truth for every business record.
+   MODE 'local'  no backend is reachable. localStorage is the
+                 source of truth, exactly as before this file
+                 learned about the API.
+
+   The mode is decided once, by asking GET /api/health, and never
+   flips underneath a running page. A page opened from disk, or
+   with no Worker running, behaves precisely as it did before --
+   that is the point: adding a backend must not take the app away
+   from someone who does not have one.
+
+   ---- why reads stayed synchronous ----
+
+   256 call sites read through getData/getById, many of them inside
+   .filter() and .map() callbacks that run per table row. Making
+   them async would mean rewriting every UI module. So hydration
+   pulls each collection ONCE into an in-memory cache before the
+   first render, and the readers keep their signatures and read the
+   cache. The network is crossed at startup, not per row.
+
+   ---- why writes could not stay synchronous ----
+
+   A write has to be told whether the server accepted it, and the
+   server owns what the record becomes: its id, its totals, its
+   balance, its stock. Guessing locally and reconciling later would
+   mean showing the user a number the database never agreed to. So
+   create/update/remove return promises, and the cache is updated
+   from the RESPONSE -- never from what we sent.
+
+   The old synchronous addData/updateData/deleteData remain, and in
+   'local' mode they behave exactly as they always did. In 'api'
+   mode they refuse rather than lie, because there is no honest
+   synchronous answer to "did the server take this?".
    ============================================================ */
 
 const Storage = (() => {
@@ -15,6 +52,27 @@ const Storage = (() => {
     'mechanics', 'parts', 'invoices', 'payments', 'expenses',
     'inventoryTransactions'   // stock movement audit trail (added with Inventory module)
   ];
+
+  /**
+   * Frontend collection name -> API path segment. The two differ only in
+   * spelling (jobCards / job-cards), never in meaning, and this is the only
+   * place that knows about the difference.
+   */
+  const API_PATHS = {
+    customers: 'customers', vehicles: 'vehicles', appointments: 'appointments',
+    jobCards: 'job-cards', services: 'services', mechanics: 'mechanics',
+    parts: 'parts', invoices: 'invoices', payments: 'payments',
+    expenses: 'expenses', inventoryTransactions: 'inventory-transactions'
+  };
+
+  /* ---------- mode ---------- */
+
+  let mode = 'local';            // until hydrate() proves otherwise
+  const cache = {};              // collection -> array, populated in 'api' mode
+  let cachedSettings = null;     // the stored settings row in 'api' mode
+  let hydration = null;          // the in-flight hydrate() promise
+
+  const isApi = () => mode === 'api';
 
   /* ---------- low-level helpers ---------- */
 
@@ -38,15 +96,17 @@ const Storage = (() => {
     }
   }
 
-  /* ---------- public CRUD API ---------- */
+  /* ---------- public CRUD API (reads) ---------- */
 
   /** Get all records of a collection (always returns an array). */
   function getData(collection) {
+    if (isApi()) return cache[collection] || [];
     return read(collection) || [];
   }
 
-  /** Overwrite an entire collection. */
+  /** Overwrite an entire collection. localStorage only -- see seedIfEmpty. */
   function saveData(collection, records) {
+    if (isApi()) return false;
     return write(collection, records);
   }
 
@@ -55,8 +115,28 @@ const Storage = (() => {
     return getData(collection).find(r => r.id === id) || null;
   }
 
+  /* ---------- public CRUD API (legacy synchronous writes) ---------- */
+
+  /**
+   * The three synchronous writers the UI used before there was a backend.
+   *
+   * In 'local' mode they are unchanged, down to the returned value. In 'api'
+   * mode there is no synchronous truth to return, so they refuse loudly
+   * instead of writing to a localStorage nobody is reading -- a silent
+   * success there is exactly the "localStorage and D1 silently diverge"
+   * failure this layer exists to prevent.
+   */
+  function refuseSync(name) {
+    const message =
+      `Storage.${name}() is synchronous and cannot be used against the API. ` +
+      `Use Storage.${{ addData: 'create', updateData: 'update', deleteData: 'remove' }[name]}() instead.`;
+    console.error(message);
+    throw new Error(message);
+  }
+
   /** Insert a new record. Assigns id + createdAt if missing. Returns the record. */
   function addData(collection, record) {
+    if (isApi()) return refuseSync('addData');
     const records = getData(collection);
     if (!record.id) record.id = generateId(collection);
     if (!record.createdAt) record.createdAt = new Date().toISOString();
@@ -67,6 +147,7 @@ const Storage = (() => {
 
   /** Merge changes into an existing record by id. Returns updated record or null. */
   function updateData(collection, id, changes) {
+    if (isApi()) return refuseSync('updateData');
     const records = getData(collection);
     const idx = records.findIndex(r => r.id === id);
     if (idx === -1) return null;
@@ -77,11 +158,97 @@ const Storage = (() => {
 
   /** Delete a record by id. Returns true if something was removed. */
   function deleteData(collection, id) {
+    if (isApi()) return refuseSync('deleteData');
     const records = getData(collection);
     const next = records.filter(r => r.id !== id);
     if (next.length === records.length) return false;
     saveData(collection, next);
     return true;
+  }
+
+  /* ---------- cache maintenance ----------
+
+     Every one of these takes the record the SERVER returned. Nothing here
+     computes a total, a balance or a stock level: if the server changed
+     something we did not send, the response is what says so.            */
+
+  function cachePut(collection, record) {
+    if (!record || !record.id) return record;
+    const list = cache[collection] || (cache[collection] = []);
+    const idx = list.findIndex(r => r.id === record.id);
+    if (idx === -1) list.unshift(record); else list[idx] = record;
+    return record;
+  }
+
+  function cacheDrop(collection, id) {
+    const list = cache[collection];
+    if (!list) return false;
+    const idx = list.findIndex(r => r.id === id);
+    if (idx === -1) return false;
+    list.splice(idx, 1);
+    return true;
+  }
+
+  /* ---------- public CRUD API (asynchronous writes) ---------- */
+
+  /**
+   * The three writers that can talk to a server.
+   *
+   * Each resolves to { ok: true, record } or { ok: false, code, message,
+   * fields? } -- never throws, never rejects. In 'local' mode they wrap the
+   * synchronous writers so a caller can use one shape everywhere.
+   */
+  async function create(collection, record) {
+    if (!isApi()) {
+      const saved = addData(collection, record);
+      return { ok: true, record: saved };
+    }
+    const res = await Api.post(`/${API_PATHS[collection]}`, record);
+    if (!res.ok) return res;
+    return { ok: true, record: cachePut(collection, res.data) };
+  }
+
+  async function update(collection, id, changes) {
+    if (!isApi()) {
+      const saved = updateData(collection, id, changes);
+      return saved
+        ? { ok: true, record: saved }
+        : { ok: false, code: 'not_found', message: 'That record no longer exists.' };
+    }
+    const res = await Api.put(`/${API_PATHS[collection]}/${id}`, changes);
+    if (!res.ok) return res;
+    return { ok: true, record: cachePut(collection, res.data) };
+  }
+
+  async function remove(collection, id) {
+    if (!isApi()) {
+      const gone = deleteData(collection, id);
+      return gone
+        ? { ok: true }
+        : { ok: false, code: 'not_found', message: 'That record no longer exists.' };
+    }
+    const res = await Api.delete(`/${API_PATHS[collection]}/${id}`);
+    if (!res.ok) return res;
+    cacheDrop(collection, id);
+    return { ok: true };
+  }
+
+  /**
+   * POST /api/<collection>/<id>/<action> -- a business operation rather than
+   * a field change: a job card's status, voiding an invoice, voiding or
+   * linking a payment. These move several tables in one transaction, so the
+   * server's answer is the only thing that knows what changed; `refresh`
+   * names the collections to re-read afterwards.
+   */
+  async function action(collection, id, name, body = {}, refresh = []) {
+    if (!isApi()) {
+      return { ok: false, code: 'no_api', message: 'This action needs the backend.' };
+    }
+    const res = await Api.post(`/${API_PATHS[collection]}/${id}/${name}`, body);
+    if (!res.ok) return res;
+    if (res.data && res.data.id) cachePut(collection, res.data);
+    for (const other of refresh) await reload(other);
+    return { ok: true, record: res.data };
   }
 
   /* ---------- id generation ---------- */
@@ -92,7 +259,14 @@ const Storage = (() => {
     payments: 'PAY', expenses: 'EXP', inventoryTransactions: 'STK'
   };
 
-  /** Sequential, human-readable ids like JOB-0007. */
+  /**
+   * Sequential, human-readable ids like JOB-0007.
+   *
+   * 'local' mode only. In 'api' mode the server allocates from its own
+   * id_counters table inside the same transaction as the insert, and the id
+   * it chose comes back on the created record -- two counters handing out
+   * the same number is precisely what that avoids.
+   */
   function generateId(collection) {
     const prefix = ID_PREFIXES[collection] || 'REC';
     const counters = read('counters') || {};
@@ -124,15 +298,46 @@ const Storage = (() => {
     workingDays: []
   };
 
+  /**
+   * These are the BROWSER's display defaults, applied on top of whatever is
+   * stored so a field the shop has never filled in still renders something.
+   * They are not the database's defaults and are never sent to it: a PUT
+   * carries only the fields the form actually holds.
+   */
   function getSettings() {
-    return { ...DEFAULT_SETTINGS, ...(read('settings') || {}) };
+    const stored = isApi() ? cachedSettings : read('settings');
+    return { ...DEFAULT_SETTINGS, ...(stored || {}) };
   }
 
+  /** Synchronous save -- 'local' mode only, kept for the offline path. */
   function saveSettings(settings) {
+    if (isApi()) return refuseSync('saveSettings');
     return write('settings', { ...getSettings(), ...settings });
   }
 
-  /* ---------- theme ---------- */
+  /**
+   * PUT /api/settings merges: only the keys sent are changed. That is the
+   * same contract saveSettings() has always had, so the form can keep
+   * submitting exactly the fields it renders.
+   */
+  async function putSettings(settings) {
+    if (!isApi()) {
+      return saveSettings(settings)
+        ? { ok: true, record: getSettings() }
+        : { ok: false, code: 'write_failed', message: 'Could not save settings.' };
+    }
+    const res = await Api.put('/settings', settings);
+    if (!res.ok) return res;
+    cachedSettings = res.data;
+    return { ok: true, record: getSettings() };
+  }
+
+  /* ---------- theme ----------
+
+     Browser-local on purpose, in both modes. A theme is a preference of the
+     device looking at the data, not a property of the workshop: putting it
+     in D1 would make one person's dark mode everybody's. The <head> of every
+     page reads this same key directly to set the theme before first paint. */
 
   function getTheme() { return read('theme') || 'light'; }
   function saveTheme(theme) { write('theme', theme); }
@@ -141,7 +346,14 @@ const Storage = (() => {
 
   function isSeeded() { return read('seeded') === true; }
 
+  /**
+   * Demo data, for a browser that has never run this app. Never in 'api'
+   * mode: the database is the source of truth, an empty one is a legitimate
+   * state (a new workshop), and POSTing fifty invented records into it
+   * because it looked empty would be the worst kind of helpful.
+   */
   function seedIfEmpty() {
+    if (isApi()) return;
     if (isSeeded()) return;
     SeedData.load({ addData, saveData });
     write('seeded', true);
@@ -153,8 +365,13 @@ const Storage = (() => {
    * theme are deliberately left untouched: this resets DEMO DATA, not the
    * shop's own configured Settings. Used only by Settings' "Reset to Seed
    * Data" action, which gates this behind a strong typed confirmation.
+   *
+   * Refused in 'api' mode. The API has no seed or reset endpoint, and
+   * emptying a real database from a browser button is not something this
+   * layer will improvise.
    */
   function resetToSeedData() {
+    if (isApi()) return false;
     COLLECTIONS.forEach(c => write(c, []));
     write('counters', {});
     write('seeded', false);
@@ -163,9 +380,142 @@ const Storage = (() => {
     return true;
   }
 
+  /* ---------- hydration ---------- */
+
+  /**
+   * Read one collection completely.
+   *
+   * The list endpoint caps a page at 1000 rows and reports the true total,
+   * so this follows the offset until it has them all rather than quietly
+   * rendering the first page as if it were the whole table.
+   */
+  async function fetchAll(collection) {
+    const path = `/${API_PATHS[collection]}`;
+    const rows = [];
+    let offset = 0;
+    for (;;) {
+      const res = await Api.get(`${path}?limit=1000&offset=${offset}`);
+      if (!res.ok) return res;
+      const page = Array.isArray(res.data) ? res.data : [];
+      rows.push(...page);
+      const total = Number(res.meta && res.meta.count);
+      if (!page.length || !Number.isFinite(total) || rows.length >= total) break;
+      offset += page.length;
+    }
+    return { ok: true, rows };
+  }
+
+  /** Re-read one collection from the server. Used after a transaction. */
+  async function reload(collection) {
+    if (!isApi()) return { ok: false, code: 'no_api' };
+    const res = await fetchAll(collection);
+    if (!res.ok) return res;
+    cache[collection] = res.rows;
+    return { ok: true };
+  }
+
+  /**
+   * Decide the mode and, if there is a backend, fill the cache before the
+   * first render.
+   *
+   * A failure at any point leaves the mode at 'local'. That is the
+   * conservative direction: a half-filled cache rendered as if it were the
+   * database would show the user records that do not exist and hide records
+   * that do.
+   */
+  let settled = false;   // the mode is decided and the cache, if any, is filled
+
+  function hydrate() {
+    if (hydration) return hydration;
+
+    // No API to ask means the answer is already known, and knowing it
+    // WITHOUT a promise is what keeps a browser with no backend rendering in
+    // a single tick -- exactly as it did when this file only knew about
+    // localStorage. A page opened from disk must not wait on a microtask to
+    // draw its first table.
+    if (!Api.baseUrl) {
+      settled = true;
+      hydration = Promise.resolve({ mode: 'local', reason: 'no_api' });
+      return hydration;
+    }
+
+    hydration = (async () => {
+      const probe = await Api.probe();
+      if (!probe.ok) return { mode: 'local', reason: probe.code };
+
+      const results = await Promise.all(COLLECTIONS.map(fetchAll));
+      const failed = results.findIndex(r => !r.ok);
+      if (failed !== -1) {
+        return { mode: 'local', reason: results[failed].code, collection: COLLECTIONS[failed] };
+      }
+      COLLECTIONS.forEach((c, i) => { cache[c] = results[i].rows; });
+
+      // A settings row need not exist yet; 404 is a legitimate answer that
+      // leaves the browser's own display defaults showing.
+      const settings = await Api.get('/settings');
+      cachedSettings = settings.ok ? settings.data : null;
+
+      mode = 'api';
+      return { mode: 'api', counts: Object.fromEntries(COLLECTIONS.map(c => [c, cache[c].length])) };
+    })().then(result => { settled = true; return result; });
+    return hydration;
+  }
+
+  /* ---------- readiness ----------
+
+     Page modules used to render on DOMContentLoaded. Hydration cannot
+     finish by then, so they wait on this instead: it resolves once the DOM
+     is parsed AND the mode is settled, in either mode.                    */
+
+  function domReady() {
+    if (typeof document === 'undefined') return Promise.resolve();
+    if (document.readyState !== 'loading') return Promise.resolve();
+    return new Promise(res => document.addEventListener('DOMContentLoaded', res, { once: true }));
+  }
+
+  let readiness = null;
+  function whenReady() {
+    if (!readiness) readiness = Promise.all([domReady(), hydrate()]).then(([, h]) => h);
+    return readiness;
+  }
+
+  /**
+   * The page-module entry point, in place of a DOMContentLoaded listener:
+   *
+   *     Storage.ready(() => { bindEvents(); renderList(); });
+   *
+   * It runs `fn` once the DOM is parsed AND the data source is settled. When
+   * there is no backend, settling needs no network and `fn` runs inside the
+   * DOMContentLoaded handler itself -- the same tick a listener would have
+   * had. When there is one, `fn` waits for the cache to be filled, so no
+   * module ever renders an empty table it would then have to re-render.
+   */
+  function ready(fn) {
+    const hydrated = hydrate();
+
+    const run = () => {
+      if (settled) {
+        try { fn(); } catch (e) { console.error('Page initialisation failed:', e); }
+        return;
+      }
+      hydrated.then(() => fn()).catch(e => console.error('Page initialisation failed:', e));
+    };
+
+    if (typeof document === 'undefined' || document.readyState !== 'loading') { run(); return; }
+    document.addEventListener('DOMContentLoaded', run, { once: true });
+  }
+
   return {
     COLLECTIONS,
     getData, saveData, getById, addData, updateData, deleteData,
-    generateId, getSettings, saveSettings, getTheme, saveTheme, seedIfEmpty, resetToSeedData
+    create, update, remove, action, reload,
+    generateId, getSettings, saveSettings, putSettings, getTheme, saveTheme,
+    seedIfEmpty, resetToSeedData,
+    hydrate, whenReady, ready,
+    get mode() { return mode; },
+    isApi
   };
 })();
+
+/* Node's test harness loads this file as a script; the browser does not. */
+if (typeof module !== 'undefined' && module.exports) module.exports = { Storage };

@@ -81,10 +81,18 @@
    * Inventory are untouched by this function; see the module-level
    * comment for why).
    */
+  /**
+   * Submits exactly the fields this form renders, and nothing else.
+   *
+   * PUT /api/settings MERGES, so an omitted key keeps its stored value --
+   * which is why id and updatedAt are simply never sent (the server owns
+   * both and refuses them by name), and why theme is absent too: it is a
+   * per-device preference that stays in this browser's localStorage.
+   */
   function saveSettingsForm(v) {
     const check = validateSettings(v);
     if (!check.ok) return check;
-    Storage.saveSettings({
+    return Storage.putSettings({
       businessName: v.businessName.trim(),
       address: v.address.trim(),
       phone: v.phone.trim(),
@@ -101,7 +109,6 @@
       closingTime: v.closingTime || '',
       workingDays: v.workingDays || []
     });
-    return { ok: true };
   }
 
   /* ---------- form rendering ---------- */
@@ -215,7 +222,14 @@
     input.addEventListener('input', () => { btn.disabled = input.value.trim() !== 'RESET'; });
     btn.addEventListener('click', () => {
       if (input.value.trim() !== 'RESET') return;
-      Storage.resetToSeedData();
+      // Refused against a real database: the API has no seed or reset
+      // endpoint, and emptying a live workshop's records from a browser
+      // button is not something this app improvises.
+      if (!Storage.resetToSeedData()) {
+        Modal.close();
+        toast('Demo data can only be reset in this browser, not against the database.', 'error');
+        return;
+      }
       Modal.close();
       toast('Demo data has been reset.', 'warning');
       loadForm();
@@ -225,11 +239,16 @@
   /* ---------- events + init ---------- */
 
   function bindEvents() {
-    document.getElementById('saveSettingsBtn').addEventListener('click', () => {
-      const result = saveSettingsForm(readForm());
-      if (!result.ok) { showErrors(result.errors); toast('Please fix the highlighted fields.', 'error'); return; }
+    document.getElementById('saveSettingsBtn').addEventListener('click', Utils.saving(async () => {
+      const result = await saveSettingsForm(readForm());
+      if (!result.ok) {
+        // The form's own validation (errors), or the server's refusal.
+        if (result.errors) { showErrors(result.errors); toast('Please fix the highlighted fields.', 'error'); }
+        else Utils.wrote(result);
+        return;
+      }
       toast('Settings saved.');
-    });
+    }));
     document.getElementById('cancelSettingsBtn').addEventListener('click', () => {
       loadForm();
       toast('Changes discarded.', 'info');
@@ -239,7 +258,7 @@
     bindThemeEvents();
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     loadForm();
     syncThemeRadios();
     bindEvents();

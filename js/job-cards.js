@@ -863,7 +863,7 @@
     });
     bindFormEvents(ov, false);
 
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const v = readForm(ov);
       if (ov.querySelector('#jf-source').value === 'appointment' && !v.appointmentId) {
         showErrors(ov, { appointmentId: 'Select the appointment, or switch to Walk-in.' });
@@ -873,7 +873,9 @@
       const { valid, errors } = validate(v);
       if (!valid) { showErrors(ov, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
-      const rec = Storage.addData('jobCards', {
+      // Totals are recomputed from the lines on the server, so what is sent
+      // is the lines -- not a subtotal it would have to take on trust.
+      const created = await Storage.create('jobCards', {
         ...buildRecord(v),
         appointmentId: v.appointmentId || null,
         invoiceId: null,
@@ -881,6 +883,8 @@
         actualDelivery: '',
         status: 'Received'
       });
+      if (!Utils.wrote(created, ov)) return;
+      const rec = created.record;
 
       // Appointment sync: link only. The appointment keeps its status
       // (Scheduled/Confirmed) until workshop work actually starts —
@@ -888,14 +892,15 @@
       if (v.appointmentId) {
         const a = Storage.getById('appointments', v.appointmentId);
         if (a && !a.jobCardId) {
-          Storage.updateData('appointments', v.appointmentId, { jobCardId: rec.id });
+          if (Storage.isApi()) await Storage.reload('appointments');
+          else Storage.updateData('appointments', v.appointmentId, { jobCardId: rec.id });
         }
       }
 
       Modal.close();
       refresh();
       toast(`Job Card ${rec.id} opened for ${custName(rec.customerId)}.`);
-    });
+    }));
   }
 
   function openEditModal(id) {
@@ -913,12 +918,44 @@
     });
     bindFormEvents(ov, true);
 
-    ov.querySelector('[data-save]').addEventListener('click', () => {
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const v = readForm(ov);
       const { valid, errors } = validate(v, j);
       if (!valid) { showErrors(ov, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
       const proposed = buildRecord(v);
+
+      // With a backend the whole edit -- the job card, both line tables, the
+      // stock reconciliation against the LEDGER and the movements it implies
+      // -- is one transaction on the server, guarded so a plan made against a
+      // stale issued balance rolls the batch back rather than deducting the
+      // same units twice. Reconciling here as well would deduct them twice.
+      if (Storage.isApi()) {
+        const res = await Storage.update('jobCards', id, proposed);
+        if (!res.ok) {
+          if (res.status === 409) {
+            // A shortage, in the server's own words, in the dialog this
+            // screen has always used for one.
+            Modal.open({
+              title: 'Insufficient stock for this change',
+              body: `<p style="margin:0">${esc(res.message)}</p>
+                     <p style="margin:12px 0 0;color:var(--text-2);font-size:.84rem">
+                     Receive stock in Inventory first, then save your changes again. This Job Card was not modified.</p>`,
+              footer: `<button class="btn btn--ghost" data-modal-close>Close</button>
+                       <a class="btn btn--primary" href="inventory.html">Go to Inventory</a>`
+            });
+            return;
+          }
+          Utils.wrote(res, ov);
+          return;
+        }
+        await Storage.reload('parts');
+        await Storage.reload('inventoryTransactions');
+        Modal.close();
+        refresh();
+        toast(`Job Card ${id} updated.`);
+        return;
+      }
 
       // INVENTORY: once a job has started issuing stock (In Progress /
       // Waiting for Parts), an edit to partsUsed must reconcile against
@@ -928,7 +965,7 @@
       // and the Job Card edit itself is not saved.
       let reconciled = null;
       if (INVENTORY_TRACKED_STATUSES.includes(j.status)) {
-        reconciled = Utils.Inventory.reconcileJobInventory(j, proposed);
+        reconciled = await Utils.Inventory.reconcileJobInventory(j, proposed);
         if (!reconciled.ok) {
           const s = reconciled.shortages[0];
           Modal.open({
@@ -956,7 +993,7 @@
       } else {
         toast(`Job Card ${id} updated.`);
       }
-    });
+    }));
   }
 
   /* ---------- status lifecycle ---------- */
@@ -990,18 +1027,45 @@
       }
     }
 
-    const apply = () => {
+    const apply = async () => {
+      // A status change is ONE transaction on the server: the gate (which
+      // refuses a move the table does not list), the stock it implies --
+      // issued entering In Progress, returned on Cancelled -- completedAt,
+      // actualDelivery and the appointment sync all move together, or none
+      // of them does. Repeating any of it here would apply it twice, and
+      // the deduction's own NOT EXISTS would then refuse the second.
+      if (Storage.isApi()) {
+        const res = await Storage.action('jobCards', id, 'status', { status: next },
+          ['parts', 'inventoryTransactions', 'appointments']);
+        if (!res.ok) {
+          if (res.status === 409) {
+            Modal.open({
+              title: next === 'In Progress' ? 'Insufficient stock' : 'Cannot change status',
+              body: `<p style="margin:0">${esc(res.message)}</p>`,
+              footer: `<button class="btn btn--ghost" data-modal-close>Close</button>
+                       ${next === 'In Progress' ? '<a class="btn btn--primary" href="inventory.html">Go to Inventory</a>' : ''}`
+            });
+            return;
+          }
+          Utils.wrote(res);
+          return;
+        }
+        refresh();
+        toast(`Job Card ${id} → ${next}.`, next === 'Cancelled' ? 'warning' : 'success');
+        return;
+      }
+
       const changes = { status: next };
       if (next === 'Completed' && !j.completedAt) changes.completedAt = new Date().toISOString();
       if (next === 'Delivered' && !j.actualDelivery) changes.actualDelivery = todayStr();
       Storage.updateData('jobCards', id, changes);
 
       if (next === 'In Progress') {
-        const res = Utils.Inventory.deductForJob(Storage.getById('jobCards', id));
+        const res = await Utils.Inventory.deductForJob(Storage.getById('jobCards', id));
         if (res.deducted > 0) toast(`Stock issued for ${res.deducted} part line${res.deducted > 1 ? 's' : ''}.`, 'info');
       }
       if (next === 'Cancelled') {
-        const returned = Utils.Inventory.returnForJob(j);
+        const returned = await Utils.Inventory.returnForJob(j);
         if (returned > 0) toast(`Stock returned for ${returned} part line${returned > 1 ? 's' : ''}.`, 'info');
       }
 
@@ -1076,7 +1140,18 @@
       title: 'Delete job card?',
       message: `Permanently delete <strong>${esc(j.id)}</strong> (${esc(custName(j.customerId))}, ${fmtDate(j.date)})? This cannot be undone.`,
       confirmText: 'Delete Job Card',
-      onConfirm: () => {
+      onConfirm: async () => {
+        if (Storage.isApi()) {
+          // The appointment's link is cleared by the same delete on the
+          // server -- job_cards and appointments reference each other, which
+          // is why those two foreign keys are DEFERRABLE INITIALLY DEFERRED.
+          const res = await Storage.remove('jobCards', id);
+          if (!Utils.wrote(res)) return;
+          if (j.appointmentId) await Storage.reload('appointments');
+          refresh();
+          toast(`Job Card ${id} deleted.`, 'warning');
+          return;
+        }
         // unlink from appointment if this was its job card
         if (j.appointmentId) {
           const a = Storage.getById('appointments', j.appointmentId);
@@ -1321,7 +1396,7 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  Storage.ready(() => {
     bindEvents();
     refresh();
     const params = new URLSearchParams(location.search);

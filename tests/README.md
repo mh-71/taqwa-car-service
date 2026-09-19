@@ -35,6 +35,9 @@ Two kinds, deliberately separated by what they need to run.
 | `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
 | `api-settings-write.test.mjs` | `PUT /api/settings` — that a body is **merged** into the stored row so an omitted key keeps its value, that the three server-owned fields (`id`, `updatedAt`, `theme`) are refused by name because theme stays browser state, that every validation message is the client's own wording, that a first save creates row 1 rather than 404ing, and that the merge path is a plain `UPDATE` because an UPSERT would trip the `NOT NULL` columns |
 | `api-auth.test.mjs` | `src/lib/auth.js` and the gate in `src/index.js` — that every refusal is byte-identical whatever went wrong, that a missing `API_TOKEN` fails **closed** with 503 rather than opening the Worker, and a route-registry-derived enumeration proving every advertised mutation is 401 without a token and reaches no database statement, while every `GET`, `/api/health` included, stays public |
+| `api-client.test.cjs` | `js/api.js` — where the base URL comes from (override, meta tag, same origin, and `null` on `file://`), that the bearer token goes on mutations and **never** on a read, that a write with no token is refused before anything is sent, the mapping of every status the API returns onto a stable code, and that neither a stack trace, a request URL nor the token itself can reach the caller |
+| `storage-adapter.test.cjs` | `js/storage.js` — choosing between D1 and `localStorage` and never flipping after, that one collection failing to load keeps the whole app in local mode rather than half-hydrated, paging past the 1000-row cap, that the cache is updated from the **response** so the server's id and totals win, that the synchronous writers refuse rather than write where nothing is reading, settings merge semantics, and that theme, seeding and reset stay browser-local |
+| `d1-writes.test.cjs` | The five multi-table transactions driven against a backend — that recording a payment is one `POST` which never sends `paid`/`due` and never writes the invoice, that invoicing a job card sends only the date and the note because every figure is refused by name, that voiding either uses its named action and releases payments server-side (Finding 7), and that a stock movement never sends `prevStock`/`newStock` nor writes `parts.stock` |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
 | `finding7.test.cjs` | Audit Finding 7 — voiding an invoice releases its payments |
@@ -50,6 +53,14 @@ Two styles, for two different things:
 - **`.test.cjs`** boot the real shipped `js/` modules inside a Node VM with the
   minimum `localStorage` and DOM they touch (`tests/lib/harness.cjs`). Nothing
   is copied or re-implemented: a change to `js/utils.js` is felt here directly.
+  From C-10 the harness also loads `js/api.js` and accepts a `fetch` stub and an
+  `origin`; a suite that passes neither gets no origin, so `Storage` settles in
+  `local` mode and behaves exactly as it did before there was an API.
+  `tests/lib/fake-api.cjs` is the in-memory stand-in for the Worker that the
+  three frontend suites talk to — it answers with the API's envelopes and
+  allocates ids the way the server does, but it is not a second implementation
+  of the API's rules: what each route may REFUSE is tested against the real
+  Worker in `tests/integration/`.
   They are CommonJS because the harness predates this package's `"type":
   "module"`; the `.cjs` extension is what keeps `require()` working.
 

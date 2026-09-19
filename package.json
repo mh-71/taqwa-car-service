@@ -9,6 +9,7 @@
     "test:unit": "node tests/run-unit.mjs",
     "test:integration": "bash tests/integration/run.sh",
     "dev": "wrangler dev",
+    "dev:app": "node tools/dev-server.mjs",
     "db:migrate:local": "wrangler d1 migrations apply taqwa-local --local",
     "db:list:local": "wrangler d1 execute taqwa-local --local --command \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\"",
     "db:shell:local": "wrangler d1 execute taqwa-local --local --command"

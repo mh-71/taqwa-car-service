@@ -154,7 +154,7 @@ const App = (() => {
     renderShell();
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  Storage.ready(init);
 
   return { NAV, applyTheme };
 })();
