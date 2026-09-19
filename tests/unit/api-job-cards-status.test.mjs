@@ -128,11 +128,19 @@ function stubDB({
   return db;
 }
 
+// C-9 put a bearer-token gate in front of every mutation, so this suite
+// authenticates the way any caller does: the token in the header, and the
+// Worker's own secret in the env it is handed. The gate itself is tested in
+// api-auth.test.mjs -- here it is simply satisfied, so these assertions stay
+// about the route. An env without a DB still has the token, so a missing
+// binding is still answered by the route rather than by the gate.
+const TEST_TOKEN = 'unit-test-token';
 const call = (path, env, method, body) =>
   worker.fetch(new Request('http://worker.local' + path, {
     method,
+    headers: { authorization: `Bearer ${TEST_TOKEN}` },
     ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  }), env);
+  }), { API_TOKEN: TEST_TOKEN, ...env });
 const move = (status, db, id = 'JOB-0001') =>
   call(`/api/job-cards/${id}/status`, { DB: db ?? stubDB() }, 'POST', { status });
 const bodyOf = async (res) => res.json();
@@ -766,7 +774,7 @@ console.log('\n-- 10. The money and the links are left alone --');
 {
   const routes = (await (await call('/api/health', { DB: stubDB() }, 'GET')).json()).data.routes;
   check('health advertises the status route', routes.includes('POST /api/job-cards/:id/status'), true);
-  check('   ...and the registry is 59 routes', routes.length, 59);
+  check('   ...and the registry is 60 routes', routes.length, 60);
   // C-7 added voiding an invoice and C-8 voiding and linking a payment.
   // Every action route is a POST under a record, and no collection has more
   // than the ones it declares.

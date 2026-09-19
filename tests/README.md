@@ -33,6 +33,8 @@ Two kinds, deliberately separated by what they need to run.
 | `write-crud.test.mjs` | `POST`/`PUT`/`DELETE` for the six simple entities — that PUT merges rather than replaces, that `stock` is writable nowhere on parts, that an active expense must be voided before it can be deleted, and that a referenced row's 409 comes from the schema's own foreign key |
 | `write-foundation.test.mjs` | `src/lib/write.js` and the two new `http.js` helpers — body parsing, the four field primitives, id formatting, the 409/422 responses, the constraint→status mapping, and the Asia/Dhaka date rule that audit Finding 2 turns on |
 | `api-settings.test.mjs` | `GET /api/settings`, the one singleton: an object rather than a one-element array, no paging metadata, a missing row reported rather than defaulted, falsy values surviving, and a trailing segment staying a clean 404 |
+| `api-settings-write.test.mjs` | `PUT /api/settings` — that a body is **merged** into the stored row so an omitted key keeps its value, that the three server-owned fields (`id`, `updatedAt`, `theme`) are refused by name because theme stays browser state, that every validation message is the client's own wording, that a first save creates row 1 rather than 404ing, and that the merge path is a plain `UPDATE` because an UPSERT would trip the `NOT NULL` columns |
+| `api-auth.test.mjs` | `src/lib/auth.js` and the gate in `src/index.js` — that every refusal is byte-identical whatever went wrong, that a missing `API_TOKEN` fails **closed** with 503 rather than opening the Worker, and a route-registry-derived enumeration proving every advertised mutation is 401 without a token and reaches no database statement, while every `GET`, `/api/health` included, stays public |
 | `finding1.test.cjs` | Audit Finding 1 — outstanding balances follow payments |
 | `finding2.test.cjs` | Audit Finding 2 — `todayStr()` uses the local calendar, not UTC |
 | `finding7.test.cjs` | Audit Finding 7 — voiding an invoice releases its payments |
@@ -133,6 +135,13 @@ happens when a statement **after** a stock movement fails. The probe does that
 directly, and also proves the reconciliation guard: a movement planned against a
 stale issued balance produces a `NULL` quantity, whose `NOT NULL` rolls the whole
 batch back. That is what stops a concurrent edit deducting the same units twice.
+
+C-9 added a **third phase**, which needs no probe Worker: `run.sh` starts a
+third Worker on `PORT + 2` with no `API_TOKEN` at all, and asserts that reads
+still answer while every mutation is refused — with a token and without one —
+with a 503 that names a server configuration problem and names no secret, and
+that nothing reached the database. The two earlier phases pass `--var
+API_TOKEN:...` with a throwaway literal; no real token is in the repository.
 
 Fixture ids live in the `9xxx` range (`SRV-9001`, `CUS-9001`, `VEH-9001`, …),
 which `id_counters` will not reach until a collection passes 9000 records.

@@ -346,7 +346,7 @@ console.log('\n-- 11. Route registration --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db })).json()).data.routes;
-  check('health advertises 59 routes', routes.length, 59);
+  check('health advertises 60 routes', routes.length, 60);
   ok_('advertises the ledger list', routes.includes('GET /api/inventory-transactions'));
   ok_('advertises the ledger detail', routes.includes('GET /api/inventory-transactions/:id'));
   // C-4 gave the ledger POST and nothing else: a movement is recorded and
@@ -356,7 +356,10 @@ console.log('\n-- 11. Route registration --');
   ok_('advertises no DELETE', !routes.includes('DELETE /api/inventory-transactions/:id'));
   check('exactly three ledger routes',
     routes.filter((r) => r.includes('/api/inventory-transactions')).length, 3);
-  ok_('settings is still the last entry', routes[routes.length - 1] === 'GET /api/settings', routes[routes.length - 1]);
+  // C-9 gave the singleton a write, so the pair is last rather than the one.
+  ok_('the settings pair is still last',
+    routes.slice(-2).join(' | ') === 'GET /api/settings | PUT /api/settings',
+    routes.slice(-2));
 
   // /api/inventory (the page's own name) is NOT a route — only the ledger is.
   for (const path of ['/api/inventory', '/api/inventory-transaction', '/api/stock']) {

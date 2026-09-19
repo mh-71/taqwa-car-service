@@ -356,15 +356,16 @@ console.log('\n-- 11. Routing --');
     'GET /api/expenses/:id', 'PUT /api/expenses/:id', 'DELETE /api/expenses/:id',
     'GET /api/inventory-transactions', 'POST /api/inventory-transactions',
     'GET /api/inventory-transactions/:id',
-    // Settings is a singleton: one entry, no /:id.
-    'GET /api/settings',
+    // Settings is a singleton: a read and a write, and no /:id — there is
+    // no create or delete for a row that is permanently id 1.
+    'GET /api/settings', 'PUT /api/settings',
   ]);
 }
 {
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 59);
+  check('404 advertises every route', body.error.available.length, 60);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

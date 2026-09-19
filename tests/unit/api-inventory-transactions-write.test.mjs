@@ -86,11 +86,19 @@ function stubDB({
   return db;
 }
 
+// C-9 put a bearer-token gate in front of every mutation, so this suite
+// authenticates the way any caller does: the token in the header, and the
+// Worker's own secret in the env it is handed. The gate itself is tested in
+// api-auth.test.mjs -- here it is simply satisfied, so these assertions stay
+// about the route. An env without a DB still has the token, so a missing
+// binding is still answered by the route rather than by the gate.
+const TEST_TOKEN = 'unit-test-token';
 const call = (path, env, method, body) =>
   worker.fetch(new Request('http://worker.local' + path, {
     method,
+    headers: { authorization: `Bearer ${TEST_TOKEN}` },
     ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  }), env);
+  }), { API_TOKEN: TEST_TOKEN, ...env });
 const post = (body, db) => call('/api/inventory-transactions', { DB: db ?? stubDB() }, 'POST', body);
 
 const IN_TYPES = ['purchase', 'adjustment-in', 'return', 'initial-stock'];
@@ -412,7 +420,7 @@ console.log('\n-- 12. Routing, and the GET route is unchanged --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db }, 'GET')).json()).data.routes;
-  check('the registry advertises 59 routes', routes.length, 59);
+  check('the registry advertises 60 routes', routes.length, 60);
   ok_('advertises POST /api/inventory-transactions', routes.includes('POST /api/inventory-transactions'));
   ok_('advertises no PUT for the ledger', !routes.includes('PUT /api/inventory-transactions/:id'));
   ok_('advertises no DELETE for the ledger', !routes.includes('DELETE /api/inventory-transactions/:id'));
@@ -421,7 +429,7 @@ console.log('\n-- 12. Routing, and the GET route is unchanged --');
 
   const byMethod = {};
   routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-  check('24 GET, 15 POST, 10 PUT, 10 DELETE', byMethod, { GET: 24, POST: 15, PUT: 10, DELETE: 10 });
+  check('24 GET, 15 POST, 11 PUT, 10 DELETE', byMethod, { GET: 24, POST: 15, PUT: 11, DELETE: 10 });
 
   // The read route must not have gained any stock arithmetic.
   const readDb = stubDB({});

@@ -9,8 +9,19 @@ const t = (name, cond, extra) => {
   else { fail++; console.log('FAIL  ' + name + (extra !== undefined ? '  -> ' + JSON.stringify(extra) : '')); }
 };
 const sec = (s) => console.log('\n-- ' + s + ' --');
+// C-9 put a bearer-token gate in front of every mutation, so the suite has to
+// authenticate. run.sh starts the Worker with this same token and passes it
+// here; it is openly a test value, and the suite goes through the real gate
+// rather than around it. Reads need none, and sending one anyway is harmless.
+const TOKEN = process.env.TAQWA_API_TOKEN || '';
+const authHeaders = (extra = {}) =>
+  (TOKEN ? { authorization: `Bearer ${TOKEN}`, ...extra } : { ...extra });
+
 async function get(path, init) {
-  const res = await fetch(BASE + path, init);
+  const res = await fetch(BASE + path, {
+    ...init,
+    headers: authHeaders(init?.headers),
+  });
   let body = null;
   try { body = await res.json(); } catch { body = null; }
   return { status: res.status, ct: res.headers.get('content-type'), allow: res.headers.get('allow'), body };
@@ -27,6 +38,23 @@ async function send(method, path, body) {
   });
 }
 
+/** The same request WITHOUT credentials, for the authentication section. */
+async function sendAnon(method, path, body, headers = {}) {
+  const res = await fetch(BASE + path, {
+    method,
+    headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
+    ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
+  });
+  let parsed = null;
+  try { parsed = await res.json(); } catch { parsed = null; }
+  return {
+    status: res.status,
+    allow: res.headers.get('allow'),
+    wwwAuthenticate: res.headers.get('www-authenticate'),
+    body: parsed,
+  };
+}
+
 sec('1. Health');
 {
   const r = await get('/api/health');
@@ -35,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 59 routes', routes.length === 59, routes);
+  t('advertises 60 routes', routes.length === 60, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('24 GET, 15 POST, 10 PUT, 10 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 15, PUT: 10, DELETE: 10 }), byMethod);
+    t('24 GET, 15 POST, 11 PUT, 10 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 15, PUT: 11, DELETE: 10 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -64,7 +92,12 @@ sec('1. Health');
   // Settings is the one singleton among the collections: one entry, no /:id.
   t('advertises the settings route', routes.includes('GET /api/settings'));
   t('advertises no settings detail route', !routes.includes('GET /api/settings/:id'));
-  t('exactly one settings entry', routes.filter((r2) => r2.includes('/api/settings')).length === 1, routes);
+  // C-9 gave the singleton its one write: a read and a write, and still no
+  // create, no delete and nothing addressable below the path.
+  t('exactly two settings entries', routes.filter((r2) => r2.includes('/api/settings')).length === 2, routes);
+  t('   ...a read and a write, in that order',
+    JSON.stringify(routes.slice(-2)) === JSON.stringify(['GET /api/settings', 'PUT /api/settings']),
+    routes.slice(-2));
 }
 
 sec('2. GET /api/services — list');
@@ -1720,10 +1753,12 @@ sec('10j. GET /api/settings — the singleton, read whole and left alone');
   t('repeated GETs return a byte-identical record', JSON.stringify(after.body?.data) === before,
     { before, after: JSON.stringify(after.body?.data) });
 
-  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+  // C-9 added PUT; the rule under test is unchanged, and the Allow header now
+  // names both methods the singleton really takes. Section 20 covers the write.
+  for (const method of ['POST', 'PATCH', 'DELETE']) {
     const w = await get('/api/settings', { method });
     t(`${method} /api/settings -> 405`, w.status === 405, w.status);
-    t(`${method} sets Allow: GET`, w.allow === 'GET', w.allow);
+    t(`${method} sets Allow: GET, PUT`, w.allow === 'GET, PUT', w.allow);
     t(`${method} error code`, w.body?.error?.code === 'method_not_allowed', w.body);
   }
 
@@ -1820,16 +1855,17 @@ sec('12. Unknown routes');
   // collections that are still read-only advertise nothing but GET.
   t('only GET/POST/PUT/DELETE are advertised',
     advertised.every(x => ['GET', 'POST', 'PUT', 'DELETE'].includes(x.split(' ')[0])), advertised);
-  // Appointments left this list in C-3, job cards in C-5, invoices in C-7 and
-  // payments in C-8; the ledger accepts POST as of C-4 and is asserted
-  // separately, since it is append-only rather than read-only. Settings is the
-  // last collection with no write path at all, and C-9 owns it.
-  for (const readOnly of ['settings']) {
-    t(`${readOnly} advertises GET only`,
-      advertised.filter(x => x.endsWith(`/api/${readOnly}`) || x.endsWith(`/api/${readOnly}/:id`))
-        .every(x => x.startsWith('GET ')),
-      advertised.filter(x => x.includes(`/api/${readOnly}`)));
-  }
+  // Every collection now has a write path: appointments left this list in C-3,
+  // job cards in C-5, invoices in C-7, payments in C-8 and settings in C-9.
+  // The ledger accepts POST as of C-4 and is asserted separately, since it is
+  // append-only rather than read-only. What is still worth asserting is that
+  // nothing acquired a method it has no business having.
+  t('settings offers a read and a write, and nothing else',
+    JSON.stringify(advertised.filter(x => x.includes('/api/settings')).sort())
+      === JSON.stringify(['GET /api/settings', 'PUT /api/settings']),
+    advertised.filter(x => x.includes('/api/settings')));
+  t('   ...and no collection advertises a method twice',
+    new Set(advertised).size === advertised.length, advertised.length);
 
   t('the ledger advertises POST but never PUT or DELETE',
     advertised.includes('POST /api/inventory-transactions')
@@ -4337,6 +4373,346 @@ sec('19. Payment writes: the invoice balance follows the money, against real D1'
 
   // cleanup.sql's sweep removes the rows this section created, in FK order,
   // and resets the counters the ids came from.
+}
+
+sec('20. Settings writes: the singleton, merged, against real D1');
+{
+  const before = (await get('/api/settings')).body?.data;
+  t('the fixture settings row is there', !!before?.businessName, before);
+  const others = async () => ({
+    customers: (await get('/api/customers')).body?.total,
+    invoices: (await get('/api/invoices')).body?.total,
+    payments: (await get('/api/payments')).body?.total,
+    jobCards: (await get('/api/job-cards')).body?.total,
+  });
+  const othersBefore = await others();
+
+  /* ---- 20a. a merge ---- */
+  {
+    const r = await send('PUT', '/api/settings', { taxRate: 12.5 });
+    t('PUT one field -> 200', r.status === 200, r.body);
+    t('   ...the field changed', r.body?.data?.taxRate === 12.5, r.body?.data);
+    t('   ...and every other field survived',
+      r.body?.data?.businessName === before.businessName
+        && r.body?.data?.currency === before.currency
+        && r.body?.data?.address === before.address
+        && JSON.stringify(r.body?.data?.workingDays) === JSON.stringify(before.workingDays),
+      { before, after: r.body?.data });
+    t('   ...updatedAt is set', !!r.body?.data?.updatedAt, r.body?.data);
+    t('   ...and a GET returns exactly what the PUT reported',
+      JSON.stringify((await get('/api/settings')).body?.data) === JSON.stringify(r.body?.data));
+  }
+
+  /* ---- 20b. updatedAt is the server's ---- */
+  {
+    const first = await send('PUT', '/api/settings', { taxRate: 6 });
+    await new Promise((r) => setTimeout(r, 5));
+    const second = await send('PUT', '/api/settings', { taxRate: 6 });
+    t('saving the same value again -> 200', second.status === 200, second.body);
+    t('   ...and updatedAt moves forward',
+      second.body?.data?.updatedAt > first.body?.data?.updatedAt,
+      { first: first.body?.data?.updatedAt, second: second.body?.data?.updatedAt });
+    const forged = await send('PUT', '/api/settings',
+      { taxRate: 6, updatedAt: '2020-01-01T00:00:00.000Z' });
+    t('a client-supplied updatedAt -> 422', forged.status === 422, forged.body);
+    t('   ...and the stored one is untouched',
+      (await get('/api/settings')).body?.data?.updatedAt === second.body?.data?.updatedAt);
+  }
+
+  /* ---- 20c. working days round-trip ---- */
+  {
+    for (const days of [
+      ['Sat', 'Sun', 'Mon', 'Tue', 'Wed'],
+      ['Sun'],
+      [],
+      ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      ['Fri', 'Sat'],
+    ]) {
+      const r = await send('PUT', '/api/settings', { workingDays: days });
+      t(`workingDays ${JSON.stringify(days)} -> 200`, r.status === 200, r.body);
+      t('   ...round-trips exactly, order included',
+        JSON.stringify(r.body?.data?.workingDays) === JSON.stringify(days), r.body?.data?.workingDays);
+      t('   ...and a fresh GET agrees',
+        JSON.stringify((await get('/api/settings')).body?.data?.workingDays) === JSON.stringify(days));
+    }
+    for (const bad of ['Mon', { Mon: true }, ['Monday'], ['mon'], [1], ['Mon', 'Mon']]) {
+      const r = await send('PUT', '/api/settings', { workingDays: bad });
+      t(`workingDays ${JSON.stringify(bad)} -> 422`, r.status === 422, { status: r.status, body: r.body });
+    }
+    t('   ...and the last good value survived every refusal',
+      JSON.stringify((await get('/api/settings')).body?.data?.workingDays) === JSON.stringify(['Fri', 'Sat']),
+      (await get('/api/settings')).body?.data?.workingDays);
+  }
+
+  /* ---- 20d. numbers, text and the cross-field rules ---- */
+  {
+    const full = await send('PUT', '/api/settings', {
+      businessName: 'C-9 Workshop', phone: '01999-000001', email: 'c9@example.com',
+      website: 'https://c9.example.com', taxId: 'BIN-C9', address: 'C-9 Road, Dhaka',
+      businessDescription: 'C-9 description', invoiceFooter: 'C-9 footer',
+      paymentTerms: 'C-9 terms', taxRate: 0, currency: 'USD',
+      defaultAppointmentDuration: 45, openingTime: '08:30', closingTime: '17:30',
+      workingDays: ['Sat', 'Sun'],
+    });
+    t('a full save -> 200', full.status === 200, full.body);
+    t('   ...a tax rate of 0 is a real rate, not a default',
+      full.body?.data?.taxRate === 0, full.body?.data);
+    t('   ...and persists as 0', (await get('/api/settings')).body?.data?.taxRate === 0);
+    t('   ...every field came back as sent',
+      full.body?.data?.businessName === 'C-9 Workshop'
+        && full.body?.data?.currency === 'USD'
+        && full.body?.data?.defaultAppointmentDuration === 45
+        && full.body?.data?.openingTime === '08:30', full.body?.data);
+
+    const cleared = await send('PUT', '/api/settings', { defaultAppointmentDuration: '' });
+    t('clearing the duration -> 200', cleared.status === 200, cleared.body);
+    t('   ...reads back as \'\', the "not recorded" state',
+      cleared.body?.data?.defaultAppointmentDuration === '', cleared.body?.data);
+
+    for (const [why, body] of [
+      ['a blank business name', { businessName: '  ' }],
+      ['a blank phone', { phone: '' }],
+      ['a blank address', { address: '   ' }],
+      ['a blank currency', { currency: ' ' }],
+      ['a long currency', { currency: 'TAKA!!' }],
+      ['a malformed email', { email: 'nope' }],
+      ['a malformed website', { website: 'not a website' }],
+      ['a tax rate above 100', { taxRate: 101 }],
+      ['a negative tax rate', { taxRate: -1 }],
+      ['a tax rate that is not a number', { taxRate: 'lots' }],
+      ['a zero duration', { defaultAppointmentDuration: 0 }],
+      ['a malformed opening time', { openingTime: '99:99' }],
+      ['a closing time before the stored opening time', { closingTime: '01:00' }],
+      ['an id', { id: 2 }],
+      ['a theme', { theme: 'dark' }],
+    ]) {
+      const r = await send('PUT', '/api/settings', body);
+      t(`${why} -> 422`, r.status === 422, { status: r.status, body: r.body });
+    }
+    const bad = await send('PUT', '/api/settings', 'not json');
+    t('a malformed body -> 400', bad.status === 400, bad.status);
+    const none = await send('PUT', '/api/settings', {});
+    t('an empty body -> 422', none.status === 422, none.body);
+
+    t('and the settings survived every refusal intact',
+      (await get('/api/settings')).body?.data?.businessName === 'C-9 Workshop',
+      (await get('/api/settings')).body?.data);
+  }
+
+  /* ---- 20e. methods, and what a settings write never touches ---- */
+  {
+    for (const m of ['POST', 'PATCH', 'DELETE']) {
+      const r = await get('/api/settings', { method: m });
+      t(`${m} /api/settings -> 405 + Allow`,
+        r.status === 405 && r.allow === 'GET, PUT', { status: r.status, allow: r.allow });
+    }
+    for (const path of ['/api/settings/1', '/api/settings/', '/api/settings/anything']) {
+      const r = await send('PUT', path, { taxRate: 5 });
+      t(`PUT ${path} -> 404, a singleton has nothing to address`, r.status === 404, r.status);
+    }
+    const othersAfter = await others();
+    t('no other table changed through any of it',
+      JSON.stringify(othersAfter) === JSON.stringify(othersBefore),
+      { before: othersBefore, after: othersAfter });
+  }
+}
+
+sec('21. Authentication: every mutation is gated, against the real Worker');
+{
+  t('the suite was given a test token to authenticate with', TOKEN.length > 0, TOKEN.length);
+
+  const advertised = (await get('/api/health')).body?.data?.routes ?? [];
+  t('health is reachable with no credentials at all',
+    (await sendAnon('GET', '/api/health')).status === 200);
+
+  const ID = {
+    customers: 'CUS-9001', vehicles: 'VEH-9001', services: 'SRV-9001',
+    mechanics: 'MEC-9001', parts: 'PRT-9001', appointments: 'APT-9001',
+    'job-cards': 'JOB-9001', invoices: 'INV-9001', payments: 'PAY-9001',
+    expenses: 'EXP-9001', 'inventory-transactions': 'STK-9001',
+  };
+  const concrete = (path) => path.replace(':id', ID[path.split('/')[2]] ?? 'REC-9001');
+
+  /* ---- 21a. every advertised mutation refuses an anonymous caller ---- */
+  {
+    const mutations = advertised.filter((r) => /^(POST|PUT|PATCH|DELETE) /.test(r));
+    t('the registry advertises the mutations to check', mutations.length >= 30, mutations.length);
+
+    const wrong = [];
+    for (const route of mutations) {
+      const [method, path] = route.split(' ');
+      const r = await sendAnon(method, concrete(path), { probe: true });
+      if (r.status !== 401 || r.body?.error?.code !== 'unauthorized') {
+        wrong.push({ route, status: r.status, code: r.body?.error?.code });
+      }
+    }
+    t('EVERY advertised mutation answers 401 without a token', wrong.length === 0, wrong);
+    t('   ...which is all of them', mutations.length - wrong.length === mutations.length);
+
+    const noScheme = [];
+    for (const route of mutations) {
+      const [method, path] = route.split(' ');
+      const r = await sendAnon(method, concrete(path), { probe: true },
+        { authorization: `Bearer ${TOKEN}x` });
+      if (r.status !== 401) noScheme.push({ route, status: r.status });
+    }
+    t('   ...and 401 with a wrong token', noScheme.length === 0, noScheme);
+
+    const refused = [];
+    for (const route of mutations) {
+      const [method, path] = route.split(' ');
+      const r = await sendAnon(method, concrete(path), { probe: true },
+        { authorization: `Bearer ${TOKEN}` });
+      if (r.status === 401) refused.push(route);
+    }
+    t('   ...and lets the right token through, every time', refused.length === 0, refused);
+  }
+
+  /* ---- 21b. every advertised read stays public ---- */
+  {
+    const blocked = [];
+    for (const route of advertised.filter((r) => r.startsWith('GET '))) {
+      const [, path] = route.split(' ');
+      const r = await sendAnon('GET', concrete(path));
+      if (r.status === 401 || r.status === 503) blocked.push({ route, status: r.status });
+    }
+    t('every advertised GET is reachable with no credentials', blocked.length === 0, blocked);
+  }
+
+  /* ---- 21c. the refusal itself ---- */
+  {
+    const shapes = new Set();
+    for (const [why, headers] of [
+      ['no header', {}],
+      ['an empty header', { authorization: '' }],
+      ['Basic auth', { authorization: 'Basic dXNlcjpwYXNz' }],
+      ['a scheme with no token', { authorization: 'Bearer' }],
+      ['a wrong token', { authorization: 'Bearer wrong-token' }],
+      ['a prefix of the token', { authorization: `Bearer ${TOKEN.slice(0, -1)}` }],
+      ['the token under the wrong scheme', { authorization: `Token ${TOKEN}` }],
+      ['the token with no scheme', { authorization: TOKEN }],
+    ]) {
+      const r = await sendAnon('POST', '/api/customers',
+        { name: 'C-9 Should Not Exist', phone: '01900-999999' }, headers);
+      t(`${why} -> 401`, r.status === 401, { status: r.status, body: r.body });
+      t('   ...with the standard error shape', r.body?.error?.code === 'unauthorized', r.body);
+      t('   ...and the Bearer challenge', r.wwwAuthenticate === 'Bearer', r.wwwAuthenticate);
+      t('   ...leaking nothing about the secret',
+        !JSON.stringify(r.body).includes(TOKEN) && !JSON.stringify(r.body).includes('API_TOKEN'),
+        r.body);
+      shapes.add(JSON.stringify(r.body));
+    }
+    t('every refusal is byte-identical — none says which rule it met',
+      shapes.size === 1, [...shapes]);
+  }
+
+  /* ---- 21d. a refused write changes nothing ---- */
+  {
+    const before = {
+      customers: (await get('/api/customers?limit=1000')).body?.total,
+      invoices: (await get('/api/invoices?limit=1000')).body?.total,
+      payments: (await get('/api/payments?limit=1000')).body?.total,
+      jobCards: (await get('/api/job-cards?limit=1000')).body?.total,
+      ledger: (await get('/api/inventory-transactions?limit=1000')).body?.total,
+      part: (await get('/api/parts/PRT-9001')).body?.data?.stock,
+      invoice: JSON.stringify((await get('/api/invoices/INV-9001')).body?.data),
+      payment: JSON.stringify((await get('/api/payments/PAY-9001')).body?.data),
+      jobCard: JSON.stringify((await get('/api/job-cards/JOB-9001')).body?.data),
+      settings: JSON.stringify((await get('/api/settings')).body?.data),
+    };
+
+    // One anonymous attempt at every kind of damage this API can do.
+    const attempts = [
+      ['POST', '/api/customers', { name: 'Ghost', phone: '01900-000001' }],
+      ['DELETE', '/api/customers/CUS-9001', undefined],
+      ['PUT', '/api/parts/PRT-9001', { sellingPrice: 1 }],
+      ['POST', '/api/inventory-transactions', { partId: 'PRT-9001', type: 'sale', quantity: 5 }],
+      ['POST', '/api/job-cards', { customerId: 'CUS-9001', vehicleId: 'VEH-9001', mechanicId: 'MEC-9001', date: '2026-09-18', complaint: 'ghost' }],
+      ['POST', '/api/job-cards/JOB-9003/status', { status: 'Completed' }],
+      ['PUT', '/api/job-cards/JOB-9003', { notes: 'ghost' }],
+      ['DELETE', '/api/job-cards/JOB-9002', undefined],
+      ['POST', '/api/invoices', { jobCardId: 'JOB-9001' }],
+      ['POST', '/api/invoices/INV-9001/void', {}],
+      ['PUT', '/api/invoices/INV-9001', { notes: 'ghost' }],
+      ['DELETE', '/api/invoices/INV-9002', undefined],
+      ['POST', '/api/payments', { customerId: 'CUS-9001', amount: 100 }],
+      ['POST', '/api/payments/PAY-9001/void', {}],
+      ['POST', '/api/payments/PAY-9004/link', { invoiceId: 'INV-9004' }],
+      ['PUT', '/api/payments/PAY-9001', { notes: 'ghost' }],
+      ['DELETE', '/api/payments/PAY-9003', undefined],
+      ['PUT', '/api/settings', { businessName: 'Ghost Workshop', taxRate: 99 }],
+    ];
+    let allRefused = true;
+    for (const [method, path, body] of attempts) {
+      const r = await sendAnon(method, path, body);
+      if (r.status !== 401) { allRefused = false; t(`${method} ${path} -> 401`, false, r); }
+    }
+    t(`all ${attempts.length} anonymous attempts were refused`, allRefused);
+
+    const after = {
+      customers: (await get('/api/customers?limit=1000')).body?.total,
+      invoices: (await get('/api/invoices?limit=1000')).body?.total,
+      payments: (await get('/api/payments?limit=1000')).body?.total,
+      jobCards: (await get('/api/job-cards?limit=1000')).body?.total,
+      ledger: (await get('/api/inventory-transactions?limit=1000')).body?.total,
+      part: (await get('/api/parts/PRT-9001')).body?.data?.stock,
+      invoice: JSON.stringify((await get('/api/invoices/INV-9001')).body?.data),
+      payment: JSON.stringify((await get('/api/payments/PAY-9001')).body?.data),
+      jobCard: JSON.stringify((await get('/api/job-cards/JOB-9001')).body?.data),
+      settings: JSON.stringify((await get('/api/settings')).body?.data),
+    };
+    t('not one row changed', JSON.stringify(after) === JSON.stringify(before),
+      { before, after });
+    t('   ...no record was created', after.customers === before.customers
+      && after.jobCards === before.jobCards && after.invoices === before.invoices
+      && after.payments === before.payments, { before, after });
+    t('   ...no stock moved and no ledger row was written',
+      after.part === before.part && after.ledger === before.ledger, { before, after });
+    t('   ...no invoice balance moved', after.invoice === before.invoice);
+    t('   ...no payment was voided or released', after.payment === before.payment);
+    t('   ...no job card moved or was reconciled', after.jobCard === before.jobCard);
+    t('   ...and the settings are untouched', after.settings === before.settings);
+  }
+
+  /* ---- 21e. what the gate does not touch ---- */
+  {
+    const health = await sendAnon('POST', '/api/health', {});
+    t('POST /api/health -> 405, a method error rather than an auth one',
+      health.status === 405, health.status);
+    t('   ...with Allow: GET', health.allow === 'GET', health.allow);
+
+    const options = await sendAnon('OPTIONS', '/api/customers');
+    t('OPTIONS is not treated as a business mutation',
+      options.status !== 401, options.status);
+
+    // A record that does not exist must not be distinguishable from one that
+    // does, to a caller with no credentials.
+    const real = await sendAnon('DELETE', '/api/customers/CUS-9001');
+    const ghost = await sendAnon('DELETE', '/api/customers/CUS-7777');
+    t('an anonymous DELETE cannot tell a real record from a missing one',
+      real.status === 401 && ghost.status === 401
+        && JSON.stringify(real.body) === JSON.stringify(ghost.body),
+      { real, ghost });
+    const badId = await sendAnon('DELETE', '/api/customers/nope');
+    t('   ...nor a valid id from a malformed one', badId.status === 401, badId.status);
+  }
+
+  /* ---- 21f. the token never appears in a response ---- */
+  {
+    const surfaces = [
+      await sendAnon('GET', '/api/health'),
+      await sendAnon('GET', '/api/settings'),
+      await sendAnon('GET', '/api/nope'),
+      await sendAnon('POST', '/api/customers', { name: 'X' }),
+    ];
+    t('no response anywhere contains the token',
+      surfaces.every((r) => !JSON.stringify(r.body ?? {}).includes(TOKEN)), surfaces.map((r) => r.status));
+    t('   ...nor names the secret binding',
+      surfaces.every((r) => !JSON.stringify(r.body ?? {}).includes('API_TOKEN')));
+    const healthBody = JSON.stringify((await get('/api/health')).body);
+    t('   ...and health, which reports configuration, reveals neither',
+      !healthBody.includes(TOKEN) && !healthBody.includes('API_TOKEN'), healthBody.slice(0, 120));
+  }
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

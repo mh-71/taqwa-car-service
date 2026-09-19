@@ -75,11 +75,19 @@ function stubDB({ conflict = null, returning = { id: 'X-0001' }, changes = 1, th
   return db;
 }
 
+// C-9 put a bearer-token gate in front of every mutation, so this suite
+// authenticates the way any caller does: the token in the header, and the
+// Worker's own secret in the env it is handed. The gate itself is tested in
+// api-auth.test.mjs -- here it is simply satisfied, so these assertions stay
+// about the route. An env without a DB still has the token, so a missing
+// binding is still answered by the route rather than by the gate.
+const TEST_TOKEN = 'unit-test-token';
 const call = (path, env, method, body) =>
   worker.fetch(new Request('http://worker.local' + path, {
     method,
+    headers: { authorization: `Bearer ${TEST_TOKEN}` },
     ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  }), env);
+  }), { API_TOKEN: TEST_TOKEN, ...env });
 
 const post = (path, body, db) => call(path, { DB: db ?? stubDB() }, 'POST', body);
 const put = (path, body, db) => call(path, { DB: db ?? stubDB() }, 'PUT', body);
@@ -525,12 +533,16 @@ for (const e of []) {
   }
 }
 {
-  // Settings stays a read-only singleton until C-9.
-  for (const m of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+  // C-9 gave the singleton its one write. It is still a singleton: there is
+  // no create and no delete for a row that is permanently id 1, and the Allow
+  // header says exactly that.
+  for (const m of ['POST', 'PATCH', 'DELETE']) {
     const r = await call('/api/settings', { DB: stubDB() }, m, { taxRate: 99 });
     ok_(`${m} /api/settings -> 405`, r.status === 405, `got ${r.status}`);
-    check('   ...Allow is GET', r.headers.get('allow'), 'GET');
+    check('   ...Allow is GET, PUT', r.headers.get('allow'), 'GET, PUT');
   }
+  const put = await call('/api/settings', { DB: stubDB() }, 'PUT', { taxRate: 99 });
+  ok_('PUT /api/settings is a real route', put.status !== 405, `got ${put.status}`);
 }
 
 console.log('\n-- 16. PATCH is not a method this API offers --');

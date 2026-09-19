@@ -115,11 +115,19 @@ function stubDB({
   return db;
 }
 
+// C-9 put a bearer-token gate in front of every mutation, so this suite
+// authenticates the way any caller does: the token in the header, and the
+// Worker's own secret in the env it is handed. The gate itself is tested in
+// api-auth.test.mjs -- here it is simply satisfied, so these assertions stay
+// about the route. An env without a DB still has the token, so a missing
+// binding is still answered by the route rather than by the gate.
+const TEST_TOKEN = 'unit-test-token';
 const call = (path, env, method, body) =>
   worker.fetch(new Request('http://worker.local' + path, {
     method,
+    headers: { authorization: `Bearer ${TEST_TOKEN}` },
     ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  }), env);
+  }), { API_TOKEN: TEST_TOKEN, ...env });
 const post = (body, db) => call('/api/invoices', { DB: db ?? stubDB() }, 'POST', body);
 const put = (body, db, id = 'INV-0001') => call(`/api/invoices/${id}`, { DB: db ?? stubDB() }, 'PUT', body);
 const voidIt = (db, body, id = 'INV-0001') =>
@@ -643,7 +651,7 @@ for (const [path, method, body] of [
   ok_('health advertises all four new routes',
     ['POST /api/invoices', 'PUT /api/invoices/:id', 'DELETE /api/invoices/:id',
       'POST /api/invoices/:id/void'].every((r) => routes.includes(r)), routes);
-  check('   ...and the registry is 59 routes', routes.length, 59);
+  check('   ...and the registry is 60 routes', routes.length, 60);
   ok_('   ...with no PUT or DELETE on the void path',
     !routes.includes('PUT /api/invoices/:id/void')
       && !routes.includes('DELETE /api/invoices/:id/void'), routes);

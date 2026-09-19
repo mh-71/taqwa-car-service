@@ -299,30 +299,49 @@ console.log('\n-- 10. Read-only --');
   // Static check on the shipped module, with comments stripped first: this
   // file's own header discusses INSERT-time defaults in prose, and a naive
   // grep would match that rather than any code.
+  //
+  // C-9 gave the module a write half, so these are now scoped to the READ
+  // half -- which is what they were always about. The split is made on the
+  // RAW source at the section marker and comments stripped afterwards, the
+  // pattern the ledger and payment suites already use.
   const raw = readFileSync(join(ROOT, 'src/routes/settings.js'), 'utf8');
-  const code = raw.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  const strip = (x) => x.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  const code = strip(raw);
+  const writeAt = raw.indexOf('   C-9 \u2014 the write half');
+  ok_('the module marks where its write half begins', writeAt > 0, writeAt);
+  const readHalf = strip(raw.slice(0, writeAt));
+  const writeHalf = strip(raw.slice(writeAt));
+
   for (const pattern of [/INSERT\s+INTO/i, /UPDATE\s+\w+\s+SET/i, /DELETE\s+FROM/i, /REPLACE\s+INTO/i]) {
-    ok_(`source contains no ${pattern.source}`, !pattern.test(code));
+    ok_(`the read half contains no ${pattern.source}`, !pattern.test(readHalf));
   }
-  ok_('source mentions no write verb at all outside comments',
-    !/\b(INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER)\b/i.test(code));
+  ok_('the read half mentions no write verb at all outside comments',
+    !/\b(INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER)\b/i.test(readHalf), readHalf.slice(-200));
   // Proves the strip above is doing real work rather than the file simply
   // being free of the word.
   ok_('the header prose does discuss INSERT, so the strip matters',
-    /INSERT/i.test(raw) && !/INSERT/i.test(code));
+    /INSERT/i.test(raw) && !/INSERT/i.test(readHalf));
+  ok_('every write the module does contain is in the write half',
+    /INSERT\s+INTO settings/i.test(writeHalf), 'no write found where the writes belong');
+  ok_('and it touches no table but settings',
+    !/\b(customers|vehicles|job_cards|invoices|payments|parts|appointments|expenses|inventory_transactions)\b/
+      .test(writeHalf), 'another table referenced');
   ok_('source never touches localStorage', !/localStorage/.test(code));
   ok_('source does not import collectionRoutes', !/collectionRoutes/.test(code));
 }
 
 console.log('\n-- 11. Method handling --');
 {
-  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+  // C-9 added PUT; the rule under test is unchanged, and the Allow header now
+  // names both methods the singleton really takes. There is still no create
+  // and no delete for a row that is permanently id 1.
+  for (const method of ['POST', 'PATCH', 'DELETE']) {
     const db = stubDB({ row: FULL });
     const res = await call('/api/settings', { DB: db }, { method });
     const b = await body(res);
     ok_(`${method} -> 405`, res.status === 405, `got ${res.status}`);
     check(`${method} error code`, b.error.code, 'method_not_allowed');
-    check(`${method} Allow header`, res.headers.get('allow'), 'GET');
+    check(`${method} Allow header`, res.headers.get('allow'), 'GET, PUT');
     ok_(`${method} never reaches the database`, db.calls.length === 0, `${db.calls.length} queries`);
   }
   ok_('HEAD -> 405 as well', (await call('/api/settings', { DB: stubDB({ row: FULL }) }, { method: 'HEAD' })).status === 405);
@@ -387,7 +406,7 @@ console.log('\n-- 14. Route registration --');
   const b = await res.json();
   const routes = b.data.routes;
 
-  check('health advertises 59 routes', routes.length, 59);
+  check('health advertises 60 routes', routes.length, 60);
   ok_('advertises GET /api/settings', routes.includes('GET /api/settings'));
   ok_('does NOT advertise a settings detail route', !routes.includes('GET /api/settings/:id'));
   // Was "every route is a GET" through Phase B. C-2 made that false by
@@ -396,15 +415,19 @@ console.log('\n-- 14. Route registration --');
   {
     const byMethod = {};
     routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    check('24 GET, 15 POST, 10 PUT, 10 DELETE', byMethod,
-      { GET: 24, POST: 15, PUT: 10, DELETE: 10 });
+    check('24 GET, 15 POST, 11 PUT, 10 DELETE', byMethod,
+      { GET: 24, POST: 15, PUT: 11, DELETE: 10 });
     ok_('no other method is advertised',
       routes.every((r) => ['GET', 'POST', 'PUT', 'DELETE'].includes(r.split(' ')[0])));
-    ok_('settings itself is GET-only',
-      routes.filter((r) => r.endsWith('/api/settings')).every((r) => r.startsWith('GET ')));
+    check('settings offers a read and a write, and nothing else',
+      routes.filter((r) => r.endsWith('/api/settings')).sort(),
+      ['GET /api/settings', 'PUT /api/settings']);
   }
-  check('settings is advertised last', routes[routes.length - 1], 'GET /api/settings');
-  ok_('exactly one settings entry', routes.filter((r) => r.includes('/api/settings')).length === 1);
+  check('the settings pair is advertised last', routes.slice(-2),
+    ['GET /api/settings', 'PUT /api/settings']);
+  ok_('exactly two settings entries, and no /:id',
+    routes.filter((r) => r.includes('/api/settings')).length === 2
+      && !routes.some((r) => r.includes('/api/settings/')), routes);
 
   // The 404 list and the health list must not drift apart.
   const miss = await call('/api/nope', { DB: stubDB({ row: null }) });

@@ -26,6 +26,13 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 PORT="${PORT:-8787}"
 DB="taqwa-local"
 BASE="http://127.0.0.1:${PORT}"
+# The Worker refuses every write unless API_TOKEN is configured (C-9 fails
+# closed), so the test Worker is started with one. It is passed on the command
+# line rather than written into wrangler.jsonc, and it is openly a test value:
+# a real secret belongs in `wrangler secret put API_TOKEN`, never in the repo.
+# The suite sends this same token, so it authenticates through the real gate
+# rather than around it.
+TEST_API_TOKEN="taqwa-local-test-token-not-a-secret"
 LOG="$(mktemp -t taqwa-worker-XXXXXX.log)"
 
 cd "$ROOT"
@@ -45,6 +52,7 @@ d1_file() { npx wrangler d1 execute "$DB" --local --file "$1" --json 2>/dev/null
 
 WORKER_PID=""
 FOUNDATION_PID=""
+UNCONFIGURED_PID=""
 SEEDED=0
 
 cleanup() {
@@ -90,6 +98,10 @@ cleanup() {
     fi
   fi
 
+  if [ -n "$UNCONFIGURED_PID" ]; then
+    kill -- "-$UNCONFIGURED_PID" 2>/dev/null || kill "$UNCONFIGURED_PID" 2>/dev/null
+    wait "$UNCONFIGURED_PID" 2>/dev/null
+  fi
   if [ -n "$FOUNDATION_PID" ]; then
     kill -- "-$FOUNDATION_PID" 2>/dev/null || kill "$FOUNDATION_PID" 2>/dev/null
     wait "$FOUNDATION_PID" 2>/dev/null
@@ -126,7 +138,8 @@ say "Starting Worker on port $PORT (local D1)"
 # setsid puts wrangler in its own process group, so the EXIT trap can signal
 # the whole tree. wrangler spawns workerd as a grandchild, and killing only the
 # parent leaves workerd alive and holding the port.
-setsid npx wrangler dev --local --port "$PORT" > "$LOG" 2>&1 &
+setsid npx wrangler dev --local --port "$PORT" \
+  --var "API_TOKEN:$TEST_API_TOKEN" > "$LOG" 2>&1 &
 WORKER_PID=$!
 
 for _ in $(seq 1 45); do
@@ -194,7 +207,7 @@ echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointment
 
 # ------------------------------------------------------------------ run
 say "Running tests/integration/api.test.mjs"
-TAQWA_API_BASE="$BASE" node "$HERE/api.test.mjs"
+TAQWA_API_BASE="$BASE" TAQWA_API_TOKEN="$TEST_API_TOKEN" node "$HERE/api.test.mjs"
 RESULT=$?
 
 # ------------------------------------------------- write foundation (C-1)
@@ -228,6 +241,78 @@ else
   ' "$FOUNDATION_JSON" || RESULT=1
 fi
 rm -f "$LOG.foundation"
+
+# ------------------------------------------------- fail closed (C-9)
+# The one authentication behaviour the main Worker cannot show, because it IS
+# configured: what an UNCONFIGURED Worker does. A missing API_TOKEN must never
+# mean "allow everything" -- that is the bug that ships an open API the first
+# time a secret is forgotten. So a third Worker is started on another port with
+# NO --var, and asked to write.
+UNCONFIGURED_PORT=$((PORT + 2))
+UNCONFIGURED_BASE="http://127.0.0.1:${UNCONFIGURED_PORT}"
+say "Checking a Worker with no API_TOKEN fails closed (port $UNCONFIGURED_PORT)"
+setsid npx wrangler dev --local --port "$UNCONFIGURED_PORT" \
+  --config "$ROOT/wrangler.jsonc" > "$LOG.unconfigured" 2>&1 &
+UNCONFIGURED_PID=$!
+for _ in $(seq 1 45); do
+  curl -s -m 2 -o /dev/null "$UNCONFIGURED_BASE/api/health" && break
+  sleep 1
+done
+
+UNCONF_FAILED=0
+uncheck() {  # name, expected, actual
+  if [ "$2" = "$3" ]; then
+    echo "  PASS  $1"
+  else
+    echo "  FAIL  $1 -- expected $2, got $3" >&2
+    UNCONF_FAILED=1
+  fi
+}
+
+# A read still works: the gate never looks at a GET.
+uncheck "a GET still works with no secret configured" 200 \
+  "$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$UNCONFIGURED_BASE/api/health")"
+uncheck "   ...and so does a collection read" 200 \
+  "$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$UNCONFIGURED_BASE/api/customers")"
+
+# Every write is refused, with or without a token, and never allowed.
+for probe in \
+  "POST /api/customers" \
+  "PUT /api/settings" \
+  "POST /api/payments" \
+  "POST /api/invoices" \
+  "DELETE /api/customers/CUS-9001" \
+  "POST /api/job-cards/JOB-9003/status"; do
+  set -- $probe
+  uncheck "$1 $2 is refused, never allowed" 503 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X "$1" \
+        -H 'content-type: application/json' -d '{"probe":true}' "$UNCONFIGURED_BASE$2")"
+  uncheck "   ...and refused with a token too, since none can be right" 503 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X "$1" \
+        -H 'content-type: application/json' -H "authorization: Bearer $TEST_API_TOKEN" \
+        -d '{"probe":true}' "$UNCONFIGURED_BASE$2")"
+done
+
+UNCONF_BODY=$(curl -s -m 10 -X POST -H 'content-type: application/json' \
+  -d '{"name":"Ghost","phone":"01900-000000"}' "$UNCONFIGURED_BASE/api/customers")
+case "$UNCONF_BODY" in
+  *auth_not_configured*) echo "  PASS  the refusal names a server configuration error" ;;
+  *) echo "  FAIL  unexpected body: $UNCONF_BODY" >&2; UNCONF_FAILED=1 ;;
+esac
+case "$UNCONF_BODY" in
+  *API_TOKEN*) echo "  FAIL  the response names the secret binding" >&2; UNCONF_FAILED=1 ;;
+  *) echo "  PASS  and names no secret" ;;
+esac
+# Nothing it refused may have been written.
+GHOSTS=$(d1 "SELECT count(*) AS n FROM customers WHERE name = 'Ghost'" \
+  | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
+uncheck "   ...and wrote nothing" 0 "${GHOSTS:-unknown}"
+
+[ "$UNCONF_FAILED" = "0" ] || RESULT=1
+kill -- "-$UNCONFIGURED_PID" 2>/dev/null || kill "$UNCONFIGURED_PID" 2>/dev/null
+wait "$UNCONFIGURED_PID" 2>/dev/null
+UNCONFIGURED_PID=""
+rm -f "$LOG.unconfigured"
 
 sleep 2   # let the Worker flush the tail of its request log
 say "Worker status codes served"

@@ -10,6 +10,7 @@
    ============================================================ */
 
 import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
+import { checkAuth } from './lib/auth.js';
 import {
   listCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer,
 } from './routes/customers.js';
@@ -64,7 +65,7 @@ import {
 // CHECK (id = 1)), so it has no list and no addressable detail. It is
 // dispatched directly below, beside /api/health, rather than joining
 // COLLECTIONS — see routes/settings.js for why.
-import { getSettings } from './routes/settings.js';
+import { getSettings, updateSettings } from './routes/settings.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -159,9 +160,11 @@ const ROUTES = [
     // reading or replacing a field.
     ...Object.keys(c.actions ?? {}).map((a) => `POST /api/${name}/:id/${a}`),
   ]),
-  // One entry, not two: a singleton has nothing to address. Listed last so
+  // Two entries, not four: a singleton has nothing to address, and there is
+  // no create or delete for a row that is permanently id 1. Listed last so
   // the advertised order stays the order the routes shipped in.
   'GET /api/settings',
+  'PUT /api/settings',
 ];
 
 // Captures the collection name and, optionally, everything after the next
@@ -225,8 +228,30 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    /**
+     * Run a route handler, but only once the request has been authenticated.
+     *
+     * EVERY handler in this file is invoked through here, which is what makes
+     * "is this route protected?" a property of the router rather than of each
+     * route: a mutation handler cannot be reached without passing
+     * checkAuth(), and a route added later is protected the moment it is
+     * dispatched through this function. checkAuth() lets a GET straight
+     * through, so reads and /api/health are unaffected.
+     *
+     * The gate runs BEFORE the handler, so an unauthenticated caller cannot
+     * cause a database read or a write, and cannot learn from a 404 whether a
+     * record exists.
+     */
+    const run = (handler, ...args) => {
+      const denied = checkAuth(request, env);
+      if (denied) return denied;
+      return handler(request, env, ...args);
+    };
+
     if (url.pathname === '/api/health') {
       if (request.method !== 'GET') return methodNotAllowed(['GET']);
+      // Health is a GET and stays public: it reads schema metadata, writes
+      // nothing, and is what tells an operator the Worker is up.
       return health(env);
     }
 
@@ -236,7 +261,9 @@ export default {
     // exist — which is what keeps a trailing segment a clean 404 instead of
     // a TypeError.
     if (url.pathname === '/api/settings') {
-      return getSettings(request, env);
+      if (request.method === 'GET') return run(getSettings);
+      if (request.method === 'PUT') return run(updateSettings);
+      return methodNotAllowed(['GET', 'PUT']);
     }
 
     const match = API_PATH.exec(url.pathname);
@@ -247,9 +274,9 @@ export default {
       if (collection) {
         // No trailing segment at all -> the list path.
         if (rawId === undefined) {
-          if (request.method === 'GET') return collection.list(request, env, url);
+          if (request.method === 'GET') return run(collection.list, url);
           if (request.method === 'POST' && collection.create) {
-            return collection.create(request, env);
+            return run(collection.create);
           }
           return methodNotAllowed(listMethods(collection));
         }
@@ -271,16 +298,16 @@ export default {
           const action = collection.actions?.[id.slice(slash + 1)];
           if (action) {
             if (request.method !== 'POST') return methodNotAllowed(['POST']);
-            return action(request, env, id.slice(0, slash));
+            return run(action, id.slice(0, slash));
           }
         }
 
-        if (request.method === 'GET') return collection.detail(request, env, id);
+        if (request.method === 'GET') return run(collection.detail, id);
         if (request.method === 'PUT' && collection.update) {
-          return collection.update(request, env, id);
+          return run(collection.update, id);
         }
         if (request.method === 'DELETE' && collection.remove) {
-          return collection.remove(request, env, id);
+          return run(collection.remove, id);
         }
         return methodNotAllowed(detailMethods(collection));
       }
