@@ -181,6 +181,27 @@ a:hover { text-decoration: underline; }
 }
 @keyframes app-loading-pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 
+/* The sign-in screen: shown when the Worker is up but this browser has no
+   session. It covers the page because nothing behind it has been read. */
+.app-gate {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--ink-900);
+  padding: 24px;
+  z-index: 90;
+}
+.app-gate__card {
+  width: 100%; max-width: 360px;
+  padding: 28px 24px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.app-gate__logo { width: 150px; align-self: center; margin-bottom: 4px; }
+.app-gate__title {
+  font-size: 1.02rem; font-weight: 600; text-align: center;
+  margin: 0 0 4px; color: var(--text-1);
+}
+.app-gate__submit { width: 100%; justify-content: center; }
+
 /* No server answering: the records on screen live in this browser only. */
 .sidebar__foot-dot--local {
   background: var(--warn);

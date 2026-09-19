@@ -11,6 +11,7 @@
 
 import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
 import { checkAuth } from './lib/auth.js';
+import { session } from './routes/session.js';
 import {
   listCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer,
 } from './routes/customers.js';
@@ -165,6 +166,11 @@ const ROUTES = [
   // the advertised order stays the order the routes shipped in.
   'GET /api/settings',
   'PUT /api/settings',
+  // Signing in and out. Public, necessarily: a browser with no credential
+  // cannot ask for one through a gate that requires one.
+  'GET /api/session',
+  'POST /api/session',
+  'DELETE /api/session',
 ];
 
 // Captures the collection name and, optionally, everything after the next
@@ -233,20 +239,32 @@ export default {
      *
      * EVERY handler in this file is invoked through here, which is what makes
      * "is this route protected?" a property of the router rather than of each
-     * route: a mutation handler cannot be reached without passing
-     * checkAuth(), and a route added later is protected the moment it is
-     * dispatched through this function. checkAuth() lets a GET straight
-     * through, so reads and /api/health are unaffected.
+     * route: no handler can be reached without passing checkAuth(), and a
+     * route added later is protected the moment it is dispatched through this
+     * function.
+     *
+     * C-12 made that apply to reads as well. The only routes that do not pass
+     * through here are /api/health and /api/session, both dispatched below and
+     * both public by necessity rather than by omission.
      *
      * The gate runs BEFORE the handler, so an unauthenticated caller cannot
      * cause a database read or a write, and cannot learn from a 404 whether a
      * record exists.
      */
-    const run = (handler, ...args) => {
-      const denied = checkAuth(request, env);
+    const run = async (handler, ...args) => {
+      const denied = await checkAuth(request, env);
       if (denied) return denied;
       return handler(request, env, ...args);
     };
+
+    // The Worker now shares its origin with the static app (see the assets
+    // binding in wrangler.jsonc). Asset paths are served before this runs;
+    // the bare root is the one path that matches no file, because
+    // html_handling is "none" so that every other URL is served exactly as
+    // the app asked for it.
+    if (url.pathname === '/') {
+      return Response.redirect(new URL('/index.html', url).toString(), 302);
+    }
 
     if (url.pathname === '/api/health') {
       if (request.method !== 'GET') return methodNotAllowed(['GET']);
@@ -254,6 +272,11 @@ export default {
       // nothing, and is what tells an operator the Worker is up.
       return health(env);
     }
+
+    // Public, and dispatched before the gate: this is where a browser GETS
+    // a credential, so requiring one here would be a closed loop. Each of the
+    // three answers is written to give nothing away -- see routes/session.js.
+    if (url.pathname === '/api/session') return session(request, env);
 
     // The exact path only. Anything below it (/api/settings/1, and there is
     // no other id a singleton could have) is left to fall through to the

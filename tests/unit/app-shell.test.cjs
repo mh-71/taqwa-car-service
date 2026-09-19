@@ -133,5 +133,85 @@ console.log('\n-- 4. what the footer renders --');
   ok('   ...with the healthy dot', !/sidebar__foot-dot--local/.test(html), 'local modifier leaked');
 }
 
+/* ============================================================
+   5. Locked — the Worker is up, this browser is not signed in
+   ============================================================ */
+console.log('\n-- 5. signed out --');
+{
+  const h = shell({ origin: 'http://localhost:8787',
+                    fetch: fakeApi({ authenticated: false,
+                                     rows: { customers: [{ id: 'CUS-0001', name: 'Rahim' }] } }) });
+  h.fireReady();
+  await new Promise(r => setTimeout(r, 40));
+  check('the app is LOCKED, not offline', h.ctx.Storage.mode, 'locked');
+  ok('   ...which is the point: it did not quietly fall back to this browser',
+    h.ctx.Storage.mode !== 'local', h.ctx.Storage.mode);
+  check('   ...and read nothing', h.ctx.Storage.getData('customers'), []);
+  ok('   ...and seeded nothing over the top',
+    h.ctx.localStorage.getItem('taqwa_seeded') === null && h.ctx.localStorage.getItem('taqwa_customers') === null,
+    'the browser store was written');
+  check('   ...and did not warn about being offline, because it is not',
+    h.toasts.length, 0);
+}
+{
+  // A browser that HAS been used offline before must not have that old data
+  // shown to it once a server exists but it has not signed in.
+  const h = shell({ origin: 'http://localhost:8787', fetch: fakeApi({ authenticated: false }) });
+  h.ctx.localStorage.setItem('taqwa_customers', JSON.stringify([{ id: 'CUS-0009', name: 'Leftover' }]));
+  h.ctx.localStorage.setItem('taqwa_seeded', 'true');
+  h.fireReady();
+  await new Promise(r => setTimeout(r, 40));
+  check('a locked app shows nothing from the browser store', h.ctx.Storage.getData('customers'), []);
+  check('   ...not even settings', h.ctx.Storage.getSettings().businessName,
+    'Taqwa Automobile Service Center');
+  ok('   ...and the leftover rows are still there, untouched, for offline use',
+    h.ctx.localStorage.getItem('taqwa_customers').includes('Leftover'), 'data was destroyed');
+}
+{
+  const h = shell({ origin: 'http://localhost:8787', fetch: fakeApi({ authenticated: false }) });
+  h.fireReady();
+  await new Promise(r => setTimeout(r, 40));
+  for (const [name, call] of [
+    ['create', () => h.ctx.Storage.create('customers', { name: 'X' })],
+    ['update', () => h.ctx.Storage.update('customers', 'CUS-0001', { name: 'X' })],
+    ['remove', () => h.ctx.Storage.remove('customers', 'CUS-0001')],
+    ['putSettings', () => h.ctx.Storage.putSettings({ taxRate: 1 })],
+    ['action', () => h.ctx.Storage.action('payments', 'PAY-0001', 'void')],
+  ]) {
+    const res = await call();
+    check(`${name}() while locked is refused`, res.code, 'unauthorized');
+  }
+  for (const name of ['addData', 'updateData', 'deleteData']) {
+    let threw = false;
+    try {
+      if (name === 'addData') h.ctx.Storage.addData('customers', { name: 'X' });
+      if (name === 'updateData') h.ctx.Storage.updateData('customers', 'CUS-0001', {});
+      if (name === 'deleteData') h.ctx.Storage.deleteData('customers', 'CUS-0001');
+    } catch (e) { threw = true; }
+    ok(`${name}() while locked refuses rather than writing to the browser`, threw, '');
+  }
+  ok('   ...and nothing reached localStorage',
+    h.ctx.localStorage.getItem('taqwa_customers') === null, '');
+}
+{
+  const f = fakeApi({ authenticated: false, rows: { customers: [{ id: 'CUS-0001', name: 'Rahim' }] } });
+  const h = shell({ origin: 'http://localhost:8787', fetch: f });
+  h.fireReady();
+  await new Promise(r => setTimeout(r, 40));
+  const bad = await h.ctx.Storage.signIn('wrong');
+  ok('a wrong passphrase is refused', bad.ok === false, JSON.stringify(bad));
+  check('   ...and the app stays locked', h.ctx.Storage.mode, 'locked');
+
+  const good = await h.ctx.Storage.signIn('open sesame');
+  ok('the right passphrase signs in', good.ok === true, JSON.stringify(good));
+  check('   ...and the app is now reading the database', h.ctx.Storage.mode, 'api');
+  check('   ...with the database\'s rows', h.ctx.Storage.getData('customers').map(c => c.name), ['Rahim']);
+
+  await h.ctx.Storage.signOut();
+  check('signing out locks it again', h.ctx.Storage.mode, 'locked');
+  check('   ...and forgets what was read, so the next person cannot see it',
+    h.ctx.Storage.getData('customers'), []);
+}
+
 process.exit(summary('App shell unit') === 0 ? 0 : 1);
 })();

@@ -46,7 +46,71 @@ const App = (() => {
    * yourself: someone who believes they are on the shop's database will go
    * on entering records that only ever exist on their own machine.
    */
+  /* ---------- signing in ----------
+
+     Shown when the Worker is answering but this browser has no session.
+     It is a screen rather than a banner on purpose: there is nothing behind
+     it to look at, because nothing has been read.                        */
+
+  function renderSignIn(canSignIn) {
+    const gate = document.createElement('div');
+    gate.className = 'app-gate';
+    gate.innerHTML = `
+      <form class="card app-gate__card" id="signInForm">
+        <img class="app-gate__logo" src="${document.body.dataset.root || ''}assets/logo/logo-white.png" alt="Taqwa Automobile">
+        <h1 class="app-gate__title">Workshop sign in</h1>
+        ${canSignIn ? `
+          <div class="field">
+            <label for="gate-passphrase">Passphrase</label>
+            <input class="input" type="password" id="gate-passphrase" autocomplete="current-password"
+                   autofocus required>
+            <span class="field__error" data-err="passphrase"></span>
+          </div>
+          <button class="btn btn--primary app-gate__submit" type="button" data-signin>Sign in</button>`
+        : `<p class="muted-note">This server has no passphrase configured, so there is no way to
+             sign in from a browser. An administrator needs to set one.</p>`}
+      </form>`;
+    document.body.appendChild(gate);
+    if (!canSignIn) return;
+
+    const form = gate.querySelector('#signInForm');
+    const input = gate.querySelector('#gate-passphrase');
+    const err = gate.querySelector('[data-err="passphrase"]');
+    const button = gate.querySelector('[data-signin]');
+
+    // The work hangs off the BUTTON's click, not the form's submit. A submit
+    // handler wrapped in Utils.saving cannot stop the navigation: the wrapper
+    // awaits before the handler body runs, so preventDefault() would come too
+    // late and the browser would have submitted the form already. Hanging it
+    // on the click also means the control Utils.saving holds is the button
+    // rather than the form, which it would otherwise overwrite with "Saving…".
+    const submit = Utils.saving(async () => {
+      err.textContent = '';
+      const res = await Storage.signIn(input.value);
+      // The passphrase is never held anywhere, including here: the field is
+      // cleared whether it worked or not.
+      input.value = '';
+      if (!res.ok) {
+        err.textContent = res.message || 'That passphrase was not accepted.';
+        input.focus();
+        return;
+      }
+      // A reload rather than a re-render: the page module already ran while
+      // locked and drew empty tables, and re-running the whole startup is
+      // both simpler and surer than teaching thirteen modules to redraw.
+      location.reload();
+    });
+
+    button.addEventListener('click', submit);
+    // Enter in the field still signs in; the form itself never navigates.
+    form.addEventListener('submit', (ev) => { ev.preventDefault(); button.click(); });
+  }
+
   function dataSource() {
+    if (Storage.isLocked()) {
+      return { offline: true, label: 'Signed out',
+               title: 'Sign in to read or change the workshop records.' };
+    }
     if (Storage.isApi()) {
       return { offline: false, label: 'Connected to the database',
                title: 'Records are read from and saved to the shared database.' };
@@ -98,6 +162,10 @@ const App = (() => {
               <svg class="ico-sun" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 7a5 5 0 100 10 5 5 0 000-10zm0-5h0v3h0zm0 17v3zm10-7h-3zM5 12H2zm14.1-7.1l-2.1 2.1zM7 17l-2.1 2.1zm12.1 2.1L17 17zM7 7L4.9 4.9z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <svg class="ico-moon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.3 2c-5.6 0-10 4.5-10 10s4.4 10 10 10c3.9 0 7.3-2.3 9-5.6-8 1.9-13.9-6.4-9-14.4z"/></svg>
             </button>
+            ${Storage.isApi() ? `
+            <button class="icon-btn" id="signOutBtn" aria-label="Sign out" title="Sign out">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
+            </button>` : ''}
             <div class="topbar__user">
               <div class="avatar">TA</div>
               <div class="topbar__user-text">
@@ -160,6 +228,17 @@ const App = (() => {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       applyTheme(next);
     });
+
+    const signOut = document.getElementById('signOutBtn');
+    if (signOut) {
+      signOut.addEventListener('click', Utils.saving(async () => {
+        await Storage.signOut();
+        // A full reload is the honest way to end a session: it throws away
+        // every rendered row along with the cache, so the next person at this
+        // screen cannot read the last one's customers out of the DOM.
+        location.reload();
+      }));
+    }
   }
 
   /* ---------- init ---------- */
@@ -187,6 +266,11 @@ const App = (() => {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (Storage.getTheme() === 'system') applyTheme('system');
       });
+    }
+    if (hydration && hydration.mode === 'locked') {
+      // Nothing has been read, so there is no shell worth drawing behind it.
+      renderSignIn(hydration.canSignIn !== false);
+      return;
     }
     Storage.seedIfEmpty();
     // Before the shell, not after: if rendering ever fails, the warning that

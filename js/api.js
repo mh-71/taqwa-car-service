@@ -24,31 +24,35 @@
 
    ---- authentication ----
 
-   C-9 protects every mutation with `Authorization: Bearer
-   <API_TOKEN>` and leaves GET public. That token is a SERVER
-   credential: it authorises every write on every record, and this
-   frontend is a static site with nowhere to keep a secret.
+   Every route except /api/health and /api/session now requires a
+   credential, READS INCLUDED, and there are two kinds.
 
-   So nothing here ships a token, reads one from the repository, or
-   puts one in localStorage or sessionStorage. A token can only
-   arrive at runtime, through Api.configure({ token }), and it
-   lives in a closure variable for that page's lifetime only -- a
-   reload clears it. Reads never carry it. Until one is supplied,
-   writes are refused HERE, with a message, rather than sent
-   unauthenticated for the server to reject.
+   A browser signs in at /api/session with the workshop passphrase
+   and is given an HttpOnly cookie. Nothing in this file can read
+   that cookie, store it, or leak it -- the browser attaches it
+   and script never sees it. That is the whole point of doing it
+   this way rather than with a token.
 
-   This is a development posture, not a production one. A deployed
-   multi-user install needs an identity the browser is allowed to
-   have -- an edge SSO in front of the Worker, or a real session --
-   which is a deployment decision rather than a frontend one.
+   A machine (CI, the integration suite) uses
+   `Authorization: Bearer <API_TOKEN>` instead, supplied at runtime
+   through Api.configure({ token }) and held in a closure for that
+   page's lifetime only. Nothing here ships a token, reads one from
+   the repository, or puts one in localStorage or sessionStorage.
+
+   A request with no credential is SENT and refused by the server
+   with a 401, rather than second-guessed here: the cookie is
+   invisible to this code, so the server is the only thing that
+   knows whether a request can be authenticated.
+
+   This requires the app and the API to share an origin -- which
+   they do, by being served from the same Worker. Cookies are why:
+   a cross-origin deployment would need CORS with credentials, and
+   a browser will not attach a cookie to a preflight at all.
    ============================================================ */
 
 const Api = (() => {
 
   const DEFAULT_TIMEOUT_MS = 15000;
-
-  /** Methods C-9's gate protects. Everything else is public. */
-  const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
   let baseUrl;            // undefined = not resolved yet, null = no API reachable
   let token = null;       // runtime only -- never read from or written to storage
@@ -116,7 +120,6 @@ const Api = (() => {
    */
   const TRANSPORT_MESSAGES = {
     no_api: 'No backend is configured, so this is running on browser storage.',
-    no_token: 'This change needs an API token. Run Api.configure({ token: … }) first.',
     timeout: 'The server took too long to answer. Check that it is running.',
     network_error: 'Could not reach the server. Check that it is running.',
     malformed_response: 'The server sent a response this app could not read.',
@@ -141,12 +144,10 @@ const Api = (() => {
     const upper = String(method).toUpperCase();
     const headers = {};
 
-    // The token goes on mutations only. A read must never carry a
-    // credential it does not need.
-    if (MUTATING.has(upper)) {
-      if (token === null) return transportFailure('no_token');
-      headers.authorization = `Bearer ${token}`;
-    }
+    // A machine token, if one was configured, goes on every request now that
+    // reads are protected too. A browser sends nothing here: its session
+    // cookie is attached by the browser itself, and is not readable from JS.
+    if (token !== null) headers.authorization = `Bearer ${token}`;
     if (body !== undefined) headers['content-type'] = 'application/json';
 
     const url = `${root}${path}`;
@@ -161,6 +162,14 @@ const Api = (() => {
       response = await fetch(url, {
         method: upper,
         headers,
+        // The default, said out loud: the session cookie rides along on a
+        // same-origin request and is never sent anywhere else. 'include'
+        // would be the cross-origin setting, and this app deliberately has
+        // no cross-origin deployment to need it.
+        credentials: 'same-origin',
+        // A 401 must never be answered from cache, or a signed-out browser
+        // could go on being shown the last signed-in reply.
+        cache: 'no-store',
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         ...(controller ? { signal: controller.signal } : {}),
       });
@@ -214,6 +223,43 @@ const Api = (() => {
   const put = (path, body, options) => request('PUT', path, body, options);
   const del = (path, options) => request('DELETE', path, undefined, options);
 
+  /* ---------- signing in and out ---------- */
+
+  /**
+   * Exchange the workshop passphrase for a session.
+   *
+   * The passphrase is passed straight through to the server and is never
+   * kept here: not in a variable, not in storage, not in a closure. What
+   * comes back is an HttpOnly cookie this code cannot read, which is the
+   * reason to do it this way -- there is nothing for an XSS to steal and
+   * nothing for a later bug to log.
+   */
+  async function login(passphrase) {
+    const res = await post('/session', { passphrase });
+    // 401 here means the passphrase was wrong. It is deliberately the same
+    // answer the server gives for every other failure, so this cannot report
+    // anything more specific than "that did not work".
+    if (!res.ok && res.status === 401) {
+      return { ok: false, code: 'unauthorized', message: 'That passphrase was not accepted.' };
+    }
+    return res;
+  }
+
+  /** End this browser's session. */
+  const logout = () => request('DELETE', '/session');
+
+  /**
+   * Ask whether this browser is signed in, without provoking a 401.
+   * Resolves to { authenticated, passphrase } -- the second saying whether
+   * signing in is possible here at all, so the app knows to offer a form.
+   */
+  async function session() {
+    const res = await get('/session');
+    if (!res.ok) return { ok: false, authenticated: false, passphrase: false, code: res.code };
+    const data = res.data || {};
+    return { ok: true, authenticated: data.authenticated === true, passphrase: data.passphrase === true };
+  }
+
   /**
    * Is a backend actually there?
    *
@@ -229,6 +275,7 @@ const Api = (() => {
   }
 
   return { configure, hasToken, request, get, post, put, delete: del, probe,
+           login, logout, session,
            get baseUrl() { return base(); } };
 })();
 

@@ -62,8 +62,17 @@ function stubDB({ invoices = [], services = [], parts = [], total = null, throwO
     },
   };
 }
+/* C-12 protects reads as well as writes, so every call here carries the same
+   machine credential the write suites use. These suites are about what a route
+   RETURNS, not about the gate -- the gate has its own suite (api-auth). */
+const TEST_TOKEN = 'unit-test-token';
+const withAuth = (init = {}) => ({
+  ...init,
+  headers: { authorization: `Bearer ${TEST_TOKEN}`, ...(init.headers || {}) },
+});
 const call = (path, env, init) =>
-  worker.fetch(new Request('http://worker.local' + path, init), env);
+  worker.fetch(new Request('http://worker.local' + path, withAuth(init)),
+               { API_TOKEN: TEST_TOKEN, ...env });
 
 /* Modelled on seed-data.js:INV-0001.
    INV-0002 is Void with non-zero frozen figures and its job card link already

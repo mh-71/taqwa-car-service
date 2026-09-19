@@ -42,8 +42,18 @@ function stubDB({ rows = [], total = null, throwOn = null }) {
     },
   };
 }
-const GET = (path) => new Request('http://worker.local' + path);
-const call = (path, env, init) => worker.fetch(init ? new Request('http://worker.local' + path, init) : GET(path), env);
+/* C-12 protects reads as well as writes, so every call here carries the same
+   machine credential the write suites use. These suites are about what a route
+   RETURNS, not about the gate -- the gate has its own suite (api-auth). */
+const TEST_TOKEN = 'unit-test-token';
+const withAuth = (init = {}) => ({
+  ...init,
+  headers: { authorization: `Bearer ${TEST_TOKEN}`, ...(init.headers || {}) },
+});
+const GET = (path) => new Request('http://worker.local' + path, withAuth());
+const call = (path, env, init) =>
+  worker.fetch(init ? new Request('http://worker.local' + path, withAuth(init)) : GET(path),
+               { API_TOKEN: TEST_TOKEN, ...env });
 
 const SEEDED = [
   { id: 'CUS-0002', name: 'Karim Hossain', phone: '01812-345678', alt_phone: '01912-345678',

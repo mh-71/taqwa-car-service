@@ -48,8 +48,17 @@ function stubDB({ rows = [], total = null, throwOn = null }) {
     },
   };
 }
+/* C-12 protects reads as well as writes, so every call here carries the same
+   machine credential the write suites use. These suites are about what a route
+   RETURNS, not about the gate -- the gate has its own suite (api-auth). */
+const TEST_TOKEN = 'unit-test-token';
+const withAuth = (init = {}) => ({
+  ...init,
+  headers: { authorization: `Bearer ${TEST_TOKEN}`, ...(init.headers || {}) },
+});
 const call = (path, env, init) =>
-  worker.fetch(new Request('http://worker.local' + path, init), env);
+  worker.fetch(new Request('http://worker.local' + path, withAuth(init)),
+               { API_TOKEN: TEST_TOKEN, ...env });
 
 /* Modelled on seed-data.js:202-205, extended to cover every case the mapper
    has to decide: a populated row, a voided one, an all-NULL-optionals row, a
@@ -505,7 +514,7 @@ console.log('\n-- 12. Routing --');
     body.data.routes.includes('GET /api/expenses')
       && body.data.routes.includes('GET /api/expenses/:id'),
     JSON.stringify(body.data.routes));
-  check('the registry now advertises 60 routes', body.data.routes.length, 60);
+  check('the registry now advertises 60 routes', body.data.routes.length, 63);
 }
 {
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });

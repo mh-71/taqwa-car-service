@@ -34,6 +34,29 @@
     }
   ],
 
+  // --------------------------------------------------------------------------
+  // The app and the API are served from ONE origin, by this Worker.
+  //
+  // That is not a preference. The browser's credential is a session cookie,
+  // and a cross-origin deployment cannot use one: the browser never attaches
+  // a cookie to a CORS preflight, so every write would fail before it was
+  // sent. Same-origin is what lets this Worker have no CORS headers at all.
+  //
+  // The directory is the repository root so the frontend keeps its existing
+  // layout; .assetsignore is what keeps src/, tests/, migrations/ and
+  // node_modules out of the published site. A request that matches no file
+  // falls through to the Worker, which is how /api/* still reaches the routes.
+  //
+  // This is configuration only. Nothing here has been deployed.
+  "assets": {
+    "directory": ".",
+    // "none": this app links to pages/customers.html explicitly, so the URL
+    // it asks for is the one it must get. Any rewriting turns every page
+    // navigation into a redirect.
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+
   "observability": {
     "enabled": true
   }

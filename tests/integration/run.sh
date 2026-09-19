@@ -33,6 +33,12 @@ BASE="http://127.0.0.1:${PORT}"
 # The suite sends this same token, so it authenticates through the real gate
 # rather than around it.
 TEST_API_TOKEN="taqwa-local-test-token-not-a-secret"
+# C-12 protects reads as well, and adds a second credential: a browser signs
+# in with a passphrase and is given a signed cookie. Both are configured here
+# so the suite can exercise both through the real gate. Both are openly test
+# values; a real one belongs in `wrangler secret put`, never in the repo.
+TEST_PASSPHRASE="taqwa-local-test-passphrase-not-a-secret"
+TEST_AUTH_SECRET="taqwa-local-test-signing-key-not-a-secret"
 LOG="$(mktemp -t taqwa-worker-XXXXXX.log)"
 
 cd "$ROOT"
@@ -139,7 +145,9 @@ say "Starting Worker on port $PORT (local D1)"
 # the whole tree. wrangler spawns workerd as a grandchild, and killing only the
 # parent leaves workerd alive and holding the port.
 setsid npx wrangler dev --local --port "$PORT" \
-  --var "API_TOKEN:$TEST_API_TOKEN" > "$LOG" 2>&1 &
+  --var "API_TOKEN:$TEST_API_TOKEN" \
+  --var "AUTH_PASSPHRASE:$TEST_PASSPHRASE" \
+  --var "AUTH_SECRET:$TEST_AUTH_SECRET" > "$LOG" 2>&1 &
 WORKER_PID=$!
 
 for _ in $(seq 1 45); do
@@ -207,7 +215,8 @@ echo "  6 services, 2 customers, 2 vehicles, 3 mechanics, 3 parts, 6 appointment
 
 # ------------------------------------------------------------------ run
 say "Running tests/integration/api.test.mjs"
-TAQWA_API_BASE="$BASE" TAQWA_API_TOKEN="$TEST_API_TOKEN" node "$HERE/api.test.mjs"
+TAQWA_API_BASE="$BASE" TAQWA_API_TOKEN="$TEST_API_TOKEN" \
+  TAQWA_PASSPHRASE="$TEST_PASSPHRASE" node "$HERE/api.test.mjs"
 RESULT=$?
 
 # ------------------------------------------------- write foundation (C-1)
@@ -269,11 +278,23 @@ uncheck() {  # name, expected, actual
   fi
 }
 
-# A read still works: the gate never looks at a GET.
-uncheck "a GET still works with no secret configured" 200 \
+# Health stays public -- it is how an operator sees the Worker is up, and it
+# reads no business data.
+uncheck "health still answers with no secret configured" 200 \
   "$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$UNCONFIGURED_BASE/api/health")"
-uncheck "   ...and so does a collection read" 200 \
+# C-12: a READ is refused too. The original intent -- an unconfigured Worker
+# must never be an OPEN one -- now covers the customer list as well as the
+# writes, which is the whole point of the phase.
+uncheck "   ...but a collection read is refused" 503 \
   "$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$UNCONFIGURED_BASE/api/customers")"
+uncheck "   ...and so is the settings singleton" 503 \
+  "$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$UNCONFIGURED_BASE/api/settings")"
+# Signing in is impossible without a configured passphrase, and says so as a
+# server fault rather than pretending the passphrase was merely wrong.
+uncheck "   ...and signing in is refused as a configuration fault" 503 \
+  "$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X POST \
+      -H 'content-type: application/json' -d '{"passphrase":"anything"}' \
+      "$UNCONFIGURED_BASE/api/session")"
 
 # Every write is refused, with or without a token, and never allowed.
 for probe in \

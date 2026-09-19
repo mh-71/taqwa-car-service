@@ -12,7 +12,7 @@ function stub(script) {
   const calls = [];
   const fn = async (url, init = {}) => {
     calls.push({ url, method: init.method, headers: { ...(init.headers || {}) }, body: init.body,
-                 signal: init.signal });
+                 signal: init.signal, credentials: init.credentials, cache: init.cache });
     const next = typeof script === 'function' ? script(url, init, calls.length - 1) : script;
     if (next && next.throw) { const e = new Error('boom'); e.name = next.throw; throw e; }
     return {
@@ -82,9 +82,10 @@ console.log('\n-- 2. the credential --');
     ctx.Api.configure({ token: 'secret-token-value' });
     await ctx.Api.get('/customers');
     const sent = f.calls[0].headers;
-    ok('a GET carries no authorization header', !('authorization' in sent), JSON.stringify(sent));
-    ok('   ...and no part of the token appears in the request at all',
-      !JSON.stringify(f.calls[0]).includes('secret-token-value'), JSON.stringify(f.calls[0]));
+    // C-12 protects reads, so a configured machine token now goes on them
+    // too. A browser still sends no header -- it has a cookie instead.
+    check('a GET carries the machine token, now that reads are protected',
+      sent.authorization, 'Bearer secret-token-value');
   }
   {
     const f = stub({ status: 201, body: { data: { id: 'CUS-0001' } } });
@@ -104,12 +105,20 @@ console.log('\n-- 2. the credential --');
     check(`a ${method} carries the bearer token`, f.calls[0].headers.authorization, 'Bearer tok');
   }
   {
-    const f = stub({ status: 201, body: { data: {} } });
+    // C-12: a browser's credential is an HttpOnly cookie this code cannot
+    // read, so the client can no longer decide in advance that a request
+    // will fail. It goes out, with no Authorization header, and the SERVER
+    // answers -- which is the only party that can actually tell.
+    const f = stub({ status: 401, body: { error: {
+      code: 'unauthorized', message: 'Authentication required.' } } });
     const { ctx } = env({ fetch: f });
     const res = await ctx.Api.post('/customers', { name: 'A' });
-    check('a mutation with no token is refused locally', res.code, 'no_token');
-    check('   ...and nothing was sent', f.calls.length, 0);
-    ok('   ...and says what to do about it', res.message.length > 0, res.message);
+    check('a mutation with no token is SENT, and the server refuses it', res.code, 'unauthorized');
+    check('   ...having actually gone out', f.calls.length, 1);
+    ok('   ...carrying no authorization header of its own',
+      !('authorization' in f.calls[0].headers), JSON.stringify(f.calls[0].headers));
+    ok('   ...but letting the browser attach its cookie',
+      f.calls[0].credentials === 'same-origin', String(f.calls[0].credentials));
   }
   {
     // The failure a caller sees must never carry the credential itself --
@@ -247,8 +256,13 @@ console.log('\n-- 2. the credential --');
     ok('probe reports a live backend', res.ok === true, JSON.stringify(res));
     check('   ...by asking the public health route', f.calls[0].url, 'http://localhost:8787/api/health');
     check('   ...as a GET', f.calls[0].method, 'GET');
-    ok('   ...carrying no credential', !('authorization' in f.calls[0].headers),
-      JSON.stringify(f.calls[0].headers));
+    // Health is public, so the probe needs no credential. A configured
+    // machine token rides along harmlessly -- reads carry it now — so what
+    // is asserted is that probing works WITHOUT one.
+    const anon = boot({ origin: 'http://localhost:8787',
+      fetch: stub({ status: 200, body: { data: { status: 'ok' } } }) });
+    ok('   ...and works with no credential configured at all',
+      (await anon.ctx.Api.probe()).ok === true, '');
   }
   {
     const { ctx } = env({ fetch: stub({ throw: 'TypeError' }) });

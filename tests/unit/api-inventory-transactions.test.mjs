@@ -56,8 +56,17 @@ function stubDB({ rows = [], total = null, throwOn = null }) {
     },
   };
 }
+/* C-12 protects reads as well as writes, so every call here carries the same
+   machine credential the write suites use. These suites are about what a route
+   RETURNS, not about the gate -- the gate has its own suite (api-auth). */
+const TEST_TOKEN = 'unit-test-token';
+const withAuth = (init = {}) => ({
+  ...init,
+  headers: { authorization: `Bearer ${TEST_TOKEN}`, ...(init.headers || {}) },
+});
 const call = (path, env, init) =>
-  worker.fetch(new Request('http://worker.local' + path, init), env);
+  worker.fetch(new Request('http://worker.local' + path, withAuth(init)),
+               { API_TOKEN: TEST_TOKEN, ...env });
 
 /* Modelled on seed-data.js:212-219 (the opening-stock rows the app writes on
    first run) and on what Utils.Inventory.move() stores for each kind of
@@ -346,7 +355,7 @@ console.log('\n-- 11. Route registration --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db })).json()).data.routes;
-  check('health advertises 60 routes', routes.length, 60);
+  check('health advertises 60 routes', routes.length, 63);
   ok_('advertises the ledger list', routes.includes('GET /api/inventory-transactions'));
   ok_('advertises the ledger detail', routes.includes('GET /api/inventory-transactions/:id'));
   // C-4 gave the ledger POST and nothing else: a movement is recorded and
@@ -356,10 +365,15 @@ console.log('\n-- 11. Route registration --');
   ok_('advertises no DELETE', !routes.includes('DELETE /api/inventory-transactions/:id'));
   check('exactly three ledger routes',
     routes.filter((r) => r.includes('/api/inventory-transactions')).length, 3);
-  // C-9 gave the singleton a write, so the pair is last rather than the one.
-  ok_('the settings pair is still last',
-    routes.slice(-2).join(' | ') === 'GET /api/settings | PUT /api/settings',
-    routes.slice(-2));
+  // C-9 gave the singleton a write, so the pair is last rather than the one --
+  // and C-12 put the three public session routes after it.
+  ok_('the settings pair still precedes the session routes',
+    routes.slice(-5, -3).join(' | ') === 'GET /api/settings | PUT /api/settings',
+    routes.slice(-5));
+  ok_('   ...and the session trio is last',
+    routes.slice(-3).join(' | ')
+      === 'GET /api/session | POST /api/session | DELETE /api/session',
+    routes.slice(-3));
 
   // /api/inventory (the page's own name) is NOT a route — only the ledger is.
   for (const path of ['/api/inventory', '/api/inventory-transaction', '/api/stock']) {
@@ -389,8 +403,8 @@ console.log('\n-- 12. The eleven collections are all now reachable --');
     ok_(`${name} has both routes`,
       routes.includes(`GET /api/${name}`) && routes.includes(`GET /api/${name}/:id`));
   }
-  ok_('11 collections x 2 GET, plus health and settings, is still 24 GETs',
-    routes.filter((r) => r.startsWith('GET ')).length === 11 * 2 + 2,
+  ok_('11 collections x 2 GET, plus health, settings and session, is 25 GETs',
+    routes.filter((r) => r.startsWith('GET ')).length === 11 * 2 + 3,
     `${routes.filter((r) => r.startsWith('GET ')).length}`);
 }
 

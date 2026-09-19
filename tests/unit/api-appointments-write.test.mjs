@@ -537,14 +537,14 @@ console.log('\n-- 14. Routing --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db }, 'GET')).json()).data.routes;
-  check('the registry advertises 60 routes', routes.length, 60);
+  check('the registry advertises 60 routes', routes.length, 63);
   for (const r of ['GET /api/appointments', 'POST /api/appointments', 'GET /api/appointments/:id',
     'PUT /api/appointments/:id', 'DELETE /api/appointments/:id']) {
     ok_(`advertises ${r}`, routes.includes(r), routes.filter((x) => x.includes('appointments')));
   }
   const byMethod = {};
   routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-  check('24 GET, 15 POST, 11 PUT, 10 DELETE', byMethod, { GET: 24, POST: 15, PUT: 11, DELETE: 10 });
+  check('25 GET, 16 POST, 11 PUT, 11 DELETE', byMethod, { GET: 25, POST: 16, PUT: 11, DELETE: 11 });
 
   const patchList = await call('/api/appointments', { DB: stubDB() }, 'PATCH', {});
   check('PATCH on the list -> 405', patchList.status, 405);

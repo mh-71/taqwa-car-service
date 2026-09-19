@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 60 routes', routes.length === 60, routes);
+  t('advertises 63 routes', routes.length === 63, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('24 GET, 15 POST, 11 PUT, 10 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 15, PUT: 11, DELETE: 10 }), byMethod);
+    t('25 GET, 16 POST, 11 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 25, POST: 16, PUT: 11, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -96,8 +96,13 @@ sec('1. Health');
   // create, no delete and nothing addressable below the path.
   t('exactly two settings entries', routes.filter((r2) => r2.includes('/api/settings')).length === 2, routes);
   t('   ...a read and a write, in that order',
-    JSON.stringify(routes.slice(-2)) === JSON.stringify(['GET /api/settings', 'PUT /api/settings']),
-    routes.slice(-2));
+    JSON.stringify(routes.slice(-5, -3)) === JSON.stringify(['GET /api/settings', 'PUT /api/settings']),
+    routes.slice(-5, -3));
+  // C-12 put the three public session routes after them.
+  t('the session trio is advertised last',
+    JSON.stringify(routes.slice(-3))
+      === JSON.stringify(['GET /api/session', 'POST /api/session', 'DELETE /api/session']),
+    routes.slice(-3));
 }
 
 sec('2. GET /api/services — list');
@@ -4535,7 +4540,12 @@ sec('21. Authentication: every mutation is gated, against the real Worker');
 
   /* ---- 21a. every advertised mutation refuses an anonymous caller ---- */
   {
-    const mutations = advertised.filter((r) => /^(POST|PUT|PATCH|DELETE) /.test(r));
+    // POST and DELETE /api/session are how a browser GETS and gives up a
+    // credential, so requiring one there would be a closed loop. They are
+    // public by necessity and are checked on their own terms in section 22.
+    const SESSION_ROUTES = new Set(['POST /api/session', 'DELETE /api/session']);
+    const mutations = advertised.filter(
+      (r) => /^(POST|PUT|PATCH|DELETE) /.test(r) && !SESSION_ROUTES.has(r));
     t('the registry advertises the mutations to check', mutations.length >= 30, mutations.length);
 
     const wrong = [];
@@ -4568,15 +4578,30 @@ sec('21. Authentication: every mutation is gated, against the real Worker');
     t('   ...and lets the right token through, every time', refused.length === 0, refused);
   }
 
-  /* ---- 21b. every advertised read stays public ---- */
+  /* ---- 21b. every advertised read now needs a credential ----
+     C-12 inverted this. Reads were public; a customer list is the shop's
+     book of names, phone numbers and addresses, so now they are not. The
+     check keeps its shape -- enumerate EVERY advertised GET from the
+     registry rather than spot-checking -- and asserts the opposite. */
   {
-    const blocked = [];
-    for (const route of advertised.filter((r) => r.startsWith('GET '))) {
+    const PUBLIC = new Set(['GET /api/health', 'GET /api/session']);
+    const open = [];
+    for (const route of advertised.filter((r) => r.startsWith('GET ') && !PUBLIC.has(r))) {
       const [, path] = route.split(' ');
       const r = await sendAnon('GET', concrete(path));
-      if (r.status === 401 || r.status === 503) blocked.push({ route, status: r.status });
+      if (r.status !== 401) open.push({ route, status: r.status });
     }
-    t('every advertised GET is reachable with no credentials', blocked.length === 0, blocked);
+    t('every advertised GET refuses an unauthenticated caller', open.length === 0, open);
+
+    const health = await sendAnon('GET', '/api/health');
+    t('health stays public, because it is how you see the Worker is up',
+      health.status === 200, health.status);
+    const sess = await sendAnon('GET', '/api/session');
+    t('GET /api/session stays public, because it is how you get a credential',
+      sess.status === 200, sess.status);
+    t('   ...and reports only whether this caller is signed in',
+      JSON.stringify(Object.keys(sess.body.data).sort()) === '["authenticated","passphrase"]',
+      sess.body.data);
   }
 
   /* ---- 21c. the refusal itself ---- */
@@ -4712,6 +4737,123 @@ sec('21. Authentication: every mutation is gated, against the real Worker');
     const healthBody = JSON.stringify((await get('/api/health')).body);
     t('   ...and health, which reports configuration, reveals neither',
       !healthBody.includes(TOKEN) && !healthBody.includes('API_TOKEN'), healthBody.slice(0, 120));
+  }
+}
+
+sec('22. Sessions: the signed cookie, against the real Worker');
+{
+  const PASSPHRASE = process.env.TAQWA_PASSPHRASE || '';
+  const login = async (passphrase, headers = {}) => {
+    const res = await fetch(`${BASE}/api/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify({ passphrase }),
+    });
+    return { status: res.status, setCookie: res.headers.get('set-cookie') };
+  };
+  const withCookie = async (method, path, cookie, body) => {
+    const res = await fetch(BASE + path, {
+      method,
+      headers: { cookie, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    let parsed = null;
+    try { parsed = await res.json(); } catch { parsed = null; }
+    return { status: res.status, body: parsed, setCookie: res.headers.get('set-cookie') };
+  };
+
+  t('the suite was given a passphrase to exercise', PASSPHRASE !== '', 'TAQWA_PASSPHRASE unset');
+
+  /* ---- 22a. wrong, then right ---- */
+  const bad = await login('definitely-not-the-passphrase');
+  t('a wrong passphrase is refused', bad.status === 401, bad.status);
+  t('   ...and sets no cookie', bad.setCookie === null, bad.setCookie);
+
+  const good = await login(PASSPHRASE);
+  t('the right passphrase is accepted', good.status === 204, good.status);
+  t('   ...and sets a cookie', typeof good.setCookie === 'string', good.setCookie);
+  const cookie = good.setCookie.split(';')[0];
+
+  /* ---- 22b. the flags a browser will actually enforce ---- */
+  {
+    const flags = good.setCookie.toLowerCase();
+    t('HttpOnly, so script cannot read it', flags.includes('httponly'), good.setCookie);
+    t('Secure, so it never crosses plain HTTP', flags.includes('secure'), good.setCookie);
+    t('SameSite=Strict, which is what makes CSRF a non-event',
+      flags.includes('samesite=strict'), good.setCookie);
+    t('   ...and the value carries no passphrase',
+      !good.setCookie.includes(PASSPHRASE), 'the passphrase is in the cookie');
+  }
+
+  /* ---- 22c. a session reads and writes real D1 ---- */
+  {
+    const read = await withCookie('GET', '/api/customers', cookie);
+    t('a session can read', read.status === 200, read.status);
+    t('   ...and gets real rows', Array.isArray(read.body?.data), typeof read.body?.data);
+
+    const made = await withCookie('POST', '/api/customers', cookie,
+      { name: 'Session Probe', phone: '01733-222111' });
+    t('a session can write', made.status === 201, made.status);
+    if (made.status === 201) {
+      const id = made.body.data.id;
+      const gone = await withCookie('DELETE', `/api/customers/${id}`, cookie);
+      t('   ...and delete what it made', gone.status === 200, gone.status);
+    }
+  }
+
+  /* ---- 22d. a forged session gets nothing ---- */
+  {
+    const value = cookie.split('=')[1];
+    const [v, exp, sig] = value.split('.');
+    const forged = {
+      'a flipped signature': `${v}.${exp}.${sig.slice(0, -1)}${sig.slice(-1) === 'A' ? 'B' : 'A'}`,
+      'a stretched expiry': `${v}.${Number(exp) + 999999}.${sig}`,
+      'no signature': `${v}.${exp}`,
+      'nonsense': 'garbage',
+    };
+    const accepted = [];
+    for (const [why, bad2] of Object.entries(forged)) {
+      const r = await withCookie('GET', '/api/customers', `taqwa_session=${bad2}`);
+      if (r.status !== 401) accepted.push({ why, status: r.status });
+    }
+    t('no forged cookie is accepted', accepted.length === 0, accepted);
+  }
+
+  /* ---- 22e. signing out ---- */
+  {
+    const out = await withCookie('DELETE', '/api/session', cookie);
+    t('sign out succeeds', out.status === 204, out.status);
+    t('   ...by clearing the cookie', /^taqwa_session=;/.test(out.setCookie || ''), out.setCookie);
+    t('   ...with Max-Age=0', (out.setCookie || '').includes('Max-Age=0'), out.setCookie);
+    // The cookie is signed rather than stored, so the server cannot revoke
+    // this one copy -- the browser dropping it is what ends the session.
+    // That limitation is stated in README rather than papered over here.
+  }
+
+  /* ---- 22f. the public pair, and nothing else ---- */
+  {
+    const anon = await sendAnon('GET', '/api/session');
+    t('GET /api/session is public', anon.status === 200, anon.status);
+    t('   ...and says this caller is not signed in', anon.body?.data?.authenticated === false,
+      anon.body?.data);
+    const signedIn = await withCookie('GET', '/api/session', cookie);
+    t('   ...and says so when it is', signedIn.body?.data?.authenticated === true, signedIn.body?.data);
+  }
+
+  /* ---- 22g. nothing leaks ---- */
+  {
+    const surfaces = [
+      await sendAnon('GET', '/api/session'),
+      await sendAnon('POST', '/api/session', { passphrase: 'wrong' }),
+      await sendAnon('GET', '/api/customers'),
+    ];
+    t('no response contains the passphrase',
+      surfaces.every((r) => !JSON.stringify(r.body ?? {}).includes(PASSPHRASE)),
+      surfaces.map((r) => r.status));
+    t('   ...nor names the secret bindings',
+      surfaces.every((r) => !/AUTH_PASSPHRASE|AUTH_SECRET/.test(JSON.stringify(r.body ?? {}))));
+    t('   ...and a wrong passphrase is answered exactly like any other refusal',
+      surfaces[1].body?.error?.message === 'Authentication required.', surfaces[1].body);
   }
 }
 

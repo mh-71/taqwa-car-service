@@ -41,8 +41,17 @@ function stubDB({ rows = [], total = null, throwOn = null }) {
     },
   };
 }
+/* C-12 protects reads as well as writes, so every call here carries the same
+   machine credential the write suites use. These suites are about what a route
+   RETURNS, not about the gate -- the gate has its own suite (api-auth). */
+const TEST_TOKEN = 'unit-test-token';
+const withAuth = (init = {}) => ({
+  ...init,
+  headers: { authorization: `Bearer ${TEST_TOKEN}`, ...(init.headers || {}) },
+});
 const call = (path, env, init) =>
-  worker.fetch(new Request('http://worker.local' + path, init), env);
+  worker.fetch(new Request('http://worker.local' + path, withAuth(init)),
+               { API_TOKEN: TEST_TOKEN, ...env });
 
 /* Modelled on seed-data.js: one fully populated, one sparse. */
 const SEEDED = [
@@ -359,13 +368,14 @@ console.log('\n-- 11. Routing --');
     // Settings is a singleton: a read and a write, and no /:id — there is
     // no create or delete for a row that is permanently id 1.
     'GET /api/settings', 'PUT /api/settings',
+    'GET /api/session', 'POST /api/session', 'DELETE /api/session',
   ]);
 }
 {
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 60);
+  check('404 advertises every route', body.error.available.length, 63);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

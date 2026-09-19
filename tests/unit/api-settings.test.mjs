@@ -56,8 +56,17 @@ function stubDB({ row = null, throwOnRead = false }) {
     },
   };
 }
+/* C-12 protects reads as well as writes, so every call here carries the same
+   machine credential the write suites use. These suites are about what a route
+   RETURNS, not about the gate -- the gate has its own suite (api-auth). */
+const TEST_TOKEN = 'unit-test-token';
+const withAuth = (init = {}) => ({
+  ...init,
+  headers: { authorization: `Bearer ${TEST_TOKEN}`, ...(init.headers || {}) },
+});
 const call = (path, env, init) =>
-  worker.fetch(new Request('http://worker.local' + path, init), env);
+  worker.fetch(new Request('http://worker.local' + path, withAuth(init)),
+               { API_TOKEN: TEST_TOKEN, ...env });
 
 /** Runs fn with console.warn captured, returning [result, warnings]. */
 async function capturingWarnings(fn) {
@@ -406,7 +415,7 @@ console.log('\n-- 14. Route registration --');
   const b = await res.json();
   const routes = b.data.routes;
 
-  check('health advertises 60 routes', routes.length, 60);
+  check('health advertises 60 routes', routes.length, 63);
   ok_('advertises GET /api/settings', routes.includes('GET /api/settings'));
   ok_('does NOT advertise a settings detail route', !routes.includes('GET /api/settings/:id'));
   // Was "every route is a GET" through Phase B. C-2 made that false by
@@ -415,16 +424,18 @@ console.log('\n-- 14. Route registration --');
   {
     const byMethod = {};
     routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    check('24 GET, 15 POST, 11 PUT, 10 DELETE', byMethod,
-      { GET: 24, POST: 15, PUT: 11, DELETE: 10 });
+    check('25 GET, 16 POST, 11 PUT, 11 DELETE', byMethod,
+      { GET: 25, POST: 16, PUT: 11, DELETE: 11 });
     ok_('no other method is advertised',
       routes.every((r) => ['GET', 'POST', 'PUT', 'DELETE'].includes(r.split(' ')[0])));
     check('settings offers a read and a write, and nothing else',
       routes.filter((r) => r.endsWith('/api/settings')).sort(),
       ['GET /api/settings', 'PUT /api/settings']);
   }
-  check('the settings pair is advertised last', routes.slice(-2),
+  check('the settings pair is advertised before the session routes', routes.slice(-5, -3),
     ['GET /api/settings', 'PUT /api/settings']);
+  check('   ...and the session trio is last', routes.slice(-3),
+    ['GET /api/session', 'POST /api/session', 'DELETE /api/session']);
   ok_('exactly two settings entries, and no /:id',
     routes.filter((r) => r.includes('/api/settings')).length === 2
       && !routes.some((r) => r.includes('/api/settings/')), routes);
@@ -458,12 +469,13 @@ console.log('\n-- 15. The existing ten collections are untouched --');
   // order. C-2 interleaved write routes between them but removed none.
   {
     const gets = routes.filter((r) => r.startsWith('GET '));
-    check('all 24 GET routes survive, in order', gets, [
+    check('all 25 GET routes survive, in order', gets, [
       'GET /api/health',
       ...['customers', 'vehicles', 'services', 'mechanics', 'parts', 'appointments',
         'job-cards', 'invoices', 'payments', 'expenses', 'inventory-transactions']
         .flatMap((n) => [`GET /api/${n}`, `GET /api/${n}/:id`]),
       'GET /api/settings',
+      'GET /api/session',
     ]);
   }
 

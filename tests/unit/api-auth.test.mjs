@@ -194,10 +194,14 @@ for (const [why, env] of [
   ok_('   ...and still writes nothing', db.calls.length === 0, db.calls.length);
 }
 {
-  // Reads stay available whether or not a secret is configured: the gate
-  // never looks at a GET.
+  // C-12 protects reads as well, so failing closed now covers them. The
+  // original intent -- an unconfigured Worker must never be an OPEN one --
+  // is the same assertion, strengthened: it used to hold for writes only.
   const res = await call('/api/customers', { env: { DB: stubDB() } });
-  ok_('a GET still works on an unconfigured Worker', res.status === 200, `got ${res.status}`);
+  ok_('a GET is refused on an unconfigured Worker too', res.status === 503, `got ${res.status}`);
+  const db = stubDB();
+  await call('/api/customers', { env: { DB: db } });
+  check('   ...without reaching the database', db.calls.length, 0);
 }
 
 /* ============================================================
@@ -220,7 +224,13 @@ console.log('\n-- 3. The whole route surface, derived from the registry --');
     return ID[name] ?? 'REC-0001';
   });
 
-  const mutations = routes.filter((r) => /^(POST|PUT|PATCH|DELETE) /.test(r));
+  // /api/session is how a browser OBTAINS a credential, so requiring one
+  // there would be a closed loop. Those two are asserted separately, below,
+  // as deliberately public -- everything else must be gated.
+  const PUBLIC = new Set(['POST /api/session', 'DELETE /api/session', 'GET /api/session',
+                          'GET /api/health']);
+  const mutations = routes.filter(
+    (r) => /^(POST|PUT|PATCH|DELETE) /.test(r) && !PUBLIC.has(r));
   ok_('the registry really does advertise mutations', mutations.length >= 30, mutations.length);
 
   const unprotected = [];
@@ -250,16 +260,39 @@ console.log('\n-- 3. The whole route surface, derived from the registry --');
   }
   check('   ...and every one of them lets a valid token through', stillRefused, []);
 
-  // Reads are public in this phase, and must stay reachable.
-  const reads = routes.filter((r) => r.startsWith('GET '));
-  const blockedReads = [];
+  // C-12 inverted this. Reads were public; they are business data, so now
+  // they are not. The assertion keeps its shape and its purpose -- enumerate
+  // EVERY advertised GET from the registry rather than spot-checking -- and
+  // asserts the opposite outcome.
+  const reads = routes.filter((r) => r.startsWith('GET ') && !PUBLIC.has(r));
+  const openReads = [];
+  const readTouchedDb = [];
   for (const route of reads) {
     const [, path] = route.split(' ');
-    const res = await call(concrete(path), { env: authed() });
-    if (res.status === 401 || res.status === 503) blockedReads.push({ route, status: res.status });
+    const db = stubDB();
+    const res = await call(concrete(path), { env: authed(db) });
+    if (res.status !== 401) openReads.push({ route, status: res.status });
+    if (db.calls.length !== 0) readTouchedDb.push({ route, calls: db.calls.length });
   }
-  check('every advertised GET is still reachable without a token', blockedReads, []);
-  ok_('   ...including health', (await call('/api/health', { env: authed() })).status === 200);
+  check('EVERY advertised GET refuses an unauthenticated caller', openReads, []);
+  check('   ...and none of them reached the database', readTouchedDb, []);
+  check('   ...which is all of them', reads.length - openReads.length, reads.length);
+
+  const stillRefusedReads = [];
+  for (const route of reads) {
+    const [, path] = route.split(' ');
+    const res = await call(concrete(path), { headers: bearer(TOKEN), env: authed() });
+    if (res.status === 401) stillRefusedReads.push(route);
+  }
+  check('   ...and every one lets a valid token through', stillRefusedReads, []);
+
+  // The two that must stay open, and why: health is how an operator sees the
+  // Worker is up, and session is how a browser gets a credential at all.
+  ok_('health stays public', (await call('/api/health', { env: authed() })).status === 200);
+  const sess = await call('/api/session', { env: authed() });
+  ok_('GET /api/session stays public', sess.status === 200, `got ${sess.status}`);
+  check('   ...and says only whether this caller is signed in',
+    Object.keys((await sess.json()).data).sort(), ['authenticated', 'passphrase']);
 }
 {
   // Health is a GET; the gate never sees it, and a wrong method there is
@@ -323,8 +356,22 @@ console.log('\n-- 4. What the source must not contain --');
     'a credential is compared against a literal');
   ok_('   ...and the strip is doing real work, not hiding the check',
     /typeof/.test(code) && code !== noTypeof);
-  ok_('it introduces no JWT, session or cookie',
-    !/(jwt|jsonwebtoken|session|cookie|oauth)/i.test(code), 'an auth framework crept in');
+  // C-12 made a signed cookie the browser's credential, so "no cookie" is no
+  // longer the rule. What the rule was FOR still holds, and is now stated
+  // directly: no auth framework, and no session state anywhere to be stolen
+  // or to drift -- the cookie is signed, not stored.
+  ok_('it introduces no JWT or OAuth library',
+    !/(jsonwebtoken|\bjwt\b|oauth|openid|passport)/i.test(code), 'an auth framework crept in');
+  ok_('   ...and no session is stored anywhere',
+    !/(sessions?\s*\[|INSERT|SELECT|kv\.|KV|DurableObject|localStorage)/i.test(code),
+    'session state is being kept somewhere');
+  const mint = (code.match(/function mintSession[\s\S]*?\n\}/) || [''])[0];
+  ok_('   ...the cookie carries only a version and an expiry',
+    mint.length > 0 && /SESSION_VERSION/.test(mint) && /expires/.test(mint)
+      && !/user|email|\bname\b|role|passphrase/i.test(mint), mint.slice(0, 200));
+  ok_('   ...and is signed with HMAC over that payload',
+    /crypto\.subtle\.(importKey|sign)/.test(code) && /HMAC/.test(code),
+    'the cookie is not signed');
   ok_('it reads the secret from the env binding, not from a file or a table',
     /env\.API_TOKEN/.test(code) && !/D1|prepare\(|readFile/.test(code), code.slice(0, 200));
 

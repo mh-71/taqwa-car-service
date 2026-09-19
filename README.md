@@ -19,31 +19,32 @@ browser. (For best results serve the folder, e.g. VS Code "Live Server", since
 some browsers restrict localStorage on `file://` URLs.) The app seeds demo data
 on first run and keeps everything in that browser.
 
-**With the local backend** — two terminals:
+**With the local backend** — one command. The Worker serves the app *and* the
+API from one origin:
 
 ```bash
-npm run dev          # 1. the Worker + local D1 on :8787
-npm run dev:app      # 2. the app on :3000, proxying /api to the Worker
+npx wrangler dev --local \
+  --var AUTH_PASSPHRASE:letmein --var AUTH_SECRET:any-long-random-string
 ```
 
-Then open <http://localhost:3000>. The app asks `GET /api/health` once at
-startup; if it answers, D1 is the source of truth for this session.
+Then open <http://localhost:8787> and sign in with that passphrase.
 
-`npm run dev:app` (`tools/dev-server.mjs`) exists so the app and the API share
-one origin. That is what lets the browser reach `/api` with no CORS headers on
-the Worker and no origin allow-list to keep in step. It is a development tool:
+One origin is not a preference. The browser's credential is a session cookie,
+and a cross-origin deployment cannot use one — a browser never attaches a
+cookie to a CORS preflight, so every write would fail before it was sent.
+Same-origin is what lets this Worker carry no CORS headers at all.
+
+`npm run dev:app` (`tools/dev-server.mjs`) remains for the older split setup —
+static files on :3000 proxying `/api` to `wrangler dev` on :8787 — which is
+still same-origin from the browser's point of view. It is a development tool:
 it is not deployed and the Worker does not know about it.
 
-**Writes need a token.** Reads are public; every mutation needs the Worker's
-`API_TOKEN`. Nothing in this repository holds one and nothing stores one in the
-browser — supply it at runtime, once per page, from the console:
+**Everything needs a credential**, reads included. Only `GET /api/health` and
+`/api/session` are public. A browser signs in with the workshop passphrase; a
+machine (CI, the integration suite) sends `Authorization: Bearer <API_TOKEN>`
+instead. Nothing in this repository holds a real value for any of the three.
 
-```js
-Api.configure({ token: '<the API_TOKEN the Worker was started with>' })
-```
-
-See [Authentication boundary](#authentication-boundary) for why it works this
-way and what a real deployment would need instead.
+See [Authentication](#authentication) for the whole model.
 
 ## Structure
 - `index.html` — Dashboard
@@ -131,27 +132,65 @@ frontend makes one call and re-reads what it touched. It does not also perform
 the second half: an invoice's `paid`/`due` and a part's `stock` are refused by
 the API by name, because both are caches of a ledger rather than fields.
 
-## Authentication boundary
+## Authentication
 
-The Worker protects every mutation with one shared bearer token (`API_TOKEN`);
-`GET` is public. That token authorises **every write on every record**, and the
-schema has no users, sessions or roles — it is a machine credential.
+Every route requires a credential except two, and there are two kinds of
+credential.
 
-This frontend is a static site. It has no server-side component, so it has
-nowhere to keep a secret: anything it can send, a visitor can read. The token
-is therefore never committed, never written to `localStorage` or
-`sessionStorage`, and never logged; it is supplied at runtime with
-`Api.configure({ token })` and lives in memory for that page only. A reload
-clears it.
+| | |
+|---|---|
+| **Browser** | A signed `taqwa_session` cookie, obtained by POSTing the workshop passphrase to `/api/session`. |
+| **Machine** | `Authorization: Bearer <API_TOKEN>` — CI, the integration suite, anything that is not a person at a screen. |
 
-**That is a development posture, not a production one.** It is fine for a
-developer driving a local Worker. It is not an authentication design for a
-deployed multi-user install, which needs an identity the browser is allowed to
-have — edge SSO in front of the Worker (no application changes, and it would
-also close the public-read exposure), or real sessions with the app served from
-the Worker itself. That is a deployment decision and has not been made.
+Either satisfies the gate, for any method. **Reads are checked exactly as
+writes are**: a customer list is the shop's book of names, phone numbers and
+addresses, and there is no version of "public" that is right for it.
 
----
+Public, by necessity rather than omission: `GET /api/health`, because it is how
+an operator sees the Worker is up and it reads no business data; and
+`/api/session`, because a browser with no credential cannot ask for one through
+a gate that requires one.
+
+**The cookie.** `v1.<expiry>.<HMAC-SHA256>`, signed with `AUTH_SECRET` over the
+version and expiry. Nothing is stored anywhere — there is no session table, so
+there is nothing to look up and nothing to leak. It carries no identity, because
+there is none to carry. Flags: `HttpOnly` (script cannot read it, so an XSS
+cannot steal it), `Secure`, `SameSite=Strict` (another site cannot make the
+browser send it, which is what makes CSRF a non-event here), `Path=/`,
+`Max-Age` of 12 hours.
+
+**Fail closed.** A Worker with no credential configured refuses *everything*
+but those two routes, with a 503. `if (!secret) allow` is the shape of bug that
+ships an open database the first time a secret is forgotten.
+
+**Refusals say nothing.** Missing, malformed, expired, tampered, and simply
+wrong are one answer: 401, the same message every time — including a wrong
+passphrase, which is deliberately indistinguishable from a server that has no
+passphrase configured.
+
+### What this model does not give you
+
+One shared passphrase means **one shared identity**. There is no per-person
+accountability: the log cannot say who voided the invoice. There is no
+individual revocation either — because the cookie is signed rather than stored,
+the server cannot end one person's session. Rotating `AUTH_SECRET` ends
+everyone's at once, and that is the whole of revocation here.
+
+That is a deliberate trade for a single workshop with a handful of staff, not
+an oversight. If staff turnover or accountability matters, the model to move to
+is per-user identity: either an edge SSO in front of the Worker, or a `users`
+table with real sessions. Both were costed before this one was chosen.
+
+### Configuring it
+
+```bash
+wrangler secret put AUTH_PASSPHRASE   # what staff type
+wrangler secret put AUTH_SECRET       # signs the cookie; rotating it signs everyone out
+wrangler secret put API_TOKEN         # optional: for CI and machine callers
+```
+
+Nothing in this repository holds a real value for any of them, and none is ever
+written to the browser's storage, the page, or a log.
 
 ## Development Progress
 
@@ -258,29 +297,52 @@ did, and the reasons they mattered:
   a write had actually worked.
 - **A blank page while hydrating,** now a brief loading state.
 
+## Phase C-12 — Production authentication ✅ Complete
+
+Reads and writes are now both protected, and a browser can hold a credential
+safely. The architecture was chosen deliberately after costing three:
+Cloudflare Access at the edge, application sessions with a users table, and
+this one — a shared workshop passphrase exchanged for a signed cookie.
+
+What changed:
+
+- **`/api/session`** — sign in, sign out, and ask whether you are signed in.
+- **The gate now covers every method.** `checkAuth` no longer waves GET
+  through; the public surface is `health` and `session`, and nothing else.
+- **No D1 change.** No users, no sessions, no passwords, no migration: the
+  cookie is signed, not stored.
+- **One origin.** The Worker serves the app as well as the API (the `assets`
+  binding in `wrangler.jsonc`), because a session cookie cannot survive a
+  cross-origin preflight. **No CORS headers are added, or needed.**
+- **The frontend gained a locked state** — backend reachable, not signed in —
+  which deliberately does *not* fall back to browser storage.
+
+GitHub Pages cannot serve this app any more: it would be cross-origin to the
+Worker, and the browser would never send the cookie. It remains useful as the
+public `localStorage`-only demo it has always actually been.
+
 ## Production readiness — what is NOT done
 
 Stated plainly so none of it is mistaken for finished:
 
 | Item | Status |
 |---|---|
-| Production authentication | **Unresolved.** The shared `API_TOKEN` is a machine credential; a static frontend cannot hold one safely. Development-only, by design. |
-| Read protection | **Not implemented.** All 24 `GET` routes are public. |
-| CORS | **Not configured, and not needed yet.** There are no CORS headers and no `OPTIONS` handler; development runs same-origin through `npm run dev:app`. A cross-origin deployment needs both, and that is a deployment decision. |
+| Authentication | **Implemented** (C-12), with one shared identity and no individual revocation — see [What this model does not give you](#what-this-model-does-not-give-you). |
+| Read protection | **Implemented** (C-12). Only `health` and `session` are public. |
+| CORS | **Not needed, and not added.** The app and API share an origin, which is what makes the session cookie work. A cross-origin deployment would need CORS *and* would break the cookie; it is not a supported shape. |
 | Production D1 | **Does not exist.** `wrangler.jsonc` binds `taqwa-local` with the `local-development-only` placeholder; the production block stays commented out. |
+| Production secrets | **Not created.** `AUTH_PASSPHRASE`, `AUTH_SECRET` and `API_TOKEN` must be set with `wrangler secret put` before any deployment. |
 | Deployment | **Never performed.** |
+| Rate limiting on sign-in | **Not implemented.** The passphrase comparison is constant-time and the refusal is generic, but nothing throttles repeated attempts. A deployment should put a Cloudflare rate-limiting rule in front of `POST /api/session`. |
 | `localStorage` → D1 migration | **Not implemented, deliberately.** Nothing is deleted or overwritten. |
 
-What a later deployment phase will need to decide or provide: a production D1
-binding and `database_id`; `wrangler secret put API_TOKEN`; an identity the
-browser may actually hold (edge SSO in front of the Worker, or sessions with
-the app served from the Worker); an API origin, and with it either same-origin
-asset serving or a CORS allow-list plus an `OPTIONS` handler; and a backup
-plan before any real data exists.
+What a later deployment phase will need to provide: a production D1 binding and
+`database_id`; the three secrets above; a rate-limiting rule in front of
+`POST /api/session`; and a backup plan before any real data exists.
 
-There is no user, role or session concept in the schema. Every authenticated
-caller can reach every record — that is the model, which is exactly why it is
-development-only rather than a gap to be patched.
+There is still no user or role concept in the schema. Every authenticated
+caller can reach every record — that is the access model this workshop chose,
+not a gap left in the implementation.
 
 ## Business Logic Already Covered
 
@@ -313,9 +375,9 @@ A permanent suite lives in `tests/`. Latest full run:
 
 | Suite | Assertions | Failures |
 |---|---|---|
-| Unit — 33 suites (`npm test`) | 5,436 | 0 |
-| Integration — live Worker + local D1 (`npm run test:integration`) | 2,008 | 0 |
-| **Total** | **7,444** | **0** |
+| Unit — 34 suites (`npm test`) | 5,549 | 0 |
+| Integration — live Worker + local D1 (`npm run test:integration`) | 2,035 | 0 |
+| **Total** | **7,584** | **0** |
 
 ```bash
 npm test                  # no network, no Worker, no database — safe anywhere
@@ -343,10 +405,8 @@ See `tests/README.md` for the per-suite breakdown and how to add one.
 
 ## Git Workflow
 
-- Each phase is one reviewed commit. C-1 … C-9 were developed on
-  `claude/awesome-lamport-wbjyo7` and C-10 on `claude/c10-frontend-storage-d1`,
-  both merged to `main`; C-11 is on
-  `claude/c11-production-readiness-hardening`.
+- Each phase is one reviewed commit. C-1 … C-9, C-10 and C-11 are merged to
+  `main`; C-12 is on `claude/c12-production-auth-access-model`.
 - No deployment has been made. `wrangler.jsonc` configures a local database
   only; the production binding stays commented out until a real database exists
   and a backup plan is in place.

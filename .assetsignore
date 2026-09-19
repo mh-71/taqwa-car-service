@@ -1,0 +1,19 @@
+# Everything here is repository content that must NOT be published as part of
+# the site. `assets.directory` is the repo root so the frontend keeps the
+# layout it has always had (index.html, js/, css/, pages/, assets/) rather
+# than being moved into a build folder it does not need.
+node_modules
+.git
+.github
+.wrangler
+src
+tests
+tools
+migrations
+package.json
+package-lock.json
+wrangler.jsonc
+.assetsignore
+.gitignore
+README.md
+AUDIT.md

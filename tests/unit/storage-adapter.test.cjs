@@ -182,10 +182,15 @@ console.log('\n-- 3. writes --');
     ctx.Storage.getById('customers', 'CUS-0001').name, 'Rahim');
 }
 {
-  const { ctx, f } = online({});
+  // C-12: the browser's credential is an HttpOnly cookie this code cannot
+  // see, so `no_token` is no longer a thing the client decides. With no
+  // session the app is LOCKED, and a write is refused before it is sent --
+  // by the absence of a session rather than the absence of a token.
+  const { ctx, f } = online({ authenticated: false });
   await ctx.Storage.hydrate();
+  check('with no session the app is locked, not offline', ctx.Storage.mode, 'locked');
   const res = await ctx.Storage.create('customers', { name: 'X' });
-  check('a write with no token configured is refused', res.code, 'no_token');
+  check('a write with no credential is refused', res.code, 'unauthorized');
   check('   ...and never reached the server', f.calls.filter(c => c.method === 'POST').length, 0);
 }
 

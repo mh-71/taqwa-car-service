@@ -8,11 +8,20 @@
 
    ---- two sources, one interface ----
 
-   MODE 'api'    the Worker + D1 are answering. D1 is the source of
-                 truth for every business record.
-   MODE 'local'  no backend is reachable. localStorage is the
-                 source of truth, exactly as before this file
-                 learned about the API.
+   MODE 'api'     the Worker + D1 are answering and this browser is
+                  signed in. D1 is the source of truth for every
+                  business record.
+   MODE 'locked'  the Worker is answering but this browser has no
+                  session. Nothing is read and nothing is cached;
+                  the app shows a sign-in form.
+   MODE 'local'   no backend is reachable at all. localStorage is
+                  the source of truth, exactly as before this file
+                  learned about the API.
+
+   'locked' is deliberately NOT 'local'. Falling back to browser
+   storage because the user has not signed in yet would hand them
+   a private copy of an empty workshop and quietly accept writes
+   into it -- which is the one thing this layer exists to prevent.
 
    The mode is decided once, by asking GET /api/health, and never
    flips underneath a running page. A page opened from disk, or
@@ -68,6 +77,13 @@ const Storage = (() => {
   /* ---------- mode ---------- */
 
   let mode = 'local';            // until hydrate() proves otherwise
+  const isLocked = () => mode === 'locked';
+  /**
+   * Only 'local' reads and writes the browser store. 'locked' must not:
+   * showing whatever this browser happened to have cached -- or seeded --
+   * while refusing to talk to the database would be inventing a workshop.
+   */
+  const usesBrowserStore = () => mode === 'local';
   const cache = {};              // collection -> array, populated in 'api' mode
   let cachedSettings = null;     // the stored settings row in 'api' mode
   let hydration = null;          // the in-flight hydrate() promise
@@ -101,12 +117,13 @@ const Storage = (() => {
   /** Get all records of a collection (always returns an array). */
   function getData(collection) {
     if (isApi()) return cache[collection] || [];
-    return read(collection) || [];
+    if (usesBrowserStore()) return read(collection) || [];
+    return [];                      // locked: nothing has been read, so nothing is shown
   }
 
   /** Overwrite an entire collection. localStorage only -- see seedIfEmpty. */
   function saveData(collection, records) {
-    if (isApi()) return false;
+    if (!usesBrowserStore()) return false;
     return write(collection, records);
   }
 
@@ -126,6 +143,11 @@ const Storage = (() => {
    * success there is exactly the "localStorage and D1 silently diverge"
    * failure this layer exists to prevent.
    */
+  /** A write attempted before signing in. Not a failure of the write. */
+  const lockedRefusal = () => ({
+    ok: false, code: 'unauthorized', message: 'Sign in to make changes.',
+  });
+
   function refuseSync(name) {
     const message =
       `Storage.${name}() is synchronous and cannot be used against the API. ` +
@@ -136,7 +158,7 @@ const Storage = (() => {
 
   /** Insert a new record. Assigns id + createdAt if missing. Returns the record. */
   function addData(collection, record) {
-    if (isApi()) return refuseSync('addData');
+    if (!usesBrowserStore()) return refuseSync('addData');
     const records = getData(collection);
     if (!record.id) record.id = generateId(collection);
     if (!record.createdAt) record.createdAt = new Date().toISOString();
@@ -147,7 +169,7 @@ const Storage = (() => {
 
   /** Merge changes into an existing record by id. Returns updated record or null. */
   function updateData(collection, id, changes) {
-    if (isApi()) return refuseSync('updateData');
+    if (!usesBrowserStore()) return refuseSync('updateData');
     const records = getData(collection);
     const idx = records.findIndex(r => r.id === id);
     if (idx === -1) return null;
@@ -158,7 +180,7 @@ const Storage = (() => {
 
   /** Delete a record by id. Returns true if something was removed. */
   function deleteData(collection, id) {
-    if (isApi()) return refuseSync('deleteData');
+    if (!usesBrowserStore()) return refuseSync('deleteData');
     const records = getData(collection);
     const next = records.filter(r => r.id !== id);
     if (next.length === records.length) return false;
@@ -199,6 +221,7 @@ const Storage = (() => {
    * synchronous writers so a caller can use one shape everywhere.
    */
   async function create(collection, record) {
+    if (isLocked()) return lockedRefusal();
     if (!isApi()) {
       const saved = addData(collection, record);
       return { ok: true, record: saved };
@@ -209,6 +232,7 @@ const Storage = (() => {
   }
 
   async function update(collection, id, changes) {
+    if (isLocked()) return lockedRefusal();
     if (!isApi()) {
       const saved = updateData(collection, id, changes);
       return saved
@@ -221,6 +245,7 @@ const Storage = (() => {
   }
 
   async function remove(collection, id) {
+    if (isLocked()) return lockedRefusal();
     if (!isApi()) {
       const gone = deleteData(collection, id);
       return gone
@@ -241,6 +266,7 @@ const Storage = (() => {
    * names the collections to re-read afterwards.
    */
   async function action(collection, id, name, body = {}, refresh = []) {
+    if (isLocked()) return lockedRefusal();
     if (!isApi()) {
       return { ok: false, code: 'no_api', message: 'This action needs the backend.' };
     }
@@ -305,13 +331,15 @@ const Storage = (() => {
    * carries only the fields the form actually holds.
    */
   function getSettings() {
-    const stored = isApi() ? cachedSettings : read('settings');
+    const stored = isApi() ? cachedSettings
+      : usesBrowserStore() ? read('settings')
+      : null;                       // locked: the browser's display defaults only
     return { ...DEFAULT_SETTINGS, ...(stored || {}) };
   }
 
   /** Synchronous save -- 'local' mode only, kept for the offline path. */
   function saveSettings(settings) {
-    if (isApi()) return refuseSync('saveSettings');
+    if (!usesBrowserStore()) return refuseSync('saveSettings');
     return write('settings', { ...getSettings(), ...settings });
   }
 
@@ -321,6 +349,7 @@ const Storage = (() => {
    * submitting exactly the fields it renders.
    */
   async function putSettings(settings) {
+    if (isLocked()) return lockedRefusal();
     if (!isApi()) {
       return saveSettings(settings)
         ? { ok: true, record: getSettings() }
@@ -353,7 +382,7 @@ const Storage = (() => {
    * because it looked empty would be the worst kind of helpful.
    */
   function seedIfEmpty() {
-    if (isApi()) return;
+    if (!usesBrowserStore()) return;
     if (isSeeded()) return;
     SeedData.load({ addData, saveData });
     write('seeded', true);
@@ -371,7 +400,7 @@ const Storage = (() => {
    * layer will improvise.
    */
   function resetToSeedData() {
-    if (isApi()) return false;
+    if (!usesBrowserStore()) return false;
     COLLECTIONS.forEach(c => write(c, []));
     write('counters', {});
     write('seeded', false);
@@ -463,10 +492,28 @@ const Storage = (() => {
       const probe = await Api.probe();
       if (!probe.ok) return { mode: 'local', reason: probe.code };
 
+      // The Worker is up. Are we allowed to read it? Asking /api/session is
+      // how that is answered without firing eleven requests that would all
+      // come back 401.
+      const who = await Api.session();
+      if (!who.ok) return { mode: 'local', reason: who.code || 'network_error' };
+      if (!who.authenticated) {
+        mode = 'locked';
+        return { mode: 'locked', canSignIn: who.passphrase };
+      }
+
       const results = await Promise.all(COLLECTIONS.map(fetchAll));
       const failed = results.findIndex(r => !r.ok);
       if (failed !== -1) {
-        return { mode: 'local', reason: results[failed].code, collection: COLLECTIONS[failed] };
+        const why = results[failed].code;
+        // A session that expired between the check above and the read is an
+        // authentication problem, not an offline one: locking is honest,
+        // falling back to browser storage would not be.
+        if (why === 'unauthorized') {
+          mode = 'locked';
+          return { mode: 'locked', canSignIn: true };
+        }
+        return { mode: 'local', reason: why, collection: COLLECTIONS[failed] };
       }
       COLLECTIONS.forEach((c, i) => { cache[c] = results[i].rows; });
 
@@ -479,6 +526,47 @@ const Storage = (() => {
       return { mode: 'api', counts: Object.fromEntries(COLLECTIONS.map(c => [c, cache[c].length])) };
     })().then(result => { settled = true; outcome = result; return result; });
     return hydration;
+  }
+
+  /* ---------- signing in and out ---------- */
+
+  /**
+   * Sign in, then fill the cache.
+   *
+   * The hydration promise is reset first: the previous one resolved to
+   * 'locked', and a caller asking whether the app is ready must not be
+   * handed that stale answer once the session exists.
+   */
+  async function signIn(passphrase) {
+    const res = await Api.login(passphrase);
+    if (!res.ok) return res;
+    hydration = null;
+    settled = false;
+    outcome = null;
+    readiness = null;
+    const result = await hydrate();
+    return result.mode === 'api'
+      ? { ok: true, result }
+      : { ok: false, code: 'hydrate_failed',
+          message: 'Signed in, but the workshop data could not be loaded.' };
+  }
+
+  /**
+   * Sign out and forget everything read while signed in.
+   *
+   * Emptying the cache matters: the next person at this screen must not be
+   * able to read the last one's customer list out of a stale render.
+   */
+  async function signOut() {
+    const res = await Api.logout();
+    COLLECTIONS.forEach(c => { delete cache[c]; });
+    cachedSettings = null;
+    mode = 'locked';
+    hydration = null;
+    settled = false;
+    outcome = null;
+    readiness = null;
+    return res;
   }
 
   /* ---------- readiness ----------
@@ -535,9 +623,9 @@ const Storage = (() => {
     create, update, remove, action, reload, refreshAll,
     generateId, getSettings, saveSettings, putSettings, getTheme, saveTheme,
     seedIfEmpty, resetToSeedData,
-    hydrate, whenReady, ready,
+    hydrate, whenReady, ready, signIn, signOut,
     get mode() { return mode; },
-    isApi
+    isApi, isLocked
   };
 })();
 

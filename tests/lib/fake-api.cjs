@@ -8,7 +8,8 @@
    the Worker's business and is tested against the real Worker in
    tests/integration/. */
 /* ---- a small in-memory API, close enough to the Worker's contract ---- */
-function fakeApi({ rows = {}, settings = null, fail = null, health = true } = {}) {
+function fakeApi({ rows = {}, settings = null, fail = null, health = true,
+                  authenticated = true, passphrase = 'open sesame' } = {}) {
   const calls = [];
   const db = JSON.parse(JSON.stringify(rows));
   const seq = {};
@@ -16,6 +17,7 @@ function fakeApi({ rows = {}, settings = null, fail = null, health = true } = {}
                    parts: 'PRT', vehicles: 'VEH', appointments: 'APT', services: 'SRV',
                    mechanics: 'MEC', expenses: 'EXP', 'inventory-transactions': 'STK' };
   let stored = settings ? { ...settings } : null;
+  let signedIn = authenticated;
 
   const res = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
 
@@ -28,8 +30,35 @@ function fakeApi({ rows = {}, settings = null, fail = null, health = true } = {}
     const forced = fail && fail({ method, path, body, n: calls.length - 1 });
     if (forced) return res(forced.status, { error: forced.error });
 
+    // C-12: the three public session routes. `authenticated` starts a suite
+    // signed in or locked out; POST/DELETE move it, the way the Worker does.
+    if (path === '/session') {
+      if (method === 'GET') {
+        return res(200, { data: { authenticated: signedIn, passphrase: passphrase !== null } });
+      }
+      if (method === 'POST') {
+        if (passphrase === null || (body || {}).passphrase !== passphrase) {
+          return res(401, { error: { code: 'unauthorized', message: 'Authentication required.' } });
+        }
+        signedIn = true;
+        return { status: 204, ok: true, json: async () => null };
+      }
+      if (method === 'DELETE') {
+        signedIn = false;
+        return { status: 204, ok: true, json: async () => null };
+      }
+      return res(405, { error: { code: 'method_not_allowed', message: 'Allowed: GET, POST, DELETE' } });
+    }
+
+    // Health is public, like the real Worker's: it is how an operator sees
+    // the thing is up, and it reads no business data.
     if (path === '/health') {
       return health ? res(200, { data: { status: 'ok' } }) : res(503, { error: { code: 'no_database', message: 'no db' } });
+    }
+
+    // Everything else needs a credential, exactly as the Worker requires.
+    if (!signedIn && !(init.headers || {}).authorization) {
+      return res(401, { error: { code: 'unauthorized', message: 'Authentication required.' } });
     }
 
     const [, name, id, action] = path.split('?')[0].split('/');
