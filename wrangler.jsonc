@@ -78,17 +78,18 @@
   // Named environments do NOT inherit d1_databases, assets or observability,
   // so each is restated here rather than assumed.
   //
-  // Deploying needs three things this file cannot contain, because none of
-  // them belongs in a repository. See DEPLOYMENT.md for the order:
+  // Deploying needed three things. See DEPLOYMENT.md for the order:
   //
-  //   1. A real database_id, from `wrangler d1 create taqwa-prod`, pasted
-  //      over the placeholder below. Until then `--env production` fails,
-  //      which is the intended behaviour and not a bug to work around.
+  //   1. DONE -- a real database_id from `wrangler d1 create taqwa-prod`,
+  //      now set below. The DEVELOPMENT binding above is still a string
+  //      that cannot resolve, so a deploy that forgets `--env production`
+  //      still fails rather than reaching anything real.
   //   2. The secrets, set with `wrangler secret put --env production`:
-  //      AUTH_PASSPHRASE, AUTH_SECRET, and optionally API_TOKEN.
-  //   3. A Cloudflare rate-limiting rule in front of POST /api/session.
+  //      AUTH_PASSPHRASE, AUTH_SECRET, and optionally API_TOKEN. These
+  //      never appear in this file or anywhere else in the repository.
+  //   3. Rate limiting in front of POST /api/session. Still outstanding.
   //
-  // NOTHING here has been provisioned or deployed.
+  // The production D1 database exists. The Worker has NOT been deployed.
   "env": {
     "production": {
       // Stated rather than derived: without this, a named environment is
@@ -100,9 +101,11 @@
         {
           "binding": "DB",
           "database_name": "taqwa-prod",
-          // A placeholder, deliberately not UUID-shaped so it cannot collide
-          // with a real database and cannot be mistaken for one.
-          "database_id": "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID",
+          // The real production database, created with
+          // `wrangler d1 create taqwa-prod`. A D1 database id is not a
+          // secret -- it names a database that only this account's Workers
+          // can bind -- which is why it belongs here and the secrets do not.
+          "database_id": "432219b1-ed5d-4d26-b508-c21c61a6d968",
           "migrations_dir": "migrations"
         }
       ],

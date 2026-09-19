@@ -87,6 +87,16 @@ console.log('\n-- 2. environment separation --');
   if (placeholder) {
     ok_('   ...and while it is a placeholder, a production deploy cannot resolve a database',
       !/^[0-9a-f-]{36}$/i.test(id), id);
+  } else {
+    // Provisioned is the state this project is in now, so it needs at least
+    // the scrutiny the placeholder state got. The danger is no longer "cannot
+    // resolve"; it is resolving to the WRONG database, or to a half-pasted id.
+    ok_('   ...and now that it is provisioned, the id is a well-formed UUID',
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id), id);
+    ok_('   ...and it is not the development id, so the two cannot be confused',
+      id !== config.d1_databases[0].database_id, id);
+    ok_('   ...and no placeholder text survived the paste',
+      !/REPLACE|PASTE|TODO|XXX|<|>/i.test(id), id);
   }
 }
 
