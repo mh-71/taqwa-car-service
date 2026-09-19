@@ -81,6 +81,39 @@ export async function readJsonBody(request) {
   return { value: parsed };
 }
 
+/**
+ * The same, for a body that may legitimately be absent.
+ *
+ * Two operations take no fields at all -- voiding an invoice and voiding a
+ * payment -- so requiring `{}` would only be a trap for a caller with nothing
+ * to send. An empty body is read as an empty object; a body that IS sent must
+ * still be a JSON object, so a typo cannot be mistaken for "no fields", and
+ * the route can then refuse every key it finds by name.
+ *
+ * Everything that DOES take fields uses readJsonBody() instead, where an
+ * empty body is a malformed request rather than an empty one.
+ */
+export async function readOptionalBody(request) {
+  let raw;
+  try {
+    raw = await request.text();
+  } catch {
+    return { error: 'Could not read the request body.' };
+  }
+  if (raw === null || raw === undefined || raw.trim() === '') return { value: {} };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: 'Request body is not valid JSON.' };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { error: 'Request body must be a JSON object.' };
+  }
+  return { value: parsed };
+}
+
 /* ---------------------------------------------------------------
    2. Field primitives
    --------------------------------------------------------------- */

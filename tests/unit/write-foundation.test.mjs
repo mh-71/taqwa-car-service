@@ -16,7 +16,7 @@
        test that only checks "returns a YYYY-MM-DD string" would pass on the
        bug. */
 import {
-  readJsonBody, readString, readNumber, readEnum, readDate,
+  readJsonBody, readOptionalBody, readString, readNumber, readEnum, readDate,
   nowIso, todayInDhaka, allocateId, constraintFailure,
 } from '../../src/lib/write.js';
 import {
@@ -363,6 +363,30 @@ console.log('\n-- 10. The existing http.js helpers are unchanged --');
     ok_(`${code} matches the API-wide { error: { code, message } } shape`,
       res.status === status && typeof b.error.code === 'string' && typeof b.error.message === 'string');
   }
+}
+
+/* ---------- readOptionalBody: the body that may be absent ---------- */
+// C-8 moved this here from the invoice route, because a second operation
+// needed it: voiding an invoice and voiding a payment both take no fields at
+// all. Requiring `{}` would only be a trap for a caller with nothing to send.
+console.log('\n-- readOptionalBody --');
+{
+  const req = (body) => new Request('http://w.local/x', {
+    method: 'POST',
+    ...(body === undefined ? {} : { body }),
+  });
+  check('no body at all is an empty object', (await readOptionalBody(req())).value, {});
+  check('an empty string is too', (await readOptionalBody(req(''))).value, {});
+  check('and so is whitespace', (await readOptionalBody(req('   \n '))).value, {});
+  check('an object comes back as itself', (await readOptionalBody(req('{"a":1}'))).value, { a: 1 });
+  ok_('malformed JSON is still an error',
+    !!(await readOptionalBody(req('{oops'))).error);
+  for (const wrong of ['null', '[]', '"text"', '7', 'true']) {
+    ok_(`${wrong} is not an object`, !!(await readOptionalBody(req(wrong))).error, wrong);
+  }
+  // The difference from readJsonBody is exactly one case: an absent body.
+  ok_('readJsonBody still refuses an empty body', !!(await readJsonBody(req(''))).error);
+  ok_('   ...where readOptionalBody accepts it', !(await readOptionalBody(req(''))).error);
 }
 
 console.log(`\nWrite foundation unit: ${pass} passed, ${fail_} failed`);

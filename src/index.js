@@ -45,7 +45,15 @@ import {
   listInvoices, getInvoice,
   createInvoice, updateInvoice, deleteInvoice, voidInvoice,
 } from './routes/invoices.js';
-import { listPayments, getPayment } from './routes/payments.js';
+// Payments are the source of truth for an invoice's balance, so every write
+// here recomputes that balance in the same batch. Linking an advance and
+// voiding a payment are actions rather than field changes: each carries a
+// rule -- overpayment, and what the invoice may then count -- that a PUT
+// would let a caller bypass.
+import {
+  listPayments, getPayment,
+  createPayment, updatePayment, deletePayment, voidPayment, linkPayment,
+} from './routes/payments.js';
 import {
   listExpenses, getExpense, createExpense, updateExpense, deleteExpense,
 } from './routes/expenses.js';
@@ -68,17 +76,18 @@ import { getSettings } from './routes/settings.js';
  * accepts POST on its list path and PUT/DELETE on its detail path; one
  * that does not answers 405 there, with an Allow header naming only what
  * it really takes. The six simple entities have writes as of C-2,
- * appointments as of C-3, job cards as of C-5 and invoices as of C-7;
- * payments are still read-only because their writes carry business logic
- * that belongs in their own phase.
+ * appointments as of C-3, job cards as of C-5, invoices as of C-7 and
+ * payments as of C-8. Every collection the app writes now has a write
+ * path; settings is the one that does not, and C-9 owns it.
  *
  * `actions` is the one exception to "a collection is a list and a detail":
  * a named POST under a record, for a business operation that is not a
  * field change. C-6 added the first, because a job card's status is a
  * transition with its own rules, its own inventory effects and its own
  * appointment sync; C-7 added voiding an invoice, which cancels a
- * document while releasing its payments as advances. Both are refused
- * through PUT deliberately, so neither rule has two homes.
+ * document while releasing its payments as advances; C-8 added voiding
+ * and linking a payment, each of which moves an invoice's balance. All
+ * are refused through PUT deliberately, so no rule has two homes.
  */
 const COLLECTIONS = {
   customers: {
@@ -115,7 +124,11 @@ const COLLECTIONS = {
     create: createInvoice, update: updateInvoice, remove: deleteInvoice,
     actions: { void: voidInvoice },
   },
-  payments: { list: listPayments, detail: getPayment },
+  payments: {
+    list: listPayments, detail: getPayment,
+    create: createPayment, update: updatePayment, remove: deletePayment,
+    actions: { void: voidPayment, link: linkPayment },
+  },
   expenses: {
     list: listExpenses, detail: getExpense,
     create: createExpense, update: updateExpense, remove: deleteExpense,

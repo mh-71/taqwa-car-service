@@ -59,7 +59,7 @@ import {
   conflict, unprocessable,
 } from '../lib/http.js';
 import {
-  readJsonBody, readString, readDate,
+  readJsonBody, readOptionalBody, readString, readDate,
   nowIso, todayInDhaka, allocateId, constraintFailure,
 } from '../lib/write.js';
 
@@ -379,35 +379,6 @@ function deriveStatus(total, paid) {
   if (t > 0 && p >= t) return 'Paid';
   if (p > 0) return 'Partial';
   return 'Unpaid';
-}
-
-/**
- * A request body that may legitimately be absent.
- *
- * Voiding takes no fields at all, so requiring `{}` would only be a trap for
- * a caller with nothing to send. An empty body is read as an empty object; a
- * body that IS sent still has to be a JSON object, so a typo cannot be
- * mistaken for "no fields". Everything else goes through readJsonBody().
- */
-async function readOptionalBody(request) {
-  let raw;
-  try {
-    raw = await request.text();
-  } catch {
-    return { error: 'Could not read the request body.' };
-  }
-  if (raw === null || raw === undefined || raw.trim() === '') return { value: {} };
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { error: 'Request body is not valid JSON.' };
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { error: 'Request body must be a JSON object.' };
-  }
-  return { value: parsed };
 }
 
 /* ---------------------------------------------------------------

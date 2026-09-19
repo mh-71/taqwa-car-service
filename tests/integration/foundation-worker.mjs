@@ -673,6 +673,147 @@ export default {
           && (await invMoney('INV-9801')).paid === 3000, await invMoney('INV-9801'));
       }
 
+      /* ---------- H. C-8 — a payment and its invoice balance move together --- */
+      // Every payment write recomputes the invoice's balance in the same
+      // batch, and the recompute is conditional on the payment mutation
+      // having landed. Neither half can be made to fail on its own through
+      // the API, because the route's guards decide before the batch runs.
+      {
+        await q(`INSERT INTO invoices
+                   (id, job_card_id, customer_id, vehicle_id, date, labour_cost, discount,
+                    tax_rate, subtotal, tax, total, paid, due, status, notes, created_at)
+                 VALUES ('INV-9811', NULL, 'CUS-9801', 'VEH-9892', '2026-01-10', 0, 0, 0,
+                         100, 0, 100, 0, 100, 'Unpaid', '', ?1)`,
+          '2026-01-10T00:00:00Z').run();
+
+        const bal = async (id = 'INV-9811') => await q(
+          'SELECT paid, due, status FROM invoices WHERE id = ?1', id).first();
+        // Probe G owns PAY-980x, so this counts only H's own range.
+        const payCount = async () => (await q(
+          "SELECT count(*) n FROM payments WHERE id LIKE 'PAY-981%'").first()).n;
+        const payOf = async (id) => await q(
+          'SELECT invoice_id, status, amount FROM payments WHERE id = ?1', id).first();
+
+        // The exact arithmetic recomputeInvoiceBalance() applies, as the route
+        // sends it: the settled figure, clamped, and the status derived from it.
+        const SETTLED = `MIN(total, MAX(0, (SELECT COALESCE(SUM(amount), 0)
+                                              FROM payments
+                                             WHERE invoice_id = ?1 AND status <> 'Void')))`;
+        const recompute = (guard, ...guardBinds) => q(
+          `UPDATE invoices
+              SET paid   = ${SETTLED},
+                  due    = MAX(total - ${SETTLED}, 0),
+                  status = CASE WHEN total > 0 AND ${SETTLED} >= total THEN 'Paid'
+                                WHEN ${SETTLED} > 0                    THEN 'Partial'
+                                ELSE 'Unpaid' END,
+                  updated_at = ?2
+            WHERE id = ?1 AND status <> 'Void' AND ${guard}`,
+          'INV-9811', '2026-01-10T00:00:00Z', ...guardBinds);
+
+        const guardedInsert = (id, amount) => q(
+          `INSERT INTO payments
+             (id, invoice_id, customer_id, job_card_id, date, amount, method, status, notes, created_at)
+           SELECT ?1, 'INV-9811', 'CUS-9801', NULL, '2026-01-10', ?2, 'Cash', 'Active', '', ?3
+            WHERE EXISTS (
+              SELECT 1 FROM invoices i
+               WHERE i.id = 'INV-9811' AND i.status <> 'Void' AND i.customer_id = 'CUS-9801'
+                 AND (SELECT COALESCE(SUM(amount), 0) FROM payments
+                       WHERE invoice_id = 'INV-9811' AND status <> 'Void') + ?2 <= i.total)`,
+          id, amount, '2026-01-10T00:00:00Z');
+
+        const before = await bal();
+        t('the C-8 probe invoice starts Unpaid, 100 due',
+          before.paid === 0 && before.due === 100 && before.status === 'Unpaid', before);
+
+        // H1 — a statement failing after the payment and the recompute.
+        let threw9 = null;
+        try {
+          await env.DB.batch([
+            guardedInsert('PAY-9811', 40),
+            recompute("EXISTS (SELECT 1 FROM payments WHERE id = ?3)", 'PAY-9811'),
+            q(`INSERT INTO payments
+                 (id, invoice_id, customer_id, date, amount, method, status, created_at)
+               VALUES ('PAY-9899', 'INV-0000', 'CUS-9801', '2026-01-10', 1, 'Cash', 'Active', ?1)`,
+              '2026-01-10T00:00:00Z'),
+          ]);
+        } catch (err) { threw9 = String(err.message || err); }
+        t('a payment batch whose last statement fails throws',
+          threw9 !== null && /FOREIGN KEY/i.test(threw9), threw9);
+        t('   ...the payment rolled back', (await payCount()) === 0, await payCount());
+        const afterFail = await bal();
+        t('   ...and the invoice balance rolled back with it',
+          afterFail.paid === 0 && afterFail.due === 100 && afterFail.status === 'Unpaid', afterFail);
+
+        // H2 — the same batch without it commits both halves together.
+        const landed = await env.DB.batch([
+          guardedInsert('PAY-9811', 40),
+          recompute("EXISTS (SELECT 1 FROM payments WHERE id = ?3)", 'PAY-9811'),
+        ]);
+        t('the same batch without it reports one insert and one recompute',
+          landed.map((r) => r.meta.changes).join(',') === '1,1', landed.map((r) => r.meta.changes));
+        const partial = await bal();
+        t('   ...the invoice is Partial at 40 paid, 60 due',
+          partial.paid === 40 && partial.due === 60 && partial.status === 'Partial', partial);
+
+        // H3 — an overpayment: the guard matches nothing, and because the
+        // recompute is conditional on the payment, neither half happens.
+        const refused = await env.DB.batch([
+          guardedInsert('PAY-9812', 70),
+          recompute("EXISTS (SELECT 1 FROM payments WHERE id = ?3)", 'PAY-9812'),
+        ]);
+        t('an overpayment inserts nothing and recomputes nothing',
+          refused.every((r) => r.meta.changes === 0), refused.map((r) => r.meta.changes));
+        const stillPartial = await bal();
+        t('   ...so the balance is untouched',
+          stillPartial.paid === 40 && stillPartial.due === 60, stillPartial);
+        t('   ...and no payment row was written', (await payCount()) === 1, await payCount());
+
+        // H4 — the exact remaining balance IS allowed, and settles the invoice.
+        await env.DB.batch([
+          guardedInsert('PAY-9813', 60),
+          recompute("EXISTS (SELECT 1 FROM payments WHERE id = ?3)", 'PAY-9813'),
+        ]);
+        const paid = await bal();
+        t('the exact remaining balance is accepted and settles the invoice',
+          paid.paid === 100 && paid.due === 0 && paid.status === 'Paid', paid);
+
+        // H5 — voiding one payment gives the balance back.
+        const voided = await env.DB.batch([
+          q(`UPDATE payments SET status = 'Void', updated_at = ?2
+              WHERE id = ?1 AND status <> 'Void'`, 'PAY-9813', '2026-01-11T00:00:00Z'),
+          recompute("(SELECT status FROM payments WHERE id = ?3) = 'Void'", 'PAY-9813'),
+        ]);
+        t('voiding a payment reports one status change and one recompute',
+          voided.map((r) => r.meta.changes).join(',') === '1,1', voided.map((r) => r.meta.changes));
+        const reopened = await bal();
+        t('   ...and the invoice is Partial again at 40',
+          reopened.paid === 40 && reopened.due === 60 && reopened.status === 'Partial', reopened);
+        const kept = await payOf('PAY-9813');
+        t('   ...while the payment keeps its amount and its invoice link',
+          kept.amount === 60 && kept.invoice_id === 'INV-9811' && kept.status === 'Void', kept);
+
+        // H6 — a second void changes nothing, so the balance cannot fall twice.
+        const twice = await env.DB.batch([
+          q(`UPDATE payments SET status = 'Void', updated_at = ?2
+              WHERE id = ?1 AND status <> 'Void'`, 'PAY-9813', '2026-01-11T00:00:00Z'),
+          recompute("(SELECT status FROM payments WHERE id = ?3) = 'Void'", 'PAY-9813'),
+        ]);
+        t('a second void changes no payment row', twice[0].meta.changes === 0, twice[0].meta.changes);
+        const unchanged = await bal();
+        t('   ...and the balance is still 40 paid, 60 due',
+          unchanged.paid === 40 && unchanged.due === 60, unchanged);
+
+        // H7 — a VOID invoice is never recomputed: its figures are frozen.
+        await q(`UPDATE invoices SET status = 'Void' WHERE id = 'INV-9811'`).run();
+        const frozen = await env.DB.batch([
+          recompute("EXISTS (SELECT 1 FROM payments WHERE id = ?3)", 'PAY-9811'),
+        ]);
+        t('a Void invoice is never recomputed', frozen[0].meta.changes === 0, frozen[0].meta.changes);
+        const still = await bal();
+        t('   ...so its paid and due stay exactly as they were',
+          still.paid === 40 && still.due === 60 && still.status === 'Void', still);
+      }
+
       /* ---------- D. the helpers behave the same inside workerd ---------- */
       {
         t('todayInDhaka works in workerd',

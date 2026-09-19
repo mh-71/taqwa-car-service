@@ -643,12 +643,14 @@ for (const [path, method, body] of [
   ok_('health advertises all four new routes',
     ['POST /api/invoices', 'PUT /api/invoices/:id', 'DELETE /api/invoices/:id',
       'POST /api/invoices/:id/void'].every((r) => routes.includes(r)), routes);
-  check('   ...and the registry is 54 routes', routes.length, 54);
+  check('   ...and the registry is 59 routes', routes.length, 59);
   ok_('   ...with no PUT or DELETE on the void path',
     !routes.includes('PUT /api/invoices/:id/void')
       && !routes.includes('DELETE /api/invoices/:id/void'), routes);
-  ok_('   ...and payments are still read-only',
-    routes.filter((r) => r.includes('/api/payments')).every((r) => r.startsWith('GET ')), routes);
+  // Payments gained their own writes in C-8; what matters here is that the
+  // invoice routes did not quietly acquire any of them.
+  ok_('   ...and no invoice route was added beyond these four',
+    routes.filter((r) => r.includes('/api/invoices')).length === 6, routes);
 }
 {
   const res = await call('/api/invoices/INV-0001/release', { DB: stubDB() }, 'POST', {});

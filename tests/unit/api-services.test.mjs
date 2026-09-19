@@ -347,7 +347,11 @@ console.log('\n-- 11. Routing --');
     // Voiding is an action, not a field change: it releases the invoice's
     // payments as advances, which is audit Finding 7.
     'POST /api/invoices/:id/void',
-    'GET /api/payments', 'GET /api/payments/:id',
+    'GET /api/payments', 'POST /api/payments',
+    'GET /api/payments/:id', 'PUT /api/payments/:id', 'DELETE /api/payments/:id',
+    // Two actions: voiding a payment, and applying an advance to an invoice.
+    // Each moves an invoice's balance, so neither is a field assignment.
+    'POST /api/payments/:id/void', 'POST /api/payments/:id/link',
     'GET /api/expenses', 'POST /api/expenses',
     'GET /api/expenses/:id', 'PUT /api/expenses/:id', 'DELETE /api/expenses/:id',
     'GET /api/inventory-transactions', 'POST /api/inventory-transactions',
@@ -360,7 +364,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 54);
+  check('404 advertises every route', body.error.available.length, 59);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

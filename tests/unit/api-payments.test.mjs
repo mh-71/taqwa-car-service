@@ -212,25 +212,50 @@ console.log('\n-- 5. No related table is touched --');
     db.calls.every(c => /FROM\s+payments\b/.test(c.sql)), sql);
 }
 {
-  // The route module must not even reach for the invoice-balance machinery.
+  // C-8 gave this module a write half, so these assertions are now scoped to
+  // the READ half -- which is what they were always about. Their purpose is
+  // unchanged and, with the split asserted below, strictly stronger: the read
+  // path still reaches for no balance machinery and issues no write, and the
+  // module still never imports the frontend engine.
+  //
+  // The split is made on the RAW source at the section marker and comments
+  // stripped afterwards, for the reason the ledger suite gives: splitting the
+  // stripped text would put the wrong code on the wrong side of the line.
   const src = await import('node:fs').then(fs =>
     fs.readFileSync(new URL('../../src/routes/payments.js', import.meta.url), 'utf8'));
-  // Comments are stripped first: the module documents where payments.js calls
-  // recomputeInvoiceBalance() from its write paths, and a mention in prose is
-  // not a call. These assertions are about the code.
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  ok_('the route does not import recomputeInvoiceBalance',
-    !code.match(/import[^;]*recomputeInvoiceBalance/), 'import found');
-  ok_('the route never calls recomputeInvoiceBalance',
-    !code.match(/recomputeInvoiceBalance\s*\(/), 'call found');
-  ok_('recomputeInvoiceBalance appears only in the module comment',
+  const strip = (x) => x.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  const code = strip(src);
+
+  const writeAt = src.indexOf('   C-8 \u2014 the write half');
+  ok_('the module marks where its write half begins', writeAt > 0, writeAt);
+  const readHalf = strip(src.slice(0, writeAt));
+  const writeHalf = strip(src.slice(writeAt));
+
+  ok_('the read half does not import recomputeInvoiceBalance',
+    !readHalf.match(/import[^;]*recomputeInvoiceBalance/), 'import found');
+  ok_('the read half never calls it either',
+    !readHalf.match(/recomputeInvoiceBalance\s*\(/), 'call found');
+  ok_('recomputeInvoiceBalance appears only in prose, never in code',
     src.includes('recomputeInvoiceBalance') && !code.includes('recomputeInvoiceBalance'),
     'not documented, or present in code');
-  ok_('the route contains no UPDATE, INSERT or DELETE',
-    !/\b(UPDATE|INSERT|DELETE)\b/.test(code), 'write statement found');
-  ok_('the route imports only the shared factory',
-    /from '\.\.\/lib\/collection\.js'/.test(src) && !/from '\.\.\/lib\/http\.js'/.test(src),
-    'unexpected imports');
+  ok_('the read half contains no UPDATE, INSERT or DELETE',
+    !/\b(UPDATE|INSERT|DELETE)\b/.test(readHalf), readHalf.slice(-200));
+  ok_('the header prose does discuss writes, so the strip matters',
+    /write/i.test(src) && !/\bUPDATE\b/.test(readHalf));
+  ok_('every write the module does contain is in the write half',
+    /\b(UPDATE|INSERT|DELETE)\b/.test(writeHalf), 'no write found where the writes belong');
+
+  // The read half still goes through the shared factory and nothing else; the
+  // module as a whole may now import the shared write helpers too, but never
+  // the frontend engine.
+  ok_('the read half still goes through the shared collection factory',
+    /from '\.\.\/lib\/collection\.js'/.test(src), 'factory import missing');
+  const imports = [...code.matchAll(/^\s*import\s+[\s\S]*?from\s+'([^']+)'/gm)].map((m) => m[1]);
+  check('the module imports only shared libraries', imports.sort(),
+    ['../lib/collection.js', '../lib/http.js', '../lib/write.js']);
+  ok_('and never the frontend payment engine or utils', !/utils|Utils/.test(code), 'engine import found');
+  ok_('the module never reads or writes a job card\'s money',
+    !/job_cards/.test(code), 'job_cards referenced');
 }
 {
   // A GET must issue no statement that could change a row.
@@ -344,23 +369,29 @@ console.log('\n-- 8. Failure modes --');
   check('detail missing binding -> 503', res.status, 503);
   check('error code', body.error.code, 'no_database');
 }
-for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+// C-8 made POST a list route and PUT/DELETE detail routes, so the methods
+// still without a handler here are fewer than they were -- but the rule under
+// test is unchanged: a method this path does not implement is a 405 whose Allow
+// header names exactly what it does implement, and nothing more.
+for (const m of ['PUT', 'DELETE', 'PATCH']) {
   const rl = await call('/api/payments', { DB: stubDB({ rows: SEEDED }) }, { method: m });
   ok_(`${m} list -> 405`, rl.status === 405, `got ${rl.status}`);
+}
+for (const m of ['POST', 'PATCH']) {
   const rd = await call('/api/payments/PAY-0001', { DB: stubDB({ rows: SEEDED }) }, { method: m });
   ok_(`${m} detail -> 405`, rd.status === 405, `got ${rd.status}`);
 }
 {
-  const rl = await call('/api/payments', { DB: stubDB({ rows: SEEDED }) }, { method: 'POST' });
-  check('405 sets Allow on the list', rl.headers.get('allow'), 'GET');
-  const rd = await call('/api/payments/PAY-0001', { DB: stubDB({ rows: SEEDED }) }, { method: 'POST' });
-  check('405 sets Allow on the detail', rd.headers.get('allow'), 'GET');
+  const rl = await call('/api/payments', { DB: stubDB({ rows: SEEDED }) }, { method: 'PATCH' });
+  check('405 sets Allow on the list', rl.headers.get('allow'), 'GET, POST');
+  const rd = await call('/api/payments/PAY-0001', { DB: stubDB({ rows: SEEDED }) }, { method: 'PATCH' });
+  check('405 sets Allow on the detail', rd.headers.get('allow'), 'GET, PUT, DELETE');
 }
 {
-  // A write method must not reach the database at all.
+  // A method with no handler must not reach the database at all.
   const db = stubDB({ rows: SEEDED });
-  await call('/api/payments', { DB: db }, { method: 'DELETE' });
-  check('a rejected DELETE prepares no statement', db.calls.length, 0);
+  await call('/api/payments', { DB: db }, { method: 'PATCH' });
+  check('a rejected PATCH prepares no statement', db.calls.length, 0);
 }
 
 console.log('\n=== GET /api/payments/:id ===');
