@@ -12,9 +12,12 @@
     "dev:app": "node tools/dev-server.mjs",
     "db:migrate:local": "wrangler d1 migrations apply taqwa-local --local",
     "db:list:local": "wrangler d1 execute taqwa-local --local --command \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\"",
-    "db:shell:local": "wrangler d1 execute taqwa-local --local --command"
+    "db:shell:local": "wrangler d1 execute taqwa-local --local --command",
+    "config:check": "node tools/config-check.mjs",
+    "deploy:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "deploy:check:prod": "wrangler deploy --dry-run --outdir .wrangler/dry-run --env production"
   },
   "devDependencies": {
-    "wrangler": "^3.90.0"
+    "wrangler": "^3.114.0"
   }
 }

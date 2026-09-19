@@ -13,8 +13,17 @@ npm-debug.log*
 .wrangler/
 
 # Local secrets for `wrangler dev`. Must never be committed.
+# .dev.vars.example is the exception: it lists the NAMES with no values, so a
+# developer knows what to set. The negation must come after the wildcard.
 .dev.vars
 .dev.vars.*
+!.dev.vars.example
+
+# Wrangler 3 reads .dev.vars; Wrangler 4 and most other tooling read .env.
+# Neither was covered before, and a secret only has to be committable once.
+.env
+.env.*
+!.env.example
 
 # ---------------------------------------------------------------------------
 # Database exports / backups

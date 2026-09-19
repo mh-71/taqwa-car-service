@@ -68,6 +68,9 @@ Backend work, not loaded by the browser:
 - `migrations/` — D1 schema
 - `src/` — Cloudflare Worker API
 - `_headers` — security headers and the CSP for the statically served app
+- `DEPLOYMENT.md` — the ordered production checklist; nothing here is deployed
+- `.dev.vars.example` — the secret NAMES a developer must set, and no values
+- `tools/config-check.mjs` — offline validation of all of the above
 - `tools/dev-server.mjs` — development only: serves the app and proxies `/api`
 - `tests/` — unit and integration suites
 
@@ -357,6 +360,42 @@ refused by name; errors carry no stack, path, SQL or credential; logs are
 fixed strings; and there is still no CORS, because the app and API share an
 origin.
 
+## Phase C-14 — Production configuration ✅ Complete
+
+Configuration only. **Nothing was provisioned, no secret was created, and
+nothing was deployed** — the point of the phase was to make a future
+deployment safe and explicit, and to stop an accidental one.
+
+The finding that mattered: a bare `wrangler deploy` would have published a
+Worker bound to `taqwa-local (local-development-only)`. There was no
+production environment at all — only a commented-out block from Phase A that
+predated the assets binding and would not have worked if uncommented.
+
+- **Two environments, deliberately hard to confuse.** The default is
+  development and is now named `taqwa-api-dev`; production is `taqwa-api`
+  under `--env production`. A deploy that forgets the flag publishes a
+  different Worker with an unresolvable database id — two things have to go
+  wrong, not one.
+- **The production database id is an obvious placeholder**, not a
+  UUID-shaped guess, so `--env production` fails loudly until someone runs
+  `wrangler d1 create`. That is intended, not a bug.
+- **`.env*` was not gitignored.** Wrangler 3 reads `.dev.vars`, but Wrangler 4
+  and most tooling read `.env`, and a secret only has to be committable once.
+- **`.assetsignore` did not exclude `DEPLOYMENT.md` or any secret file.**
+  With `assets.directory` set to the repository root, that decides what the
+  public site serves — a different guarantee from what git tracks, and it
+  needed stating separately. Verified over HTTP: the app is served and
+  nothing else is.
+- **The wrangler floor was `^3.90.0`**, below the version that supports the
+  assets binding this project now depends on.
+- **[`DEPLOYMENT.md`](DEPLOYMENT.md)** is the ordered checklist: create the
+  database, apply migrations, set the three secrets, configure the
+  rate-limiting rule, deploy, verify. It also states what deploying still
+  does not give you.
+- **`npm run config:check`** validates all of it offline, and
+  `npm run deploy:check[:prod]` shows what a deploy *would* bind without
+  uploading anything.
+
 ## Production readiness — what is NOT done
 
 Stated plainly so none of it is mistaken for finished:
@@ -366,16 +405,16 @@ Stated plainly so none of it is mistaken for finished:
 | Authentication | **Implemented** (C-12), with one shared identity and no individual revocation — see [What this model does not give you](#what-this-model-does-not-give-you). |
 | Read protection | **Implemented** (C-12). Only `health` and `session` are public. |
 | CORS | **Not needed, and not added.** The app and API share an origin, which is what makes the session cookie work. A cross-origin deployment would need CORS *and* would break the cookie; it is not a supported shape. |
-| Production D1 | **Does not exist.** `wrangler.jsonc` binds `taqwa-local` with the `local-development-only` placeholder; the production block stays commented out. |
-| Production secrets | **Not created.** `AUTH_PASSPHRASE`, `AUTH_SECRET` and `API_TOKEN` must be set with `wrangler secret put` before any deployment. |
-| Deployment | **Never performed.** |
+| Production D1 | **Does not exist.** The `production` environment is defined but its `database_id` is an explicit placeholder, so `--env production` fails until `wrangler d1 create taqwa-prod` has been run. |
+| Production secrets | **Not created.** `AUTH_PASSPHRASE`, `AUTH_SECRET` and `API_TOKEN` must be set with `wrangler secret put --env production`. Names are documented in `.dev.vars.example`; no value is anywhere in this repository. |
+| Deployment | **Never performed.** `npm run deploy:check:prod` is a dry run; the real command is in [DEPLOYMENT.md](DEPLOYMENT.md) and is typed deliberately. |
 | Rate limiting on sign-in | **Not implemented, and not implementable here.** The passphrase comparison is constant-time and the refusal is generic, but nothing throttles repeated attempts. A Worker has no shared counter without D1, KV or Durable Objects, and an application-level limiter that resets with every isolate would be worse than none because it would look like protection. This belongs in a **Cloudflare rate-limiting rule in front of `POST /api/session`** — a production configuration task, deliberately not faked in code. |
 | Security headers | **Implemented** (C-13). API responses carry `no-store`, `nosniff`, `Referrer-Policy` and a frame refusal; `_headers` serves a hash-based CSP for the static app. |
 | `localStorage` → D1 migration | **Not implemented, deliberately.** Nothing is deleted or overwritten. |
 
-What a later deployment phase will need to provide: a production D1 binding and
-`database_id`; the three secrets above; a rate-limiting rule in front of
-`POST /api/session`; and a backup plan before any real data exists.
+The ordered steps are in **[DEPLOYMENT.md](DEPLOYMENT.md)**: create the
+database, apply migrations, set the secrets, add the rate-limiting rule,
+deploy, verify — plus a backup plan before there is data worth losing.
 
 There is still no user or role concept in the schema. Every authenticated
 caller can reach every record — that is the access model this workshop chose,
@@ -412,13 +451,15 @@ A permanent suite lives in `tests/`. Latest full run:
 
 | Suite | Assertions | Failures |
 |---|---|---|
-| Unit — 35 suites (`npm test`) | 5,579 | 0 |
+| Unit — 36 suites (`npm test`) | 5,633 | 0 |
 | Integration — live Worker + local D1 (`npm run test:integration`) | 2,041 | 0 |
-| **Total** | **7,620** | **0** |
+| **Total** | **7,674** | **0** |
 
 ```bash
 npm test                  # no network, no Worker, no database — safe anywhere
 npm run test:integration  # boots `wrangler dev` against the LOCAL D1 file
+npm run config:check      # validates deployment configuration, offline
+npm run deploy:check      # shows what a deploy WOULD bind; uploads nothing
 ```
 
 - **Unit `.test.mjs`** import the real Worker and call it with a stubbed D1
@@ -442,8 +483,8 @@ See `tests/README.md` for the per-suite breakdown and how to add one.
 
 ## Git Workflow
 
-- Each phase is one reviewed commit. C-1 … C-12 are merged to `main`; C-13 is
-  on `claude/c13-production-security-hardening`.
+- Each phase is one reviewed commit. C-1 … C-13 are merged to `main`; C-14 is
+  on `claude/c14-production-configuration`.
 - No deployment has been made. `wrangler.jsonc` configures a local database
   only; the production binding stays commented out until a real database exists
   and a backup plan is in place.

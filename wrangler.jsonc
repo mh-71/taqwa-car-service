@@ -18,7 +18,11 @@
   // ==========================================================================
 
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "taqwa-api",
+  // The DEFAULT environment is development, so it is named as one. A bare
+  // `wrangler deploy` therefore cannot overwrite the production Worker even
+  // if someone also pasted a real database id above: it would publish a
+  // separate `taqwa-api-dev`, not `taqwa-api`.
+  "name": "taqwa-api-dev",
   "main": "src/index.js",
   "compatibility_date": "2026-09-01",
 
@@ -59,22 +63,62 @@
 
   "observability": {
     "enabled": true
-  }
+  },
 
   // --------------------------------------------------------------------------
-  // PRODUCTION — do not uncomment until the database is created and backed up.
-  //
-  // "env": {
-  //   "production": {
-  //     "d1_databases": [
-  //       {
-  //         "binding": "DB",
-  //         "database_name": "taqwa-prod",
-  //         "database_id": "<paste the real id from: wrangler d1 create taqwa-prod>",
-  //         "migrations_dir": "migrations"
-  //       }
-  //     ]
-  //   }
-  // }
+  // PRODUCTION
   // --------------------------------------------------------------------------
+  // Everything ABOVE this line is the DEFAULT environment, and the default
+  // environment is development. `wrangler dev` uses it, and so would a bare
+  // `wrangler deploy` -- which is why its database_id is the string
+  // "local-development-only" rather than anything that could resolve. A
+  // deploy that forgets `--env production` fails on that id instead of
+  // quietly publishing a Worker bound to a database that does not exist.
+  //
+  // Named environments do NOT inherit d1_databases, assets or observability,
+  // so each is restated here rather than assumed.
+  //
+  // Deploying needs three things this file cannot contain, because none of
+  // them belongs in a repository. See DEPLOYMENT.md for the order:
+  //
+  //   1. A real database_id, from `wrangler d1 create taqwa-prod`, pasted
+  //      over the placeholder below. Until then `--env production` fails,
+  //      which is the intended behaviour and not a bug to work around.
+  //   2. The secrets, set with `wrangler secret put --env production`:
+  //      AUTH_PASSPHRASE, AUTH_SECRET, and optionally API_TOKEN.
+  //   3. A Cloudflare rate-limiting rule in front of POST /api/session.
+  //
+  // NOTHING here has been provisioned or deployed.
+  "env": {
+    "production": {
+      // Stated rather than derived: without this, a named environment is
+      // published as "<name>-<env>", and the production Worker's identity
+      // should not depend on that rule.
+      "name": "taqwa-api",
+
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "taqwa-prod",
+          // A placeholder, deliberately not UUID-shaped so it cannot collide
+          // with a real database and cannot be mistaken for one.
+          "database_id": "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ],
+
+      // The same single origin as development: the Worker serves the app and
+      // /api together, which is what lets the session cookie work and what
+      // keeps CORS out of this project entirely.
+      "assets": {
+        "directory": ".",
+        "html_handling": "none",
+        "not_found_handling": "none"
+      },
+
+      "observability": {
+        "enabled": true
+      }
+    }
+  }
 }

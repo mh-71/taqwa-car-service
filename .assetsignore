@@ -17,3 +17,13 @@ wrangler.jsonc
 .gitignore
 README.md
 AUDIT.md
+DEPLOYMENT.md
+
+# Secret files, if a developer ever creates one in the repository root. They
+# are gitignored, which keeps them out of the REPOSITORY -- this keeps them
+# out of the published SITE, which is a different thing and matters just as
+# much when assets.directory is the root.
+.dev.vars
+.dev.vars.*
+.env
+.env.*

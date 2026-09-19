@@ -1,0 +1,22 @@
+# Copy to `.dev.vars` and fill in. That file is gitignored and must stay so.
+#
+# These are DEVELOPMENT values. Production secrets are never kept in a file:
+# they are set with `wrangler secret put --env production`, which stores them
+# in Cloudflare and never writes them to this repository. See DEPLOYMENT.md.
+#
+# Alternatively, pass them on the command line without a file at all:
+#   npx wrangler dev --local \
+#     --var AUTH_PASSPHRASE:letmein --var AUTH_SECRET:any-long-random-string
+
+# What staff type on the sign-in screen. Required for a browser to sign in.
+AUTH_PASSPHRASE=
+
+# Signs the taqwa_session cookie (HMAC-SHA256). Required alongside the
+# passphrase -- one without the other cannot mint or verify a session.
+# Use something long and random; rotating it signs everyone out at once.
+AUTH_SECRET=
+
+# Optional. The machine credential, for CI and the integration suite. A
+# deployment that has no non-browser callers does not need it; the Worker
+# fails closed only when NEITHER this nor the passphrase pair is configured.
+API_TOKEN=
