@@ -18,7 +18,7 @@
    expires, not who holds it, because there is no who.
    ============================================================ */
 
-import { ok, fail, methodNotAllowed } from '../lib/http.js';
+import { ok, fail, methodNotAllowed, SECURITY_HEADERS } from '../lib/http.js';
 import { readJsonBody } from '../lib/write.js';
 import {
   authConfig, issueSessionCookie, clearSessionCookie, passphraseMatches, hasValidSession,
@@ -26,7 +26,10 @@ import {
 
 /** 204: there is nothing to say, and a body would only be a place to leak. */
 function noContent(cookie) {
-  const headers = { 'cache-control': 'no-store' };
+  // The same headers every other API response carries. A Set-Cookie on a
+  // cacheable response is the classic way one person's session ends up handed
+  // to the next, so no-store matters most here of anywhere.
+  const headers = { ...SECURITY_HEADERS };
   if (cookie) headers['set-cookie'] = cookie;
   return new Response(null, { status: 204, headers });
 }

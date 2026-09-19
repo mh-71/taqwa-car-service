@@ -1,0 +1,24 @@
+# Headers for the static app. The Worker sets its own on /api/* responses
+# (src/lib/http.js); this file covers the HTML, CSS, JS and images that the
+# assets binding serves, which never reach the Worker at all.
+#
+# The CSP allows the ONE inline <script> by hash rather than with
+# 'unsafe-inline'. That script is the pre-paint theme bootstrap in the <head>
+# of all 13 pages, and it is byte-identical in every one of them -- so a
+# single hash covers the app and script injection stays blocked. If that
+# snippet is ever edited, this hash must be recomputed or every page will
+# lose its theme on first paint:
+#
+#   printf '%s' "$(sed -n '/<script>/,/<\/script>/p' index.html \
+#     | sed '1d;$d')" | openssl dgst -sha256 -binary | openssl base64
+#
+# style-src keeps 'unsafe-inline' because the app uses style="..." attributes
+# throughout. That is a far smaller risk than inline script, and removing it
+# would mean rewriting the rendering of every module.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-KXhyMf0JQ14gi+QhuexhY7ZEmDQHUPNBzjrMG2vRuQ8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'

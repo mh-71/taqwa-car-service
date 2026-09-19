@@ -4857,5 +4857,55 @@ sec('22. Sessions: the signed cookie, against the real Worker');
   }
 }
 
+sec('23. Security headers: every response, over real HTTP');
+{
+  const raw = async (method, path, headers = {}, body) => {
+    const res = await fetch(BASE + path, {
+      method,
+      headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    return res;
+  };
+  const auth = { authorization: `Bearer ${TOKEN}` };
+
+  const cases = [
+    ['200 an authenticated read', await raw('GET', '/api/customers', auth)],
+    ['200 a detail', await raw('GET', '/api/customers/CUS-9001', auth)],
+    ['401 an anonymous read', await raw('GET', '/api/customers')],
+    ['404 an unknown endpoint', await raw('GET', '/api/nope', auth)],
+    ['405 a wrong method', await raw('POST', '/api/health', auth)],
+    ['200 health', await raw('GET', '/api/health')],
+    ['200 session', await raw('GET', '/api/session')],
+  ];
+  const missing = [];
+  for (const [label, res] of cases) {
+    for (const [h, want] of [['cache-control', 'no-store'], ['x-content-type-options', 'nosniff'],
+                             ['referrer-policy', 'no-referrer'], ['x-frame-options', 'DENY']]) {
+      if (res.headers.get(h) !== want) missing.push({ label, h, got: res.headers.get(h) });
+    }
+  }
+  t('every response class carries every security header', missing.length === 0, missing);
+
+  // The one that matters: this body is the shop's customer list.
+  const read = await raw('GET', '/api/customers', auth);
+  t('an authenticated read is marked no-store', read.headers.get('cache-control') === 'no-store',
+    read.headers.get('cache-control'));
+  t('   ...and really did return customer rows', (await read.json()).data.length > 0);
+
+  const login = await raw('POST', '/api/session', {}, { passphrase: process.env.TAQWA_PASSPHRASE || '' });
+  t('a Set-Cookie response is no-store, so a session cannot be served twice',
+    login.headers.get('cache-control') === 'no-store' && !!login.headers.get('set-cookie'),
+    login.headers.get('cache-control'));
+
+  // Strict cookie parsing: a padded value is malformed and is not accepted.
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const value = cookie.split('=').slice(1).join('=');
+  const padded = await raw('GET', '/api/customers', { cookie: `taqwa_session=  ${value}  ` });
+  t('a whitespace-padded cookie value is refused', padded.status === 401, padded.status);
+  const plain = await raw('GET', '/api/customers', { cookie });
+  t('   ...while the cookie as issued is accepted', plain.status === 200, plain.status);
+}
+
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

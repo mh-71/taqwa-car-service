@@ -67,6 +67,7 @@ Backend work, not loaded by the browser:
 
 - `migrations/` — D1 schema
 - `src/` — Cloudflare Worker API
+- `_headers` — security headers and the CSP for the statically served app
 - `tools/dev-server.mjs` — development only: serves the app and proxies `/api`
 - `tests/` — unit and integration suites
 
@@ -321,6 +322,41 @@ GitHub Pages cannot serve this app any more: it would be cross-origin to the
 Worker, and the browser would never send the cookie. It remains useful as the
 public `localStorage`-only demo it has always actually been.
 
+## Phase C-13 — Security hardening ✅ Complete
+
+A full audit across authentication, sessions, cookies, CSRF, CORS, input
+validation, SQL, IDOR, mass assignment, error and log leakage, secrets, XSS,
+URL handling and cache behaviour. Two things were wrong and are fixed; one
+parser was lenient and is now strict; the rest was already sound and is left
+alone.
+
+- **API responses carried no `Cache-Control`.** An authenticated
+  `GET /api/customers` returns names, phone numbers, addresses and the
+  financial ledger, and a cacheable 200 is one the browser may keep after
+  sign-out and any intermediary is free to store. Every API response now
+  carries `no-store`, along with `nosniff`, `Referrer-Policy: no-referrer`
+  and a frame refusal. `js/api.js` already asked for `cache: 'no-store'`, but
+  that governs one client; the server has to be the one that says it.
+- **The static app had no security headers.** `_headers` now serves a CSP
+  that allows the app's one inline script **by hash** rather than with
+  `'unsafe-inline'`, so script injection stays blocked. That script is the
+  pre-paint theme bootstrap, byte-identical on all 13 pages. Verified in
+  Chromium across eight pages, sign-in and a modal: zero CSP violations.
+- **The cookie parser trimmed the value.** Not exploitable — a forgery still
+  fails the signature — but a padded value is malformed per RFC 6265 and
+  accepting it let this parser and an intermediary disagree about what the
+  cookie said. It is strict now.
+
+Verified sound and deliberately unchanged: `esc()` escapes all five
+characters and every interpolation into `innerHTML` is either escaped or a
+literal constant; no `eval`, `Function`, `document.write` or inline event
+handler anywhere; URL parameters are id lookups, never HTML; SQL is
+parameterised and raw SQLite text is never returned; server-owned fields
+(`paid`, `due`, `stock`, `prevStock`, `newStock`, invoice totals, ids) are
+refused by name; errors carry no stack, path, SQL or credential; logs are
+fixed strings; and there is still no CORS, because the app and API share an
+origin.
+
 ## Production readiness — what is NOT done
 
 Stated plainly so none of it is mistaken for finished:
@@ -333,7 +369,8 @@ Stated plainly so none of it is mistaken for finished:
 | Production D1 | **Does not exist.** `wrangler.jsonc` binds `taqwa-local` with the `local-development-only` placeholder; the production block stays commented out. |
 | Production secrets | **Not created.** `AUTH_PASSPHRASE`, `AUTH_SECRET` and `API_TOKEN` must be set with `wrangler secret put` before any deployment. |
 | Deployment | **Never performed.** |
-| Rate limiting on sign-in | **Not implemented.** The passphrase comparison is constant-time and the refusal is generic, but nothing throttles repeated attempts. A deployment should put a Cloudflare rate-limiting rule in front of `POST /api/session`. |
+| Rate limiting on sign-in | **Not implemented, and not implementable here.** The passphrase comparison is constant-time and the refusal is generic, but nothing throttles repeated attempts. A Worker has no shared counter without D1, KV or Durable Objects, and an application-level limiter that resets with every isolate would be worse than none because it would look like protection. This belongs in a **Cloudflare rate-limiting rule in front of `POST /api/session`** — a production configuration task, deliberately not faked in code. |
+| Security headers | **Implemented** (C-13). API responses carry `no-store`, `nosniff`, `Referrer-Policy` and a frame refusal; `_headers` serves a hash-based CSP for the static app. |
 | `localStorage` → D1 migration | **Not implemented, deliberately.** Nothing is deleted or overwritten. |
 
 What a later deployment phase will need to provide: a production D1 binding and
@@ -375,9 +412,9 @@ A permanent suite lives in `tests/`. Latest full run:
 
 | Suite | Assertions | Failures |
 |---|---|---|
-| Unit — 34 suites (`npm test`) | 5,549 | 0 |
-| Integration — live Worker + local D1 (`npm run test:integration`) | 2,035 | 0 |
-| **Total** | **7,584** | **0** |
+| Unit — 35 suites (`npm test`) | 5,579 | 0 |
+| Integration — live Worker + local D1 (`npm run test:integration`) | 2,041 | 0 |
+| **Total** | **7,620** | **0** |
 
 ```bash
 npm test                  # no network, no Worker, no database — safe anywhere
@@ -405,8 +442,8 @@ See `tests/README.md` for the per-suite breakdown and how to add one.
 
 ## Git Workflow
 
-- Each phase is one reviewed commit. C-1 … C-9, C-10 and C-11 are merged to
-  `main`; C-12 is on `claude/c12-production-auth-access-model`.
+- Each phase is one reviewed commit. C-1 … C-12 are merged to `main`; C-13 is
+  on `claude/c13-production-security-hardening`.
 - No deployment has been made. `wrangler.jsonc` configures a local database
   only; the production binding stays commented out until a real database exists
   and a backup plan is in place.

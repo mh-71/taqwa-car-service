@@ -146,7 +146,16 @@ async function sessionIsValid(value, secret, nowSeconds) {
   return Number(expires) > nowSeconds;
 }
 
-/** Read one cookie out of a Cookie header without trusting its shape. */
+/**
+ * Read one cookie out of a Cookie header without trusting its shape.
+ *
+ * The NAME is trimmed because `a=1; b=2` puts a space before every name after
+ * the first, which is the separator's doing rather than the name's. The VALUE
+ * is not: a cookie value containing spaces is malformed per RFC 6265, browsers
+ * never send one, and accepting `  v1.123.sig  ` as if it were `v1.123.sig`
+ * means this parser and any intermediary could disagree about what the cookie
+ * says. Nothing is gained by being generous here, so it is not.
+ */
 function readCookie(request, name) {
   const header = request.headers.get('cookie');
   if (!header) return null;
@@ -154,7 +163,7 @@ function readCookie(request, name) {
     const eq = pair.indexOf('=');
     if (eq === -1) continue;
     if (pair.slice(0, eq).trim() !== name) continue;
-    return pair.slice(eq + 1).trim();
+    return pair.slice(eq + 1);
   }
   return null;
 }

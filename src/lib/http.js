@@ -12,7 +12,44 @@
    parsing prose.
    ============================================================ */
 
-const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
+/**
+ * Headers every API response carries, and why each one.
+ *
+ * cache-control: no-store
+ *   THE IMPORTANT ONE. An authenticated GET here returns customer names,
+ *   phone numbers, addresses and the financial ledger. Without this, that
+ *   JSON is a cacheable 200: the browser's own HTTP cache may keep it after
+ *   sign-out, and any intermediary is free to store it too. js/api.js asks
+ *   for `cache: 'no-store'` on its own requests, but that governs one client;
+ *   the server has to be the one that says it.
+ *
+ * x-content-type-options: nosniff
+ *   Stops a browser deciding for itself that a JSON body is really HTML or a
+ *   script, which is how a reflected value in an API response becomes
+ *   executable.
+ *
+ * referrer-policy: no-referrer
+ *   A record id in a path is business data. Nothing downstream needs to know
+ *   which one was being read.
+ *
+ * x-frame-options / frame-ancestors
+ *   Nothing here is meant to be embedded. Both are set because the header
+ *   and the CSP directive are honoured by different browsers.
+ */
+const SECURITY_HEADERS = {
+  'cache-control': 'no-store',
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'x-frame-options': 'DENY',
+  'content-security-policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+};
+
+const JSON_HEADERS = {
+  'content-type': 'application/json; charset=utf-8',
+  ...SECURITY_HEADERS,
+};
+
+export { SECURITY_HEADERS };
 
 /** Success response. `meta` merges extra top-level fields (count, limit, ...). */
 export function ok(data, meta = {}, status = 200) {
