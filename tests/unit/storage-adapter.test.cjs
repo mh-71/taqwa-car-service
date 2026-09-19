@@ -370,5 +370,57 @@ console.log('\n-- 8. the token is not persisted anywhere --');
     JSON.stringify(ctx.Api.configure({})));
 }
 
+/* ============================================================
+   9. Failing mid-session, and recovering
+   ============================================================ */
+console.log('\n-- 9. a failure mid-session does not end the session --');
+{
+  // Hydration succeeded; the server then goes away and comes back. The mode
+  // must NOT flip to local underneath a running page -- that would start
+  // writing to a localStorage nobody is reading -- and work must resume.
+  let down = false;
+  const inner = fakeApi({ rows: { customers: [{ id: 'CUS-0001', name: 'Rahim' }] } });
+  const flaky = async (url, init) => {
+    if (down) throw new Error('connection refused');
+    return inner(url, init);
+  };
+  flaky.calls = inner.calls;
+  const { ctx } = boot({ origin: 'http://localhost:8787', fetch: flaky });
+  await ctx.Storage.hydrate();
+  ctx.Api.configure({ token: 't' });
+
+  down = true;
+  const failed = await ctx.Storage.create('customers', { name: 'Nusrat', phone: '01' });
+  check('a write while the server is away fails as a network error', failed.code, 'network_error');
+  check('   ...and the mode does NOT silently flip to local', ctx.Storage.mode, 'api');
+  check('   ...and the cache is untouched, so nothing looks saved',
+    ctx.Storage.getData('customers').length, 1);
+  ok('   ...and the message names no URL or host',
+    !/localhost|8787|http/.test(failed.message), failed.message);
+
+  down = false;
+  const recovered = await ctx.Storage.create('customers', { name: 'Nusrat', phone: '01' });
+  ok('the very next write succeeds once the server is back', recovered.ok,
+    JSON.stringify(recovered));
+  check('   ...and the record appears', ctx.Storage.getData('customers').length, 2);
+}
+{
+  // A read failing mid-session must not empty the cache: showing nothing is
+  // a worse lie than showing what was last known.
+  let down = false;
+  const inner = fakeApi({ rows: { invoices: [{ id: 'INV-0001', paid: 100 }] } });
+  const flaky = async (url, init) => {
+    if (down && /\/invoices/.test(String(url))) throw new Error('down');
+    return inner(url, init);
+  };
+  const { ctx } = boot({ origin: 'http://localhost:8787', fetch: flaky });
+  await ctx.Storage.hydrate();
+  down = true;
+  const stale = await ctx.Storage.refreshAll('invoices');
+  check('a failed re-read is reported', stale, ['invoices']);
+  check('   ...and leaves the last known rows in place rather than emptying them',
+    ctx.Storage.getById('invoices', 'INV-0001').paid, 100);
+}
+
 process.exit(summary('Storage adapter unit') === 0 ? 0 : 1);
 })();

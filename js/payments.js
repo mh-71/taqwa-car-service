@@ -167,8 +167,8 @@
           status: 'Active'
         });
         if (!res.ok) return { ok: false, reason: res.message, response: res };
-        if (res.record.invoiceId) await Storage.reload('invoices');
-        return { ok: true, payment: res.record };
+        const stale = res.record.invoiceId ? await Storage.refreshAll('invoices') : [];
+        return { ok: true, payment: res.record, ...(stale.length ? { stale } : {}) };
       })();
     }
 
@@ -474,7 +474,8 @@
 
       Modal.close();
       refresh();
-      toast(`Payment ${result.payment.id} recorded for ${custName(result.payment.customerId)}.`);
+      if (result.stale && result.stale.length) Utils.wrote(result);
+      else toast(`Payment ${result.payment.id} recorded for ${custName(result.payment.customerId)}.`);
       openDetailModal(result.payment.id);
     }));
   }
@@ -579,9 +580,10 @@
         if (Storage.isApi()) {
           const res = await Storage.remove('payments', id);
           if (!Utils.wrote(res)) return;
-          if (payment.invoiceId) await Storage.reload('invoices');
+          const stale = payment.invoiceId ? await Storage.refreshAll('invoices') : [];
           refresh();
-          toast(`Payment ${id} deleted.`, 'warning');
+          if (stale.length) Utils.wrote({ ok: true, stale });
+          else toast(`Payment ${id} deleted.`, 'warning');
           return;
         }
         Storage.deleteData('payments', id);

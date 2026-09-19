@@ -892,7 +892,9 @@
       if (v.appointmentId) {
         const a = Storage.getById('appointments', v.appointmentId);
         if (a && !a.jobCardId) {
-          if (Storage.isApi()) await Storage.reload('appointments');
+          // The same transaction stamped the appointment's jobCardId server
+          // side; re-reading is how this copy learns about it.
+          if (Storage.isApi()) await Storage.refreshAll('appointments');
           else Storage.updateData('appointments', v.appointmentId, { jobCardId: rec.id });
         }
       }
@@ -949,11 +951,11 @@
           Utils.wrote(res, ov);
           return;
         }
-        await Storage.reload('parts');
-        await Storage.reload('inventoryTransactions');
+        const stale = await Storage.refreshAll('parts', 'inventoryTransactions');
         Modal.close();
         refresh();
-        toast(`Job Card ${id} updated.`);
+        if (stale.length) Utils.wrote({ ok: true, stale });
+        else toast(`Job Card ${id} updated.`);
         return;
       }
 
@@ -998,7 +1000,7 @@
 
   /* ---------- status lifecycle ---------- */
 
-  function changeStatus(id, next) {
+  async function changeStatus(id, next) {
     const j = Storage.getById('jobCards', id);
     if (!j) return;
     if (!(TRANSITIONS[j.status] || []).includes(next)) {
@@ -1095,7 +1097,7 @@
         onConfirm: apply
       });
     } else {
-      apply();
+      await apply();
     }
   }
 
@@ -1147,9 +1149,10 @@
           // is why those two foreign keys are DEFERRABLE INITIALLY DEFERRED.
           const res = await Storage.remove('jobCards', id);
           if (!Utils.wrote(res)) return;
-          if (j.appointmentId) await Storage.reload('appointments');
+          const stale = j.appointmentId ? await Storage.refreshAll('appointments') : [];
           refresh();
-          toast(`Job Card ${id} deleted.`, 'warning');
+          if (stale.length) Utils.wrote({ ok: true, stale });
+          else toast(`Job Card ${id} deleted.`, 'warning');
           return;
         }
         // unlink from appointment if this was its job card
@@ -1390,7 +1393,10 @@
       if (!id) return;
       if (action === 'view') openDetailModal(id);
       if (action === 'edit') openEditModal(id);
-      if (action === 'status') changeStatus(id, btn.dataset.next);
+      // A status change writes (and on a job card moves stock), so the row's
+      // own button is held until the server answers. Delegated, so the button
+      // is this row's rather than the one the listener sits on.
+      if (action === 'status') { Utils.guard(btn, () => changeStatus(id, btn.dataset.next)); return; }
       if (action === 'print') printJobCard(id);
       if (action === 'delete') openDeleteModal(id);
     });

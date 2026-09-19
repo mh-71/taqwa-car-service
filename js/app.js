@@ -37,11 +37,31 @@ const App = (() => {
 
   /* ---------- layout injection ---------- */
 
+  /**
+   * What the footer says about where the data actually is.
+   *
+   * This exists because the alternative is silence. When no Worker answers,
+   * Storage falls back to this browser -- which is the right thing for an
+   * app that must keep working offline, and the wrong thing to keep to
+   * yourself: someone who believes they are on the shop's database will go
+   * on entering records that only ever exist on their own machine.
+   */
+  function dataSource() {
+    if (Storage.isApi()) {
+      return { offline: false, label: 'Connected to the database',
+               title: 'Records are read from and saved to the shared database.' };
+    }
+    return { offline: true, label: 'This browser only',
+             title: 'No server is answering, so records are kept in this browser '
+                  + 'and are not saved to the shared database.' };
+  }
+
   function renderShell() {
     const body = document.body;
     const page = body.dataset.page || 'dashboard';
     const root = body.dataset.root || '';
     const settings = Storage.getSettings();
+    const source = dataSource();
 
     const navHtml = NAV.map(item => {
       const active = item.key === page ? ' is-active' : '';
@@ -58,8 +78,9 @@ const App = (() => {
           <span class="brand-tag">Service Center Management</span>
         </div>
         <nav class="nav" aria-label="Main navigation">${navHtml}</nav>
-        <div class="sidebar__foot">
-          <span class="sidebar__foot-dot"></span> Workshop open
+        <div class="sidebar__foot" id="dataSource" title="${Utils.esc(source.title)}">
+          <span class="sidebar__foot-dot${source.offline ? ' sidebar__foot-dot--local' : ''}"></span>
+          ${Utils.esc(source.label)}
         </div>
       </aside>
       <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
@@ -92,7 +113,8 @@ const App = (() => {
     // Move existing page content into the content area
     const pageContent = document.getElementById('page-content');
     body.prepend(shell);
-    if (pageContent) shell.querySelector('#content').appendChild(pageContent);
+    const host = shell.querySelector('#content');
+    if (pageContent && host) host.appendChild(pageContent);
 
     // Date in header
     document.getElementById('topbarDate').textContent =
@@ -142,7 +164,23 @@ const App = (() => {
 
   /* ---------- init ---------- */
 
-  function init() {
+  /**
+   * Warn only when a backend was there to be reached and was not.
+   *
+   * `no_api` means there was never a server to call -- a page opened from
+   * disk, or the static demo -- which is the app working as designed and
+   * not worth interrupting anyone over. Any other reason means a Worker was
+   * addressable and did not answer, and the user is now about to type into
+   * a copy nobody else will ever see.
+   */
+  function warnIfBackendExpected(result) {
+    if (!result || result.mode !== 'local') return;
+    if (result.reason === 'no_api') return;
+    Utils.toast('The server did not answer, so this session is using this browser only. '
+              + 'Anything you enter will not reach the shared database.', 'warning');
+  }
+
+  function init(hydration) {
     applyTheme(Storage.getTheme());
     // Live-follow OS theme changes only while the user has chosen "System".
     if (window.matchMedia) {
@@ -151,10 +189,48 @@ const App = (() => {
       });
     }
     Storage.seedIfEmpty();
+    // Before the shell, not after: if rendering ever fails, the warning that
+    // this session is not reaching the database is the thing that still has
+    // to get through.
+    warnIfBackendExpected(hydration);
     renderShell();
   }
 
-  Storage.ready(init);
+  /* ---------- while the data is on its way ----------
+
+     The shell is not drawn until hydration settles, so without this a slow
+     server means a blank page with nothing to say for itself. It is removed
+     by init(), which runs the moment the source is decided -- with no
+     backend that is the same tick, so nobody ever sees it.              */
+
+  let loader = null;
+
+  function showLoading() {
+    if (!document.body || loader) return;
+    loader = document.createElement('div');
+    loader.className = 'app-loading';
+    loader.setAttribute('role', 'status');
+    loader.innerHTML = '<span class="app-loading__dot"></span><span>Loading…</span>';
+    document.body.appendChild(loader);
+  }
+
+  function hideLoading() {
+    if (loader && loader.remove) loader.remove();
+    loader = null;
+  }
+
+  // Registered BEFORE Storage.ready() so it runs first: with no backend the
+  // ready callback fires inside this same DOMContentLoaded, and a loader
+  // shown afterwards would be a loader shown after the page was already up.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', showLoading, { once: true });
+  } else {
+    showLoading();
+  }
+
+  // Storage.ready() hands init the hydration result, so the shell can say
+  // which source it is showing and warn when that is not the one expected.
+  Storage.ready((hydration) => { hideLoading(); init(hydration); });
 
   return { NAV, applyTheme };
 })();

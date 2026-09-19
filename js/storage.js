@@ -247,8 +247,8 @@ const Storage = (() => {
     const res = await Api.post(`/${API_PATHS[collection]}/${id}/${name}`, body);
     if (!res.ok) return res;
     if (res.data && res.data.id) cachePut(collection, res.data);
-    for (const other of refresh) await reload(other);
-    return { ok: true, record: res.data };
+    const stale = await refreshAll(...refresh);
+    return { ok: true, record: res.data, ...(stale.length ? { stale } : {}) };
   }
 
   /* ---------- id generation ---------- */
@@ -405,6 +405,24 @@ const Storage = (() => {
     return { ok: true, rows };
   }
 
+  /**
+   * Re-read several collections the server also changed, and return the names
+   * of any that could NOT be re-read.
+   *
+   * A failure here is not a failed write -- the write already succeeded. It
+   * means the screen may now be showing a figure the database has moved on
+   * from, which is worth saying out loud: silently keeping the old rows is
+   * how a paid invoice goes on displaying its old balance.
+   */
+  async function refreshAll(...names) {
+    const stale = [];
+    for (const name of names) {
+      const res = await reload(name);
+      if (!res.ok) stale.push(name);
+    }
+    return stale;
+  }
+
   /** Re-read one collection from the server. Used after a transaction. */
   async function reload(collection) {
     if (!isApi()) return { ok: false, code: 'no_api' };
@@ -424,6 +442,7 @@ const Storage = (() => {
    * that do.
    */
   let settled = false;   // the mode is decided and the cache, if any, is filled
+  let outcome = null;    // what hydrate() decided, once it has
 
   function hydrate() {
     if (hydration) return hydration;
@@ -435,7 +454,8 @@ const Storage = (() => {
     // draw its first table.
     if (!Api.baseUrl) {
       settled = true;
-      hydration = Promise.resolve({ mode: 'local', reason: 'no_api' });
+      outcome = { mode: 'local', reason: 'no_api' };
+      hydration = Promise.resolve(outcome);
       return hydration;
     }
 
@@ -457,7 +477,7 @@ const Storage = (() => {
 
       mode = 'api';
       return { mode: 'api', counts: Object.fromEntries(COLLECTIONS.map(c => [c, cache[c].length])) };
-    })().then(result => { settled = true; return result; });
+    })().then(result => { settled = true; outcome = result; return result; });
     return hydration;
   }
 
@@ -493,12 +513,16 @@ const Storage = (() => {
   function ready(fn) {
     const hydrated = hydrate();
 
+    // `fn` receives what hydrate() decided -- which source is live and, when
+    // it is not the expected one, why. Callers that do not care simply
+    // ignore the argument.
     const run = () => {
       if (settled) {
-        try { fn(); } catch (e) { console.error('Page initialisation failed:', e); }
+        try { fn(outcome); } catch (e) { console.error('Page initialisation failed:', e); }
         return;
       }
-      hydrated.then(() => fn()).catch(e => console.error('Page initialisation failed:', e));
+      hydrated.then(result => fn(result))
+        .catch(e => console.error('Page initialisation failed:', e));
     };
 
     if (typeof document === 'undefined' || document.readyState !== 'loading') { run(); return; }
@@ -508,7 +532,7 @@ const Storage = (() => {
   return {
     COLLECTIONS,
     getData, saveData, getById, addData, updateData, deleteData,
-    create, update, remove, action, reload,
+    create, update, remove, action, reload, refreshAll,
     generateId, getSettings, saveSettings, putSettings, getTheme, saveTheme,
     seedIfEmpty, resetToSeedData,
     hydrate, whenReady, ready,

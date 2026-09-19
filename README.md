@@ -102,6 +102,13 @@ js/storage.js ── reads ──> in-memory cache, filled once at startup
 The mode is decided once, at startup, and does not flip under a running page.
 The two never write to each other, so they cannot silently diverge.
 
+**The sidebar says which one is live** — "Connected to the database", or "This
+browser only" with an amber dot. When a Worker *was* addressable and did not
+answer, the app also says so once, because that is the case where someone
+would otherwise go on entering records that never leave their machine. A page
+with no server to call (opened from disk, or the static demo) stays quiet:
+that is the app working as designed.
+
 **Reads are synchronous; writes are not.** 256 call sites read through
 `getData`/`getById`, many per table row, so hydration pulls each collection
 once into memory and the readers keep their signatures — the network is crossed
@@ -110,6 +117,12 @@ because only the server knows whether a write was accepted and what the record
 became; the cache is updated from the response, never from what was sent. The
 old synchronous `addData`/`updateData`/`deleteData` still work without a
 backend and refuse against one rather than write where nothing is reading.
+
+**A write that succeeds while its re-read fails says so.** Each of those
+transactions is followed by re-reading what the server also changed. If that
+re-read fails the write still happened, so it is reported as a success
+carrying `stale` and the user is told the page could not be refreshed —
+rather than leaving a paid invoice displaying its old balance.
 
 **Business transactions are one request, not several.** Recording a payment,
 invoicing a job card, voiding either, and changing a job card's status each
@@ -226,6 +239,49 @@ API. `GET` is public.
 in-memory cache inside `js/storage.js`, and the write paths of all thirteen UI
 modules moved onto the API. No visual change, no schema change, no deployment.
 
+## Phase C-11 — Hardening ✅ Complete
+
+No new capability; the C-10 architecture made safer to run. Four things it
+did, and the reasons they mattered:
+
+- **Duplicate submission.** Nine write paths still called an async function
+  bare — six activate/deactivate row actions, and the status and void paths
+  that move stock and release payments. The database refused every duplicate
+  (a status gate matches once; a void invoice will not void twice), so
+  nothing could be corrupted — but the dialog closed before the server
+  answered, the button stayed live, and an unexpected throw was an unhandled
+  rejection nobody saw. All nine now hold their own control until the server
+  answers, through the same helper the other paths already used.
+- **The silent fallback.** A Worker that was down at page load dropped the
+  app to browser storage with no signal at all. See the sidebar note above.
+- **The swallowed re-read.** Ten call sites ignored whether the re-read after
+  a write had actually worked.
+- **A blank page while hydrating,** now a brief loading state.
+
+## Production readiness — what is NOT done
+
+Stated plainly so none of it is mistaken for finished:
+
+| Item | Status |
+|---|---|
+| Production authentication | **Unresolved.** The shared `API_TOKEN` is a machine credential; a static frontend cannot hold one safely. Development-only, by design. |
+| Read protection | **Not implemented.** All 24 `GET` routes are public. |
+| CORS | **Not configured, and not needed yet.** There are no CORS headers and no `OPTIONS` handler; development runs same-origin through `npm run dev:app`. A cross-origin deployment needs both, and that is a deployment decision. |
+| Production D1 | **Does not exist.** `wrangler.jsonc` binds `taqwa-local` with the `local-development-only` placeholder; the production block stays commented out. |
+| Deployment | **Never performed.** |
+| `localStorage` → D1 migration | **Not implemented, deliberately.** Nothing is deleted or overwritten. |
+
+What a later deployment phase will need to decide or provide: a production D1
+binding and `database_id`; `wrangler secret put API_TOKEN`; an identity the
+browser may actually hold (edge SSO in front of the Worker, or sessions with
+the app served from the Worker); an API origin, and with it either same-origin
+asset serving or a CORS allow-list plus an `OPTIONS` handler; and a backup
+plan before any real data exists.
+
+There is no user, role or session concept in the schema. Every authenticated
+caller can reach every record — that is the model, which is exactly why it is
+development-only rather than a gap to be patched.
+
 ## Business Logic Already Covered
 
 The API preserves the existing application's semantics rather than inventing
@@ -257,9 +313,9 @@ A permanent suite lives in `tests/`. Latest full run:
 
 | Suite | Assertions | Failures |
 |---|---|---|
-| Unit — 31 suites (`npm test`) | 5,382 | 0 |
+| Unit — 33 suites (`npm test`) | 5,436 | 0 |
 | Integration — live Worker + local D1 (`npm run test:integration`) | 2,008 | 0 |
-| **Total** | **7,390** | **0** |
+| **Total** | **7,444** | **0** |
 
 ```bash
 npm test                  # no network, no Worker, no database — safe anywhere
@@ -276,19 +332,21 @@ npm run test:integration  # boots `wrangler dev` against the LOCAL D1 file
   removes them again. It refuses `--remote`, refuses to start unless the fixture
   tables are empty, never deletes pre-existing rows, and verifies cleanup on
   exit.
-- **The frontend's own suites** (`api-client`, `storage-adapter`, `d1-writes`)
-  drive the real `js/api.js` and `js/storage.js` with `fetch` faked, and assert
-  what would have gone over the wire — which is how "a read carries no
-  credential" and "the balance is never computed in the browser" are checked
-  rather than assumed.
+- **The frontend's own suites** (`api-client`, `storage-adapter`, `d1-writes`,
+  `write-safety`, `app-shell`) drive the real `js/api.js`, `js/storage.js`,
+  `js/utils.js` and `js/app.js` with `fetch` faked, and assert what would have
+  gone over the wire — which is how "a read carries no credential", "the
+  balance is never computed in the browser" and "a double click sends one
+  request" are checked rather than assumed.
 
 See `tests/README.md` for the per-suite breakdown and how to add one.
 
 ## Git Workflow
 
 - Each phase is one reviewed commit. C-1 … C-9 were developed on
-  `claude/awesome-lamport-wbjyo7` and merged to `main`; C-10 is on
-  `claude/c10-frontend-storage-d1`.
+  `claude/awesome-lamport-wbjyo7` and C-10 on `claude/c10-frontend-storage-d1`,
+  both merged to `main`; C-11 is on
+  `claude/c11-production-readiness-hardening`.
 - No deployment has been made. `wrangler.jsonc` configures a local database
   only; the production binding stays commented out until a real database exists
   and a backup plan is in place.

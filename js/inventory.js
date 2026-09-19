@@ -465,7 +465,8 @@
       if (!res.ok) { toast(res.error, 'error'); return; }
       Modal.close();
       refresh();
-      toast(`Stock received. New stock: ${res.newStock}.`);
+      if (res.stale && res.stale.length) Utils.wrote(res);
+      else toast(`Stock received. New stock: ${res.newStock}.`);
     }));
   }
 
@@ -530,7 +531,8 @@
       if (!res.ok) { toast(res.error, 'error'); return; }   // "Insufficient stock…" surfaces here
       Modal.close();
       refresh();
-      toast(`Adjustment applied. New stock: ${res.newStock}.`);
+      if (res.stale && res.stale.length) Utils.wrote(res);
+      else toast(`Adjustment applied. New stock: ${res.newStock}.`);
     }));
   }
 
@@ -578,7 +580,13 @@
                  ${isActive(p) ? '<button class="btn btn--primary" data-deactivate>Deactivate Part</button>' : ''}`
       });
       const btn = document.querySelector('[data-deactivate]');
-      if (btn) btn.addEventListener('click', () => { Modal.close(); toggleStatus(id); });
+      // toggleStatus writes, so the click waits for it: closing first would
+      // take the dialog away before anyone knew whether it worked, and leave a
+      // second click free to send the request twice.
+      if (btn) btn.addEventListener('click', Utils.saving(async () => {
+        await toggleStatus(id);
+        Modal.close();
+      }));
       return;
     }
 
@@ -605,9 +613,10 @@
             });
             return;
           }
-          await Storage.reload('inventoryTransactions');
+          const stale = await Storage.refreshAll('inventoryTransactions');
           refresh();
-          toast(`Part "${p.name}" deleted.`, 'warning');
+          if (stale.length) Utils.wrote({ ok: true, stale });
+          else toast(`Part "${p.name}" deleted.`, 'warning');
           return;
         }
         // remove its initial-stock audit rows too (the only txns it can have here)
@@ -734,7 +743,9 @@
       if (action === 'edit') openEditModal(id);
       if (action === 'receive') openReceiveModal(id);
       if (action === 'adjust') openAdjustModal(id);
-      if (action === 'toggle') toggleStatus(id);
+      // Delegated: the listener is on the table body, so the button being
+      // held is the one in this row, not the one the listener sits on.
+      if (action === 'toggle') { Utils.guard(btn, () => toggleStatus(id)); return; }
       if (action === 'delete') openDeleteModal(id);
     });
   }

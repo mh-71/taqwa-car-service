@@ -141,8 +141,8 @@
           ...(notes && notes.trim() ? { notes: notes.trim() } : {})
         });
         if (!res.ok) return { ok: false, reason: res.message, response: res };
-        await Storage.reload('jobCards');
-        return { ok: true, invoice: res.record };
+        const stale = await Storage.refreshAll('jobCards');
+        return { ok: true, invoice: res.record, ...(stale.length ? { stale } : {}) };
       })();
     }
 
@@ -417,7 +417,8 @@
       }
       Modal.close();
       refresh();
-      toast(`Invoice ${result.invoice.id} created for ${custName(result.invoice.customerId)}.`);
+      if (result.stale && result.stale.length) Utils.wrote(result);
+      else toast(`Invoice ${result.invoice.id} created for ${custName(result.invoice.customerId)}.`);
       openDetailModal(result.invoice.id);
     }));
   }
@@ -499,10 +500,14 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--danger" data-confirm-void>Void Invoice</button>`
     });
-    ov.querySelector('[data-confirm-void]').addEventListener('click', () => {
+    // The simple void path goes through Modal.confirm, which already waits.
+    // This one is the same operation with a richer dialog, so it waits too:
+    // closing first would hide the outcome of releasing the payments listed
+    // right above the button, and leave a second click free to send it twice.
+    ov.querySelector('[data-confirm-void]').addEventListener('click', Utils.saving(async () => {
+      await apply();
       Modal.close();
-      apply();
-    });
+    }));
   }
 
   function openDeleteModal(id) {
@@ -534,9 +539,10 @@
           // server; the two tables' mutual foreign keys are deferred for it.
           const res = await Storage.remove('invoices', id);
           if (!Utils.wrote(res)) return;
-          if (inv.jobCardId) await Storage.reload('jobCards');
+          const stale = inv.jobCardId ? await Storage.refreshAll('jobCards') : [];
           refresh();
-          toast(`Invoice ${id} deleted.`, 'warning');
+          if (stale.length) Utils.wrote({ ok: true, stale });
+          else toast(`Invoice ${id} deleted.`, 'warning');
           return;
         }
         if (inv.jobCardId) {

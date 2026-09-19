@@ -352,7 +352,13 @@
                    ? '<button class="btn btn--primary" data-deactivate>Deactivate Service</button>' : ''}`
       });
       const btn = document.querySelector('[data-deactivate]');
-      if (btn) btn.addEventListener('click', () => { Modal.close(); toggleStatus(id); });
+      // toggleStatus writes, so the click waits for it: closing first would
+      // take the dialog away before anyone knew whether it worked, and leave a
+      // second click free to send the request twice.
+      if (btn) btn.addEventListener('click', Utils.saving(async () => {
+        await toggleStatus(id);
+        Modal.close();
+      }));
       return;
     }
 
@@ -432,7 +438,9 @@
       if (!id) return;
       if (action === 'view') openDetailModal(id);
       if (action === 'edit') openEditModal(id);
-      if (action === 'toggle') toggleStatus(id);
+      // Delegated: the listener is on the table body, so the button being
+      // held is the one in this row, not the one the listener sits on.
+      if (action === 'toggle') { Utils.guard(btn, () => toggleStatus(id)); return; }
       if (action === 'delete') openDeleteModal(id);
     });
   }

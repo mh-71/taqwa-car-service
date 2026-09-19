@@ -235,11 +235,14 @@ const Utils = (() => {
           referenceType, referenceId, reason, notes
         });
         if (!res.ok) return { ok: false, error: res.message };
-        // The stock the server settled on, re-read rather than assumed.
-        await Storage.reload('parts');
+        // The stock the server settled on, re-read rather than assumed. If
+        // that re-read fails the movement still happened, so it is reported
+        // as a success carrying `stale` rather than as a failure.
+        const stale = await Storage.refreshAll('parts');
         const after = Storage.getById('parts', partId);
         return { ok: true, transaction: res.record,
-                 newStock: after ? Number(after.stock) : res.record.newStock };
+                 newStock: after ? Number(after.stock) : res.record.newStock,
+                 ...(stale.length ? { stale } : {}) };
       }
 
       // Validate everything BEFORE writing, then write transaction + stock
@@ -532,31 +535,46 @@ const Utils = (() => {
      ============================================================ */
 
   /**
-   * Wrap a handler that performs a write.
+   * Run one write with `btn` held disabled until it finishes.
    *
-   * Holds the control disabled from the click until the server has
-   * answered, so an impatient second click cannot submit the form twice --
-   * the failure mode the old synchronous writes could not have.
+   * The disabled control IS the duplicate-submit guard: a disabled button
+   * fires no click, so the second impatient press has nothing to send. It
+   * is also the only feedback the user gets that something is in flight.
+   *
+   * Errors are swallowed deliberately -- but never silently. A refusal the
+   * caller already reported (via wrote()) needs nothing more; an unexpected
+   * throw is a bug, and the user gets a plain sentence while the detail
+   * goes to the console, because a stack trace in a toast helps nobody and
+   * can carry a URL.
+   */
+  async function guard(btn, fn) {
+    if (btn && btn.disabled) return;
+    const label = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      await fn();
+    } catch (e) {
+      console.error('Write failed:', e);
+      toast('Something went wrong. Please try again.', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; if (label !== null) btn.textContent = label; }
+    }
+  }
+
+  /**
+   * Wrap a click handler that performs a write; the control is taken from
+   * the event. Use guard() directly when the listener is delegated and the
+   * button being clicked is not the one the listener sits on.
    */
   function saving(handler) {
     let busy = false;
     return async function (ev) {
       if (busy) return;
       busy = true;
-      const btn = ev && (ev.currentTarget || ev.target);
-      const label = btn ? btn.textContent : null;
-      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
       try {
-        await handler(ev);
-      } catch (e) {
-        // A bug in the handler, not a refusal from the server. The user
-        // gets a plain sentence; the detail goes to the console, because a
-        // stack trace in a toast helps nobody and can carry a URL.
-        console.error('Write failed:', e);
-        toast('Something went wrong. Please try again.', 'error');
+        await guard(ev && (ev.currentTarget || ev.target), () => handler(ev));
       } finally {
         busy = false;
-        if (btn) { btn.disabled = false; if (label !== null) btn.textContent = label; }
       }
     };
   }
@@ -570,7 +588,16 @@ const Utils = (() => {
    * the browser's own would have.
    */
   function wrote(res, form = null) {
-    if (res && res.ok) return true;
+    if (res && res.ok) {
+      // The write landed, but something the server ALSO changed could not be
+      // re-read. Saying so beats letting the screen quietly disagree with the
+      // database -- the figure most likely affected is a balance or a stock
+      // level, which is exactly the kind a user acts on.
+      if (res.stale && res.stale.length) {
+        toast('Saved, but this page could not be refreshed. Reload to see the latest.', 'warning');
+      }
+      return true;
+    }
     const fields = res && res.fields;
     if (fields && form && form.querySelectorAll) {
       form.querySelectorAll('.field').forEach(f => f.classList.remove('field--error'));
@@ -590,7 +617,7 @@ const Utils = (() => {
 
   return {
     money, fmtDate, fmtTime, todayStr, toDateStr, esc, badge, toast, Modal,
-    saving, wrote,
+    saving, guard, wrote,
     liveJobBalance, liveJobPaid, liveJobDue, sumJobsDue, sumJobsPaid,
     customerName, mechanicName, vehicleLabel, vehicleReg, serviceName,
     ACTIVE_JOB_STATUSES, DONE_JOB_STATUSES,

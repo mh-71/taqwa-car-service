@@ -34,6 +34,10 @@ function boot({ modules = [], tz, fetch: fetchStub, origin } = {}) {
     readyState: 'loading',
   };
   doc.body.dataset = {}; doc.documentElement.dataset = {};
+  // app.js builds the shell as one innerHTML string on a created element and
+  // then prepends it. Keeping the last one prepended lets a suite read what
+  // the shell actually rendered without a real DOM.
+  doc.body.prepend = function (el) { doc.body._lastShellHtml = el && el.innerHTML; };
 
   const ctx = {
     console,

@@ -164,6 +164,28 @@ a:hover { text-decoration: underline; }
   background: var(--good);
   box-shadow: 0 0 0 3px rgba(31, 157, 97, .25);
 }
+/* Shown only while hydration is in flight; removed before the shell draws. */
+.app-loading {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--paper);
+  color: var(--text-2);
+  font-size: .9rem;
+  z-index: 100;
+}
+.app-loading__dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: app-loading-pulse 1s ease-in-out infinite;
+}
+@keyframes app-loading-pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+
+/* No server answering: the records on screen live in this browser only. */
+.sidebar__foot-dot--local {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgba(217, 122, 8, .25);
+}
 
 .sidebar-scrim {
   position: fixed;

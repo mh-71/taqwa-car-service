@@ -585,7 +585,7 @@
 
   /* ---------- status changes ---------- */
 
-  function changeStatus(id, next) {
+  async function changeStatus(id, next) {
     const a = Storage.getById('appointments', id);
     if (!a) return;
     const current = normStatus(a.status);
@@ -609,7 +609,7 @@
         onConfirm: apply
       });
     } else {
-      apply();
+      await apply();
     }
   }
 
@@ -749,7 +749,10 @@
       if (!id) return;
       if (action === 'view') openDetailModal(id);
       if (action === 'edit') openEditModal(id);
-      if (action === 'status') changeStatus(id, btn.dataset.next);
+      // A status change writes (and on a job card moves stock), so the row's
+      // own button is held until the server answers. Delegated, so the button
+      // is this row's rather than the one the listener sits on.
+      if (action === 'status') { Utils.guard(btn, () => changeStatus(id, btn.dataset.next)); return; }
       if (action === 'delete') openDeleteModal(id);
     });
   }
