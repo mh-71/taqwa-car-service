@@ -35,12 +35,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 50 routes', routes.length === 50, routes);
+  t('advertises 54 routes', routes.length === 54, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('24 GET, 10 POST, 8 PUT, 8 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 10, PUT: 8, DELETE: 8 }), byMethod);
+    t('24 GET, 12 POST, 9 PUT, 9 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 24, POST: 12, PUT: 9, DELETE: 9 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -53,9 +53,9 @@ sec('1. Health');
   t('advertises job-cards writes',
     ['POST /api/job-cards', 'PUT /api/job-cards/:id', 'DELETE /api/job-cards/:id']
       .every((r2) => routes.includes(r2)), routes);
-  t('advertises the one action route, and only as a POST',
-    routes.includes('POST /api/job-cards/:id/status')
-      && routes.filter((r2) => /\/:id\/[a-z-]+$/.test(r2)).length === 1, routes);
+  t('advertises both action routes, and only as POSTs',
+    JSON.stringify(routes.filter((r2) => /\/:id\/[a-z-]+$/.test(r2)))
+      === JSON.stringify(['POST /api/job-cards/:id/status', 'POST /api/invoices/:id/void']), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -1186,11 +1186,16 @@ sec('10f. GET /api/invoices — stored money, billed snapshots, no payment looku
   const allAfter = await get('/api/invoices');
   t('invoices table intact after injection attempts', allAfter.body?.total === 4, allAfter.body?.total);
 
-  for (const m of ['POST','PUT','DELETE','PATCH']) {
+  // C-7 gave this collection writes, so only the methods it still refuses are
+  // asserted here, and the Allow header now names the new ones. Section 18
+  // covers the writes themselves.
+  for (const m of ['PUT','DELETE','PATCH']) {
     const rl = await get('/api/invoices', { method: m });
-    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET', { status: rl.status, allow: rl.allow });
+    t(`${m} list -> 405 + Allow`, rl.status === 405 && rl.allow === 'GET, POST', { status: rl.status, allow: rl.allow });
+  }
+  for (const m of ['POST','PATCH']) {
     const rd = await get('/api/invoices/INV-9001', { method: m });
-    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET', { status: rd.status, allow: rd.allow });
+    t(`${m} detail -> 405 + Allow`, rd.status === 405 && rd.allow === 'GET, PUT, DELETE', { status: rd.status, allow: rd.allow });
   }
 }
 
@@ -1809,10 +1814,10 @@ sec('12. Unknown routes');
   // collections that are still read-only advertise nothing but GET.
   t('only GET/POST/PUT/DELETE are advertised',
     advertised.every(x => ['GET', 'POST', 'PUT', 'DELETE'].includes(x.split(' ')[0])), advertised);
-  // Appointments left this list in C-3 and job cards in C-5; the ledger accepts
-  // POST as of C-4 and is asserted separately, since it is append-only rather
-  // than read-only.
-  for (const readOnly of ['invoices', 'payments', 'settings']) {
+  // Appointments left this list in C-3, job cards in C-5 and invoices in C-7;
+  // the ledger accepts POST as of C-4 and is asserted separately, since it is
+  // append-only rather than read-only.
+  for (const readOnly of ['payments', 'settings']) {
     t(`${readOnly} advertises GET only`,
       advertised.filter(x => x.endsWith(`/api/${readOnly}`) || x.endsWith(`/api/${readOnly}/:id`))
         .every(x => x.startsWith('GET ')),
@@ -3417,6 +3422,459 @@ sec('17. Job card status transitions: the state machine, inventory and the appoi
       rows.filter((x) => x.referenceType === 'job-card')
         .every((x) => jobs.includes(x.referenceId) && x.type === 'job-card-use'),
       rows.filter((x) => x.referenceType === 'job-card').map((x) => [x.referenceId, x.type]));
+  }
+
+  // cleanup.sql's sweep removes the rows this section created, in FK order,
+  // and resets the counters the ids came from.
+}
+
+sec('18. Invoice writes: copied from a job card, voided into advances, against real D1');
+{
+  const cust = await send('POST', '/api/customers', { name: 'C-7 Invoice Customer', phone: '01977-000001' });
+  const C = cust.body?.data?.id;
+  const veh = await send('POST', '/api/vehicles',
+    { customerId: C, regNo: 'DHA-C7-01', brand: 'Toyota', model: 'Probe' });
+  const V = veh.body?.data?.id;
+  const mech = await send('POST', '/api/mechanics',
+    { name: 'C-7 Invoice Mechanic', phone: '01977-000002', specialization: 'Engine' });
+  const M = mech.body?.data?.id;
+  const svc = await send('POST', '/api/services',
+    { name: 'C-7 Catalogue Service', category: 'Engine', price: 1200 });
+  const S = svc.body?.data?.id;
+  const part = await send('POST', '/api/parts',
+    { name: 'C-7 Catalogue Part', partNo: 'c7-cat', category: 'Filters', unit: 'pc',
+      purchasePrice: 100, sellingPrice: 200, minStock: 0 });
+  const P = part.body?.data?.id;
+  await send('POST', '/api/inventory-transactions', { partId: P, type: 'initial-stock', quantity: 20 });
+  t('the section has its own customer, vehicle, mechanic, service and part',
+    [C, V, M, S, P].every(Boolean), { C, V, M, S, P });
+
+  const stockOf = async (id) => (await get(`/api/parts/${id}`)).body?.data?.stock;
+  const setStatus = (id, status) => send('POST', `/api/job-cards/${id}/status`, { status });
+  const ledgerRows = async () => (await get('/api/inventory-transactions?limit=1000')).body?.data ?? [];
+
+  /**
+   * A job card carried all the way to Completed, so it is invoiceable. The
+   * part line makes the walk issue stock, which is what lets the tests below
+   * prove that invoicing then leaves it alone.
+   */
+  const completedJob = async (over = {}) => {
+    const r = await send('POST', '/api/job-cards', {
+      customerId: C, vehicleId: V, mechanicId: M,
+      date: '2026-09-18', complaint: 'C-7: ready to bill',
+      services: [{ serviceId: S, name: 'C-7 Service (as sold)', qty: 1, unitPrice: 1000 }],
+      partsUsed: [{ partId: P, name: 'C-7 Part (as sold)', partNo: 'sold-1', qty: 1, unitPrice: 500 }],
+      paid: 300, ...over,
+    });
+    const id = r.body?.data?.id;
+    await setStatus(id, 'Inspection');
+    await setStatus(id, 'In Progress');
+    await setStatus(id, 'Completed');
+    return id;
+  };
+
+  /* ---- 18a. create ---- */
+  {
+    const J = await completedJob();
+    const job = (await get(`/api/job-cards/${J}`)).body?.data;
+    t('a job card ready to bill is Completed', job?.status === 'Completed', job?.status);
+    const stockBefore = await stockOf(P);
+    const ledgerBefore = (await ledgerRows()).length;
+
+    const inv = await send('POST', '/api/invoices', { jobCardId: J });
+    t('POST /api/invoices -> 201', inv.status === 201, inv.body);
+    const I = inv.body?.data?.id;
+    t('   ...allocated a real INV id', /^INV-\d{4}$/.test(I || ''), I);
+    t('   ...linked to the job card', inv.body?.data?.jobCardId === J, inv.body?.data);
+    t('   ...with the job card\'s customer and vehicle',
+      inv.body?.data?.customerId === C && inv.body?.data?.vehicleId === V, inv.body?.data);
+    t('   ...and a GET returns exactly what the POST reported',
+      JSON.stringify((await get(`/api/invoices/${I}`)).body?.data) === JSON.stringify(inv.body?.data));
+
+    t('every figure is copied from the job card',
+      inv.body?.data?.subtotal === job.subtotal && inv.body?.data?.total === job.total
+        && inv.body?.data?.labourCost === job.labourCost && inv.body?.data?.tax === job.tax
+        && inv.body?.data?.discount === job.discount && inv.body?.data?.taxRate === job.taxRate,
+      { invoice: inv.body?.data, job });
+    t('   ...including what the job card had already collected',
+      inv.body?.data?.paid === 300, inv.body?.data);
+    t('   ...and due follows from it', inv.body?.data?.due === job.total - 300, inv.body?.data);
+    t('   ...the status is derived from that', inv.body?.data?.status === 'Partial', inv.body?.data);
+
+    t('the line snapshots came across',
+      inv.body?.data?.services?.length === 1 && inv.body?.data?.partsUsed?.length === 1,
+      inv.body?.data);
+    t('   ...naming what was SOLD, not the catalogue',
+      inv.body?.data?.services[0]?.name === 'C-7 Service (as sold)'
+        && inv.body?.data?.partsUsed[0]?.name === 'C-7 Part (as sold)', inv.body?.data);
+    t('   ...at the price it was sold for',
+      inv.body?.data?.services[0]?.unitPrice === 1000
+        && inv.body?.data?.partsUsed[0]?.unitPrice === 500, inv.body?.data);
+    t('   ...the part number too', inv.body?.data?.partsUsed[0]?.partNo === 'sold-1', inv.body?.data);
+    t('   ...and it is partsUsed, never parts',
+      'partsUsed' in inv.body.data && !('parts' in inv.body.data));
+
+    t('the job card now points at the invoice',
+      (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId === I,
+      (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId);
+    t('   ...and its own status is unchanged',
+      (await get(`/api/job-cards/${J}`)).body?.data?.status === 'Completed');
+    t('   ...while its own paid/due stay exactly as they were',
+      (await get(`/api/job-cards/${J}`)).body?.data?.paid === job.paid
+        && (await get(`/api/job-cards/${J}`)).body?.data?.due === job.due,
+      (await get(`/api/job-cards/${J}`)).body?.data);
+
+    // Step 23: invoicing bills for stock the job card already issued.
+    t('invoicing moved no stock', (await stockOf(P)) === stockBefore,
+      { before: stockBefore, after: await stockOf(P) });
+    t('   ...and wrote no ledger row', (await ledgerRows()).length === ledgerBefore,
+      { before: ledgerBefore, after: (await ledgerRows()).length });
+
+    /* ---- 18b. the snapshots are historical ---- */
+    const renamed = await send('PUT', `/api/services/${S}`, { name: 'C-7 RENAMED Service', price: 9999 });
+    t('renaming and repricing the catalogue service -> 200', renamed.status === 200, renamed.body);
+    const repriced = await send('PUT', `/api/parts/${P}`,
+      { name: 'C-7 RENAMED Part', partNo: 'c7-renamed', sellingPrice: 8888 });
+    t('renaming and repricing the catalogue part -> 200', repriced.status === 200, repriced.body);
+    const after = (await get(`/api/invoices/${I}`)).body?.data;
+    t('the invoice is untouched by either', JSON.stringify(after) === JSON.stringify(inv.body?.data),
+      { before: inv.body?.data, after });
+    t('   ...the billed service name still says what was sold',
+      after.services[0].name === 'C-7 Service (as sold)', after.services[0]);
+    t('   ...at the price it was sold for', after.services[0].unitPrice === 1000, after.services[0]);
+    t('   ...the billed part name too', after.partsUsed[0].name === 'C-7 Part (as sold)', after.partsUsed[0]);
+    t('   ...with its own part number', after.partsUsed[0].partNo === 'sold-1', after.partsUsed[0]);
+    t('   ...and its own price', after.partsUsed[0].unitPrice === 500, after.partsUsed[0]);
+
+    /* ---- 18c. notes are the only edit ---- */
+    const noted = await send('PUT', `/api/invoices/${I}`, { notes: '  paid by bank transfer  ' });
+    t('PUT notes -> 200', noted.status === 200, noted.body);
+    t('   ...stored trimmed', noted.body?.data?.notes === 'paid by bank transfer', noted.body?.data);
+    t('   ...updatedAt now set', !!noted.body?.data?.updatedAt, noted.body?.data);
+    t('   ...and every figure survives untouched',
+      noted.body?.data?.total === after.total && noted.body?.data?.paid === after.paid
+        && noted.body?.data?.due === after.due && noted.body?.data?.status === after.status,
+      noted.body?.data);
+    for (const [field, value] of [
+      ['total', 1], ['paid', 1], ['due', 1], ['status', 'Paid'], ['services', []],
+      ['jobCardId', 'JOB-9002'], ['date', '2026-01-01'], ['discount', 1],
+    ]) {
+      const bad = await send('PUT', `/api/invoices/${I}`, { [field]: value });
+      t(`editing \`${field}\` -> 422`, bad.status === 422, { status: bad.status, body: bad.body });
+    }
+    const nothing = await send('PUT', `/api/invoices/${I}`, {});
+    t('an empty edit -> 422', nothing.status === 422, nothing.body);
+
+    /* ---- 18d. a second invoice for the same job card ---- */
+    const dup = await send('POST', '/api/invoices', { jobCardId: J });
+    t('a second invoice for the same job card -> 409', dup.status === 409, dup.body);
+    t('   ...reason', dup.body?.error?.reason === 'invoice_exists', dup.body?.error);
+    t('   ...naming the one that exists', dup.body?.error?.conflictsWith === I, dup.body?.error);
+
+    /* ---- 18e. delete guards ---- */
+    const delActive = await send('DELETE', `/api/invoices/${I}`);
+    t('deleting an active invoice -> 409', delActive.status === 409, delActive.body);
+    t('   ...reason', delActive.body?.error?.reason === 'invoice_not_void', delActive.body?.error);
+    t('   ...and it is still there', (await get(`/api/invoices/${I}`)).status === 200);
+    // C-5's job card delete guard still sees the link.
+    const delJob = await send('DELETE', `/api/job-cards/${J}`);
+    t('the invoiced job card still cannot be deleted -> 409', delJob.status === 409, delJob.body);
+    t('   ...reason', delJob.body?.error?.reason === 'job_card_invoiced', delJob.body?.error);
+
+    /* ---- 18f. void, and re-invoice ---- */
+    const voided = await send('POST', `/api/invoices/${I}/void`);
+    t('POST /api/invoices/:id/void -> 200', voided.status === 200, voided.body);
+    t('   ...the invoice is Void', voided.body?.data?.status === 'Void', voided.body?.data);
+    t('   ...its paid stays frozen at what it had collected',
+      voided.body?.data?.paid === 300, voided.body?.data);
+    t('   ...and its due with it', voided.body?.data?.due === after.due, voided.body?.data);
+    t('   ...its line snapshots are kept',
+      voided.body?.data?.services?.length === 1 && voided.body?.data?.partsUsed?.length === 1,
+      voided.body?.data);
+    t('   ...it still names the job card it billed', voided.body?.data?.jobCardId === J, voided.body?.data);
+    t('   ...but the job card is un-invoiced again',
+      (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId === null,
+      (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId);
+    t('   ...no payments were linked, so none were released',
+      voided.body?.released === 0, voided.body?.released);
+    t('   ...and no stock moved', (await stockOf(P)) === stockBefore, await stockOf(P));
+
+    const again = await send('POST', `/api/invoices/${I}/void`);
+    t('voiding a second time -> 409', again.status === 409, again.body);
+    t('   ...reason', again.body?.error?.reason === 'invoice_void', again.body?.error);
+    t('   ...and its figures are still frozen',
+      (await get(`/api/invoices/${I}`)).body?.data?.paid === 300);
+
+    const reInvoice = await send('POST', '/api/invoices', { jobCardId: J });
+    t('the job card can be invoiced again -> 201', reInvoice.status === 201, reInvoice.body);
+    const I2 = reInvoice.body?.data?.id;
+    t('   ...as a new invoice', I2 !== I, { I, I2 });
+    t('   ...and the job card points at the new one',
+      (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId === I2);
+    const old = (await get(`/api/invoices/${I}`)).body?.data;
+    t('   ...while the voided one is unchanged',
+      old.status === 'Void' && old.paid === 300 && old.services.length === 1, old);
+
+    /* ---- 18g. delete a void invoice ---- */
+    await send('POST', `/api/invoices/${I2}/void`);
+    const paidVoid = await send('DELETE', `/api/invoices/${I}`);
+    t('deleting a Void invoice that collected money -> 409', paidVoid.status === 409, paidVoid.body);
+    t('   ...reason', paidVoid.body?.error?.reason === 'invoice_has_payments', paidVoid.body?.error);
+
+    const zeroJob = await completedJob({ paid: 0, complaint: 'C-7: nothing collected' });
+    const zeroInv = await send('POST', '/api/invoices', { jobCardId: zeroJob });
+    t('an invoice that collected nothing is Unpaid',
+      zeroInv.body?.data?.status === 'Unpaid' && zeroInv.body?.data?.paid === 0, zeroInv.body?.data);
+    const Z = zeroInv.body?.data?.id;
+    await send('POST', `/api/invoices/${Z}/void`);
+    const gone = await send('DELETE', `/api/invoices/${Z}`);
+    t('deleting a Void invoice that collected nothing -> 200', gone.status === 200, gone.body);
+    t('   ...reporting what went', JSON.stringify(gone.body?.data) === JSON.stringify({ id: Z, deleted: true }),
+      gone.body?.data);
+    t('   ...it is really gone', (await get(`/api/invoices/${Z}`)).status === 404);
+    t('   ...its child lines went with it',
+      !(await get('/api/invoices?limit=1000')).body?.data?.some((x) => x.id === Z));
+    t('   ...and the job card was already unlinked by the void',
+      (await get(`/api/job-cards/${zeroJob}`)).body?.data?.invoiceId === null);
+    await send('DELETE', `/api/job-cards/${zeroJob}`);
+  }
+
+  /* ---- 18h. eligibility, over real HTTP ---- */
+  {
+    const ghost = await send('POST', '/api/invoices', { jobCardId: 'JOB-7777' });
+    t('an unknown job card -> 404', ghost.status === 404, ghost.status);
+    t('   ...with the client\'s wording', ghost.body?.error?.message === 'Job Card not found.',
+      ghost.body?.error);
+
+    for (const [status, id] of [['Received', null], ['In Progress', 'JOB-9003'], ['Cancelled', 'JOB-9004']]) {
+      const target = id ?? (await send('POST', '/api/job-cards', {
+        customerId: C, vehicleId: V, mechanicId: M, date: '2026-09-18',
+        complaint: 'C-7: not ready', services: [{ serviceId: S, name: 'x', qty: 1, unitPrice: 100 }],
+      })).body?.data?.id;
+      const r = await send('POST', '/api/invoices', { jobCardId: target });
+      t(`a ${status} job card cannot be invoiced -> 409`, r.status === 409, { status: r.status, body: r.body });
+      t('   ...reason', r.body?.error?.reason === 'job_card_not_invoiceable', r.body?.error);
+      t('   ...naming the status it is in', r.body?.error?.status === status, r.body?.error);
+      if (!id) await send('DELETE', `/api/job-cards/${target}`);
+    }
+    {
+      // A Completed job card with nothing to bill.
+      const free = await send('POST', '/api/job-cards', {
+        customerId: C, vehicleId: V, mechanicId: M, date: '2026-09-18',
+        complaint: 'C-7: goodwill, no charge',
+        services: [{ serviceId: S, name: 'Goodwill check', qty: 1, unitPrice: 0 }],
+      });
+      const F = free.body?.data?.id;
+      t('a job card can total zero', free.body?.data?.total === 0, free.body?.data);
+      await setStatus(F, 'Inspection');
+      await setStatus(F, 'In Progress');
+      await setStatus(F, 'Completed');
+      const r = await send('POST', '/api/invoices', { jobCardId: F });
+      t('a job card with nothing to bill -> 409', r.status === 409, r.body);
+      t('   ...reason', r.body?.error?.reason === 'nothing_to_invoice', r.body?.error);
+      t('   ...with the client\'s wording',
+        r.body?.error?.message === 'This Job Card has no billable amount.', r.body?.error);
+    }
+    for (const [why, body] of [
+      ['a missing jobCardId', {}],
+      ['a blank jobCardId', { jobCardId: '   ' }],
+      ['a client-supplied total', { jobCardId: 'JOB-9002', total: 1 }],
+      ['a client-supplied paid', { jobCardId: 'JOB-9002', paid: 1 }],
+      ['client-supplied lines', { jobCardId: 'JOB-9002', services: [] }],
+      ['a client-supplied status', { jobCardId: 'JOB-9002', status: 'Paid' }],
+    ]) {
+      const r = await send('POST', '/api/invoices', body);
+      t(`${why} -> 422`, r.status === 422, { status: r.status, body: r.body });
+    }
+    const bad = await send('POST', '/api/invoices', 'not json');
+    t('a malformed body -> 400', bad.status === 400, bad.status);
+    for (const m of ['PUT', 'DELETE', 'PATCH']) {
+      const r = await get('/api/invoices', { method: m });
+      t(`${m} on the invoice list -> 405 + Allow`,
+        r.status === 405 && r.allow === 'GET, POST', { status: r.status, allow: r.allow });
+    }
+    for (const m of ['GET', 'PUT', 'DELETE', 'PATCH']) {
+      const r = await get('/api/invoices/INV-9001/void', { method: m });
+      t(`${m} on the void path -> 405 + Allow: POST`,
+        r.status === 405 && r.allow === 'POST', { status: r.status, allow: r.allow });
+    }
+  }
+
+  /* ---- 18i. audit Finding 7, on the fixtures that were built for it ---- */
+  {
+    // INV-9001 carries PAY-9001 (Active, no job card of its own) and PAY-9003
+    // (already Void). Its job card JOB-9001 points back at it.
+    const before = (await get('/api/invoices/INV-9001')).body?.data;
+    const payBefore = (await get('/api/payments?limit=1000')).body?.data ?? [];
+    const p1Before = payBefore.find((p) => p.id === 'PAY-9001');
+    const p3Before = payBefore.find((p) => p.id === 'PAY-9003');
+    t('the fixture invoice starts Paid with both payments attached',
+      before.status === 'Paid' && p1Before.invoiceId === 'INV-9001'
+        && p3Before.invoiceId === 'INV-9001', { before, p1Before, p3Before });
+    t('   ...one Active and one already Void',
+      p1Before.status === 'Active' && p3Before.status === 'Void', { p1Before, p3Before });
+    t('   ...and the Active one has no job card of its own', p1Before.jobCardId === null, p1Before);
+
+    const voided = await send('POST', '/api/invoices/INV-9001/void');
+    t('voiding it -> 200', voided.status === 200, voided.body);
+    t('   ...releases exactly one payment', voided.body?.released === 1, voided.body?.released);
+
+    const payAfter = (await get('/api/payments?limit=1000')).body?.data ?? [];
+    const p1 = payAfter.find((p) => p.id === 'PAY-9001');
+    const p3 = payAfter.find((p) => p.id === 'PAY-9003');
+    t('the Active payment became an advance', p1.invoiceId === null, p1);
+    t('   ...inheriting the invoice\'s job card so Reports can still trace it',
+      p1.jobCardId === 'JOB-9001', p1);
+    t('   ...with its amount untouched', p1.amount === p1Before.amount, { before: p1Before, after: p1 });
+    t('   ...its date untouched', p1.date === p1Before.date, p1);
+    t('   ...its method untouched', p1.method === p1Before.method, p1);
+    t('   ...its notes untouched', p1.notes === p1Before.notes, p1);
+    t('   ...its customer untouched', p1.customerId === p1Before.customerId, p1);
+    t('   ...and it is still Active — the cash arrived, only the document was cancelled',
+      p1.status === 'Active', p1);
+    t('the Void payment was left exactly as it was',
+      JSON.stringify(p3) === JSON.stringify(p3Before), { before: p3Before, after: p3 });
+    t('   ...link and all', p3.invoiceId === 'INV-9001', p3);
+
+    const inv = (await get('/api/invoices/INV-9001')).body?.data;
+    t('the invoice is Void', inv.status === 'Void', inv);
+    t('   ...its paid stays frozen at what it had collected', inv.paid === before.paid, {
+      before: before.paid, after: inv.paid });
+    t('   ...and its due with it', inv.due === before.due, { before: before.due, after: inv.due });
+    t('   ...its total is unchanged', inv.total === before.total, inv);
+    t('   ...and so are its line snapshots',
+      JSON.stringify(inv.services) === JSON.stringify(before.services)
+        && JSON.stringify(inv.partsUsed) === JSON.stringify(before.partsUsed), inv);
+    t('   ...it still names the job card it billed', inv.jobCardId === 'JOB-9001', inv);
+    t('the job card is un-invoiced again',
+      (await get('/api/job-cards/JOB-9001')).body?.data?.invoiceId === null,
+      (await get('/api/job-cards/JOB-9001')).body?.data?.invoiceId);
+
+    // An invoice with no job card of its own: the released payment inherits
+    // nothing, because there is nothing to inherit.
+    const p5Before = payBefore.find((p) => p.id === 'PAY-9005');
+    t('INV-9003 has an Active payment and no job card',
+      p5Before.invoiceId === 'INV-9003' && p5Before.jobCardId === null, p5Before);
+    const v3 = await send('POST', '/api/invoices/INV-9003/void');
+    t('voiding it -> 200', v3.status === 200, v3.body);
+    t('   ...releases its one payment', v3.body?.released === 1, v3.body?.released);
+    const p5 = (await get('/api/payments/PAY-9005')).body?.data;
+    t('   ...which becomes an advance with no job card to inherit',
+      p5.invoiceId === null && p5.jobCardId === null, p5);
+    t('   ...its amount kept to the paisa', p5.amount === 150.25, p5);
+    t('   ...and the invoice keeps its frozen figures',
+      (await get('/api/invoices/INV-9003')).body?.data?.paid === 150, 
+      (await get('/api/invoices/INV-9003')).body?.data);
+
+    // An invoice with no payments at all.
+    const v4 = await send('POST', '/api/invoices/INV-9004/void');
+    t('voiding an invoice with no payments -> 200', v4.status === 200, v4.body);
+    t('   ...releases none', v4.body?.released === 0, v4.body?.released);
+
+    // And the already-Void fixture refuses.
+    const v2 = await send('POST', '/api/invoices/INV-9002/void');
+    t('voiding the already-Void fixture -> 409', v2.status === 409, v2.body);
+    t('   ...and its released advance PAY-9002 is untouched',
+      (await get('/api/payments/PAY-9002')).body?.data?.jobCardId === 'JOB-9001');
+
+    const ghost = await send('POST', '/api/invoices/INV-7777/void');
+    t('voiding an unknown invoice -> 404', ghost.status === 404, ghost.status);
+    t('   ...with the client\'s wording', ghost.body?.error?.message === 'Invoice not found.',
+      ghost.body?.error);
+
+    // A Void payment still points here, so the schema itself refuses the delete
+    // even though the frontend's own two guards would have allowed it.
+    const frozen = await send('PUT', '/api/invoices/INV-9004', { notes: 'voided in error' });
+    t('a Void invoice\'s notes are still editable', frozen.status === 200, frozen.body);
+    const delPaid = await send('DELETE', '/api/invoices/INV-9001');
+    t('deleting the Void invoice that collected money -> 409', delPaid.status === 409, delPaid.body);
+    t('   ...reason', delPaid.body?.error?.reason === 'invoice_has_payments', delPaid.body?.error);
+  }
+
+  /* ---- 18j. concurrency ---- */
+  {
+    // A. two simultaneous creates for one job card.
+    const J = await completedJob({ complaint: 'C-7: create race' });
+    const [a, b] = await Promise.all([
+      send('POST', '/api/invoices', { jobCardId: J }),
+      send('POST', '/api/invoices', { jobCardId: J }),
+    ]);
+    t('two simultaneous creates for one job card: exactly one succeeds',
+      [a.status, b.status].filter((c) => c === 201).length === 1, { a: a.status, b: b.status });
+    t('   ...and exactly one is refused', [a.status, b.status].filter((c) => c === 409).length === 1,
+      { a: a.status, b: b.status });
+    t('   ...neither is a 5xx', ![a.status, b.status].some((c) => c >= 500), [a.status, b.status]);
+    t('   ...the refusal names the duplicate rule',
+      [a, b].find((r) => r.status === 409)?.body?.error?.reason === 'invoice_exists',
+      [a.body?.error, b.body?.error]);
+    const live = (await get('/api/invoices?limit=1000')).body?.data
+      ?.filter((x) => x.jobCardId === J && x.status !== 'Void');
+    t('   ...and the job card has exactly ONE live invoice', live.length === 1, live);
+    const I = live[0].id;
+    t('   ...which is the one the job card points at',
+      (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId === I);
+
+    // B. two simultaneous voids of the same invoice.
+    const [v1, v2] = await Promise.all([
+      send('POST', `/api/invoices/${I}/void`),
+      send('POST', `/api/invoices/${I}/void`),
+    ]);
+    t('two simultaneous voids: exactly one succeeds',
+      [v1.status, v2.status].filter((c) => c === 200).length === 1, { v1: v1.status, v2: v2.status });
+    t('   ...and exactly one is refused', [v1.status, v2.status].filter((c) => c === 409).length === 1,
+      { v1: v1.status, v2: v2.status });
+    t('   ...neither is a 5xx', ![v1.status, v2.status].some((c) => c >= 500), [v1.status, v2.status]);
+    t('   ...the invoice is Void', (await get(`/api/invoices/${I}`)).body?.data?.status === 'Void');
+    t('   ...and the job card is unlinked once',
+      (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId === null);
+
+    // C. a void racing a create for the same job card.
+    const J2 = await completedJob({ complaint: 'C-7: void and create race' });
+    const first = await send('POST', '/api/invoices', { jobCardId: J2 });
+    const I2 = first.body?.data?.id;
+    const [vr, cr] = await Promise.all([
+      send('POST', `/api/invoices/${I2}/void`),
+      send('POST', '/api/invoices', { jobCardId: J2 }),
+    ]);
+    t('a void racing a create: neither is a 5xx',
+      vr.status < 500 && cr.status < 500, { void: vr.status, create: cr.status });
+    const liveNow = (await get('/api/invoices?limit=1000')).body?.data
+      ?.filter((x) => x.jobCardId === J2 && x.status !== 'Void');
+    t('   ...and the job card never ends with two live invoices',
+      liveNow.length <= 1, liveNow.map((x) => [x.id, x.status]));
+    const linked = (await get(`/api/job-cards/${J2}`)).body?.data?.invoiceId;
+    t('   ...the job card points at the live one, or at none',
+      liveNow.length === 1 ? linked === liveNow[0].id : linked === null,
+      { linked, live: liveNow.map((x) => x.id) });
+
+    // D. a twelve-way burst of creates for one job card.
+    const J3 = await completedJob({ complaint: 'C-7: burst' });
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () => send('POST', '/api/invoices', { jobCardId: J3 })));
+    t('twelve simultaneous creates for one job card: exactly one succeeds',
+      results.filter((r) => r.status === 201).length === 1, results.map((r) => r.status));
+    t('   ...the other eleven are refused',
+      results.filter((r) => r.status === 409).length === 11, results.map((r) => r.status));
+    t('   ...none is a 5xx', !results.some((r) => r.status >= 500), results.map((r) => r.status));
+    t('   ...and exactly one invoice exists for it',
+      (await get('/api/invoices?limit=1000')).body?.data?.filter((x) => x.jobCardId === J3).length === 1);
+  }
+
+  /* ---- 18k. nothing anywhere in this section moved stock ---- */
+  {
+    const rows = (await get('/api/inventory-transactions?limit=1000')).body?.data ?? [];
+    t('no ledger row in this database mentions an invoice',
+      rows.every((x) => x.referenceType !== 'invoice'), rows.map((x) => x.referenceType));
+    t('   ...and every job-card row still chains prev -> new',
+      rows.every((x) => {
+        const delta = ['purchase', 'adjustment-in', 'return', 'initial-stock'].includes(x.type)
+          ? x.quantity : -x.quantity;
+        return Math.abs((x.prevStock + delta) - x.newStock) < 1e-9;
+      }), rows.filter((x) => {
+        const delta = ['purchase', 'adjustment-in', 'return', 'initial-stock'].includes(x.type)
+          ? x.quantity : -x.quantity;
+        return Math.abs((x.prevStock + delta) - x.newStock) >= 1e-9;
+      }));
   }
 
   // cleanup.sql's sweep removes the rows this section created, in FK order,

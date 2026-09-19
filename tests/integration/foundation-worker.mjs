@@ -514,6 +514,165 @@ export default {
         t('   ...leaving exactly one ledger row', (await jcLedger()) === 1, await jcLedger());
       }
 
+      /* ---------- G. C-7 — an invoice is created and voided atomically -------- */
+      // Creating an invoice writes the parent, both line tables and the job
+      // card's link together; voiding writes the status, releases the
+      // payments and unlinks the job card together. Neither can be made to
+      // fail part-way through the API, because the route's own checks stop it
+      // first. Both are forced here.
+      {
+        await q(`INSERT INTO job_cards
+                   (id, customer_id, vehicle_id, mechanic_id, date, status, priority,
+                    complaint, total, paid, due, subtotal, created_at)
+                 VALUES ('JOB-9803', 'CUS-9801', 'VEH-9892', 'MEC-9801', '2026-01-01',
+                         'Completed', 'normal', 'C-7 probe', 5000, 3000, 2000, 5000, ?1)`,
+          '2026-01-01T00:00:00Z').run();
+
+        const invCount = async () => (await q(
+          "SELECT count(*) n FROM invoices WHERE id LIKE 'INV-98%'").first()).n;
+        const invLines = async () => (await q(
+          `SELECT (SELECT count(*) FROM invoice_services WHERE invoice_id LIKE 'INV-98%')
+                + (SELECT count(*) FROM invoice_parts    WHERE invoice_id LIKE 'INV-98%') AS n`
+        ).first()).n;
+        const jobLink = async () => (await q(
+          "SELECT invoice_id FROM job_cards WHERE id = 'JOB-9803'").first()).invoice_id;
+        const invStatus = async (id) => (await q(
+          'SELECT status FROM invoices WHERE id = ?1', id).first()).status;
+        const invMoney = async (id) => await q(
+          'SELECT paid, due FROM invoices WHERE id = ?1', id).first();
+        const payment = async (id) => await q(
+          'SELECT invoice_id, job_card_id, amount, status FROM payments WHERE id = ?1', id).first();
+
+        const createInvoice = (id, serviceId) => [
+          q(`INSERT INTO invoices
+               (id, job_card_id, customer_id, vehicle_id, date, labour_cost, discount,
+                tax_rate, subtotal, tax, total, paid, due, status, notes, created_at)
+             VALUES (?1, 'JOB-9803', 'CUS-9801', 'VEH-9892', '2026-01-08', 0, 0, 0,
+                     5000, 0, 5000, 3000, 2000, 'Partial', '', ?2)`,
+            id, '2026-01-08T00:00:00Z'),
+          q(`INSERT INTO invoice_services
+               (invoice_id, service_id, name, qty, unit_price, total, line_no)
+             VALUES (?1, ?2, 'Probe billed line', 1, 5000, 5000, 1)`, id, serviceId),
+          q(`UPDATE job_cards SET invoice_id = ?1, updated_at = ?2 WHERE id = 'JOB-9803'`,
+            id, '2026-01-08T00:00:00Z'),
+        ];
+
+        t('the C-7 probe job card starts un-invoiced',
+          (await invCount()) === 0 && (await jobLink()) === null,
+          { invoices: await invCount(), link: await jobLink() });
+
+        // G1 — a child line that breaks a foreign key takes the whole create.
+        let threw6 = null;
+        try {
+          await env.DB.batch(createInvoice('INV-9801', 'SRV-0000'));
+        } catch (err) { threw6 = String(err.message || err); }
+        t('a create batch whose service line violates a foreign key throws',
+          threw6 !== null && /FOREIGN KEY/i.test(threw6), threw6);
+        t('   ...no invoice was left behind', (await invCount()) === 0, await invCount());
+        t('   ...no child line either', (await invLines()) === 0, await invLines());
+        t('   ...and the job card was not linked', (await jobLink()) === null, await jobLink());
+
+        // G2 — the same batch with a real service commits every part of it.
+        await env.DB.batch(createInvoice('INV-9801', 'SRV-9811'));
+        t('the same create with a valid line commits', (await invCount()) === 1, await invCount());
+        t('   ...with its child line', (await invLines()) === 1, await invLines());
+        t('   ...and the job card now points at it', (await jobLink()) === 'INV-9801', await jobLink());
+
+        // G3 — a second LIVE invoice for the same job card is impossible.
+        let threw7 = null;
+        try {
+          await env.DB.batch(createInvoice('INV-9802', 'SRV-9811'));
+        } catch (err) { threw7 = String(err.message || err); }
+        t('a second live invoice for one job card violates the unique index',
+          threw7 !== null && /UNIQUE/i.test(threw7), threw7);
+        t('   ...and nothing of it survives', (await invCount()) === 1, await invCount());
+        t('   ...the job card still points at the first', (await jobLink()) === 'INV-9801', await jobLink());
+
+        // Two payments against it: one Active, one already Void.
+        await q(`INSERT INTO payments
+                   (id, invoice_id, customer_id, job_card_id, date, amount, method,
+                    status, notes, created_at)
+                 VALUES ('PAY-9801', 'INV-9801', 'CUS-9801', NULL, '2026-01-08', 3000,
+                         'Cash', 'Active', 'probe', ?1)`, '2026-01-08T00:00:00Z').run();
+        await q(`INSERT INTO payments
+                   (id, invoice_id, customer_id, job_card_id, date, amount, method,
+                    status, notes, created_at)
+                 VALUES ('PAY-9802', 'INV-9801', 'CUS-9801', NULL, '2026-01-08', 500,
+                         'Card', 'Void', 'keyed twice', ?1)`, '2026-01-08T00:00:00Z').run();
+
+        const voidInvoice = (expectedFrom) => [
+          q(`UPDATE invoices SET status = 'Void', updated_at = ?2
+              WHERE id = 'INV-9801' AND status <> 'Void'`, expectedFrom, '2026-01-09T00:00:00Z'),
+          q(`UPDATE payments
+                SET invoice_id = NULL,
+                    job_card_id = COALESCE(job_card_id, 'JOB-9803'),
+                    updated_at = ?1
+              WHERE invoice_id = 'INV-9801'
+                AND status <> 'Void'
+                AND (SELECT status FROM invoices WHERE id = 'INV-9801') = 'Void'`,
+            '2026-01-09T00:00:00Z'),
+          q(`UPDATE job_cards SET invoice_id = NULL, updated_at = ?1
+              WHERE id = 'JOB-9803' AND invoice_id = 'INV-9801'
+                AND (SELECT status FROM invoices WHERE id = 'INV-9801') = 'Void'`,
+            '2026-01-09T00:00:00Z'),
+        ];
+
+        // G4 — a statement failing after the release has already run.
+        let threw8 = null;
+        try {
+          await env.DB.batch([
+            ...voidInvoice(null),
+            q(`INSERT INTO invoice_parts
+                 (invoice_id, part_id, name, qty, unit_price, total, line_no)
+               VALUES ('INV-0000', NULL, 'Ghost', 1, 1, 1, 1)`),
+          ]);
+        } catch (err) { threw8 = String(err.message || err); }
+        t('a void batch whose last statement fails throws',
+          threw8 !== null && /FOREIGN KEY/i.test(threw8), threw8);
+        t('   ...the invoice is still not Void', (await invStatus('INV-9801')) === 'Partial',
+          await invStatus('INV-9801'));
+        t('   ...the payment is still linked', (await payment('PAY-9801')).invoice_id === 'INV-9801',
+          await payment('PAY-9801'));
+        t('   ...and the job card is still linked', (await jobLink()) === 'INV-9801', await jobLink());
+
+        // G5 — the void gate lands, and all three statements apply together.
+        const voided = await env.DB.batch(voidInvoice(null));
+        t('the void batch reports one status change, one release and one unlink',
+          voided.map((r) => r.meta.changes).join(',') === '1,1,1',
+          voided.map((r) => r.meta.changes));
+        t('   ...the invoice is Void', (await invStatus('INV-9801')) === 'Void');
+        const money = await invMoney('INV-9801');
+        t('   ...its paid and due stay frozen at what it had collected',
+          money.paid === 3000 && money.due === 2000, money);
+        const released = await payment('PAY-9801');
+        t('   ...the Active payment became an advance', released.invoice_id === null, released);
+        t('   ...inheriting the invoice\'s job card', released.job_card_id === 'JOB-9803', released);
+        t('   ...with its amount and status untouched',
+          released.amount === 3000 && released.status === 'Active', released);
+        const kept = await payment('PAY-9802');
+        t('   ...and the Void payment was left exactly as it was',
+          kept.invoice_id === 'INV-9801' && kept.job_card_id === null && kept.status === 'Void', kept);
+        t('   ...the job card is un-invoiced again', (await jobLink()) === null, await jobLink());
+
+        // G6 — a second void: the gate matches nothing, so nothing follows it.
+        const again = await env.DB.batch(voidInvoice(null));
+        t('a second void changes no rows at all',
+          again.every((r) => r.meta.changes === 0), again.map((r) => r.meta.changes));
+        t('   ...the released payment was not touched twice',
+          (await payment('PAY-9801')).job_card_id === 'JOB-9803');
+        t('   ...and the Void payment is STILL linked, never released',
+          (await payment('PAY-9802')).invoice_id === 'INV-9801');
+
+        // G7 — and the job card can now be invoiced again.
+        await env.DB.batch(createInvoice('INV-9803', 'SRV-9811'));
+        t('a voided invoice no longer blocks a corrected one',
+          (await invCount()) === 2, await invCount());
+        t('   ...the job card points at the new one', (await jobLink()) === 'INV-9803', await jobLink());
+        t('   ...and the voided one keeps its own history',
+          (await invStatus('INV-9801')) === 'Void'
+          && (await invMoney('INV-9801')).paid === 3000, await invMoney('INV-9801'));
+      }
+
       /* ---------- D. the helpers behave the same inside workerd ---------- */
       {
         t('todayInDhaka works in workerd',
@@ -528,6 +687,12 @@ export default {
       /* ---------- cleanup, always ---------- */
       // Foreign-key order: the child lines and the job card go before the
       // customer, vehicle, mechanic and service they point at.
+      // payments reference invoices, job cards and customers, so they go first;
+      // the invoice line tables cascade but are removed explicitly anyway.
+      await env.DB.prepare("DELETE FROM payments WHERE id LIKE 'PAY-98%'").run();
+      await env.DB.prepare("DELETE FROM invoice_services WHERE invoice_id LIKE 'INV-98%'").run();
+      await env.DB.prepare("DELETE FROM invoice_parts WHERE invoice_id LIKE 'INV-98%'").run();
+      await env.DB.prepare("DELETE FROM invoices WHERE id LIKE 'INV-98%'").run();
       await env.DB.prepare("DELETE FROM appointments WHERE id LIKE 'APT-98%'").run();
       await env.DB.prepare("DELETE FROM job_card_services WHERE job_card_id LIKE 'JOB-98%'").run();
       await env.DB.prepare("DELETE FROM job_card_parts WHERE job_card_id LIKE 'JOB-98%'").run();
@@ -555,6 +720,10 @@ export default {
       && (await q("SELECT count(*) n FROM customers WHERE id LIKE 'CUS-98%'").first()).n === 0
       && (await q("SELECT count(*) n FROM mechanics WHERE id LIKE 'MEC-98%'").first()).n === 0
       && (await q("SELECT count(*) n FROM appointments WHERE id LIKE 'APT-98%'").first()).n === 0);
+    t('   ...and the invoice and payment probe rows',
+      (await q("SELECT count(*) n FROM invoices WHERE id LIKE 'INV-98%'").first()).n === 0
+      && (await q("SELECT count(*) n FROM invoice_services WHERE invoice_id LIKE 'INV-98%'").first()).n === 0
+      && (await q("SELECT count(*) n FROM payments WHERE id LIKE 'PAY-98%'").first()).n === 0);
     t('the services counter was restored',
       (await counter('services')) === before.counter, await counter('services'));
 

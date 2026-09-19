@@ -37,7 +37,14 @@ import {
   listJobCards, getJobCard, createJobCard, updateJobCard, deleteJobCard,
   setJobCardStatus,
 } from './routes/job-cards.js';
-import { listInvoices, getInvoice } from './routes/invoices.js';
+// Invoices have child line tables too, and their writes are copies rather
+// than compositions: an invoice takes its figures and both line sets from a
+// job card. Voiding is an action, not a field change -- it releases the
+// invoice's payments as advances, which is audit Finding 7.
+import {
+  listInvoices, getInvoice,
+  createInvoice, updateInvoice, deleteInvoice, voidInvoice,
+} from './routes/invoices.js';
 import { listPayments, getPayment } from './routes/payments.js';
 import {
   listExpenses, getExpense, createExpense, updateExpense, deleteExpense,
@@ -61,16 +68,17 @@ import { getSettings } from './routes/settings.js';
  * accepts POST on its list path and PUT/DELETE on its detail path; one
  * that does not answers 405 there, with an Allow header naming only what
  * it really takes. The six simple entities have writes as of C-2,
- * appointments as of C-3 and job cards as of C-5; invoices and payments
- * are still read-only because their writes carry business logic that
- * belongs in their own phases.
+ * appointments as of C-3, job cards as of C-5 and invoices as of C-7;
+ * payments are still read-only because their writes carry business logic
+ * that belongs in their own phase.
  *
  * `actions` is the one exception to "a collection is a list and a detail":
  * a named POST under a record, for a business operation that is not a
- * field change. C-6 adds the first and only one, because a job card's
- * status is a transition with its own rules, its own inventory effects
- * and its own appointment sync -- PUT refuses it deliberately, so there
- * is exactly one state machine rather than two.
+ * field change. C-6 added the first, because a job card's status is a
+ * transition with its own rules, its own inventory effects and its own
+ * appointment sync; C-7 added voiding an invoice, which cancels a
+ * document while releasing its payments as advances. Both are refused
+ * through PUT deliberately, so neither rule has two homes.
  */
 const COLLECTIONS = {
   customers: {
@@ -102,7 +110,11 @@ const COLLECTIONS = {
     create: createJobCard, update: updateJobCard, remove: deleteJobCard,
     actions: { status: setJobCardStatus },
   },
-  invoices: { list: listInvoices, detail: getInvoice },
+  invoices: {
+    list: listInvoices, detail: getInvoice,
+    create: createInvoice, update: updateInvoice, remove: deleteInvoice,
+    actions: { void: voidInvoice },
+  },
   payments: { list: listPayments, detail: getPayment },
   expenses: {
     list: listExpenses, detail: getExpense,

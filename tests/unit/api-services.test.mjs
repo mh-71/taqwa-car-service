@@ -342,7 +342,11 @@ console.log('\n-- 11. Routing --');
     'GET /api/job-cards/:id', 'PUT /api/job-cards/:id', 'DELETE /api/job-cards/:id',
     // The one action route: a job card's status is a transition, not a field.
     'POST /api/job-cards/:id/status',
-    'GET /api/invoices', 'GET /api/invoices/:id',
+    'GET /api/invoices', 'POST /api/invoices',
+    'GET /api/invoices/:id', 'PUT /api/invoices/:id', 'DELETE /api/invoices/:id',
+    // Voiding is an action, not a field change: it releases the invoice's
+    // payments as advances, which is audit Finding 7.
+    'POST /api/invoices/:id/void',
     'GET /api/payments', 'GET /api/payments/:id',
     'GET /api/expenses', 'POST /api/expenses',
     'GET /api/expenses/:id', 'PUT /api/expenses/:id', 'DELETE /api/expenses/:id',
@@ -356,7 +360,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 50);
+  check('404 advertises every route', body.error.available.length, 54);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);
