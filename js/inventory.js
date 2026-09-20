@@ -339,7 +339,10 @@
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
       const { openingStock, ...master } = v;
-      const created = await Storage.create('parts', { ...master, stock: 0 });
+      // stock is deliberately not in `master`, and the API refuses it even as
+      // a 0: a balance only moves through the ledger. The column is NOT NULL
+      // DEFAULT 0, so a new part starts at zero without being told to.
+      const created = await Storage.create('parts', master);
       if (!Utils.wrote(created, form)) return;
       const rec = created.record;
       // Opening stock is a proper audited transaction, never a silent field write
