@@ -95,9 +95,14 @@ if (existsSync(join(ROOT, '.dev.vars.example'))) {
     !/^[^\S\n]*(AUTH_SECRET|AUTH_PASSPHRASE|API_TOKEN)[^\S\n]*=[^\S\n]*\S/m.test(example),
     'a value is filled in');
 }
-const ignore = read('.gitignore');
+// Compare whole lines, split on either ending. Git for Windows checks out
+// CRLF by default, and a literal "\n<pattern>\n" search then misses a rule
+// that is present and working -- git is never confused by this, only the
+// check was. Whole-line comparison is also stricter than a substring: it
+// will not accept `.env` merely because `.env.*` is present.
+const ignore = read('.gitignore').split(/\r?\n/).map((l) => l.trim());
 for (const pattern of ['.dev.vars', '.env']) {
-  ok(`.gitignore keeps ${pattern} out`, ignore.includes(`\n${pattern}\n`), 'not ignored');
+  ok(`.gitignore keeps ${pattern} out`, ignore.includes(pattern), 'not ignored');
 }
 ok('   ...while still allowing the example', ignore.includes('!.dev.vars.example'), '');
 
