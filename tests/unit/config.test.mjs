@@ -136,9 +136,12 @@ console.log('\n-- 4. secrets --');
     !/^[^\S\n]*(AUTH_SECRET|AUTH_PASSPHRASE|API_TOKEN)[^\S\n]*=[^\S\n]*\S/m.test(example),
     'a value is filled in');
 
-  const ignore = read('.gitignore');
+  // Whole lines, split on either ending: a CRLF checkout (Git for Windows
+  // does that by default) would otherwise fail this against a .gitignore
+  // that is correct and that git is honouring perfectly well.
+  const ignore = read('.gitignore').split(/\r?\n/).map((l) => l.trim());
   for (const p of ['.dev.vars', '.env']) {
-    ok_(`.gitignore keeps ${p} out of the repository`, ignore.includes(`\n${p}\n`), 'not ignored');
+    ok_(`.gitignore keeps ${p} out of the repository`, ignore.includes(p), 'not ignored');
   }
   ok_('   ...while still allowing the example to be tracked',
     ignore.includes('!.dev.vars.example'), '');
