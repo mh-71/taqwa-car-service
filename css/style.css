@@ -257,6 +257,14 @@ a:hover { text-decoration: underline; }
   display: grid; place-items: center;
   font-weight: 600;
   font-size: .8rem;
+  /* The avatar is a photo. `cover` fills the circle without stretching the
+     face, and `flex: none` keeps it a circle rather than letting the topbar's
+     flex row squash it -- which matters below 900px, where responsive.css
+     hides .topbar__user-text and this becomes the only profile element.
+     The amber background stays as the fallback if the image cannot load. */
+  object-fit: cover;
+  object-position: center;
+  flex: none;
 }
 .topbar__user-text { line-height: 1.2; }
 .topbar__user-text strong { display: block; font-size: .82rem; }

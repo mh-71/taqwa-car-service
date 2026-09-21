@@ -167,7 +167,8 @@ const App = (() => {
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
             </button>` : ''}
             <div class="topbar__user">
-              <div class="avatar">TA</div>
+              <img class="avatar" src="${root}assets/avatar/admin.webp"
+                   alt="Admin profile photo" width="36" height="36">
               <div class="topbar__user-text">
                 <strong>Admin</strong>
                 <span>${Utils.esc(settings.businessName.split(' ')[0])} ASC</span>
