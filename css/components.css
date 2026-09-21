@@ -121,6 +121,8 @@
 
 .field--error .input, .field--error .select, .field--error .textarea { border-color: var(--bad); }
 .field__error { font-size: .74rem; color: var(--bad); margin-top: 4px; }
+/* Two inputs that read as one value, e.g. Estimated Time's hours + minutes. */
+.field__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 .form-grid {
   display: grid;

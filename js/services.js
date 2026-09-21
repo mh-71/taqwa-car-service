@@ -22,15 +22,66 @@
 
   /* ---------- time formatting (stored as minutes, displayed as text) ---------- */
 
-  function fmtDuration(estTime) {
-    if (estTime === '' || estTime == null) return '—';
-    if (typeof estTime === 'string' && isNaN(Number(estTime))) return estTime; // legacy string values
+  /**
+   * A stored minutes figure -> { hours, minutes }, the exact inverse of the
+   * form's (hours * 60) + minutes. 90 -> 1h30, 60 -> 1h0, 25 -> 0h25.
+   *
+   * The stored value never changes meaning: `estTime` is minutes here, in
+   * localStorage, on the wire and in the est_time column. Hours are a way of
+   * typing and reading that number, nothing more.
+   */
+  function splitDuration(totalMinutes) {
+    const total = Math.max(0, Math.round(Number(totalMinutes) || 0));
+    return { hours: Math.floor(total / 60), minutes: total % 60 };
+  }
+
+  /**
+   * What a duration display should work from: either the hours/minutes to
+   * render, or a ready-made string for the values that are not a duration at
+   * all. Both formatters go through here, so a missing or legacy value reads
+   * the same wherever it appears.
+   */
+  function durationParts(estTime) {
+    if (estTime === '' || estTime == null) return { text: '—' };
+    if (typeof estTime === 'string' && isNaN(Number(estTime))) return { text: estTime }; // legacy string values
     const mins = Number(estTime);
-    if (!mins) return '—';
-    const h = Math.floor(mins / 60), m = mins % 60;
-    if (h && m) return `${h} hr ${m} min`;
-    if (h) return `${h} hr`;
-    return `${m} min`;
+    // A negative estimate is not a length of time, so it reads as no estimate
+    // rather than as "-1 hours -30 minutes". The column's CHECK is "> 0", so
+    // only a hand-edited local record could get here.
+    if (!mins || mins < 0) return { text: '—' };
+    return splitDuration(mins);
+  }
+
+  /** The long form: the detail modal, where there is room to spell it out. */
+  function fmtDuration(estTime) {
+    const d = durationParts(estTime);
+    if (d.text) return d.text;
+    const parts = [];
+    if (d.hours) parts.push(`${d.hours} ${d.hours === 1 ? 'hour' : 'hours'}`);
+    if (d.minutes) parts.push(`${d.minutes} ${d.minutes === 1 ? 'minute' : 'minutes'}`);
+    return parts.join(' ') || '—';
+  }
+
+  /**
+   * The compact form, used ONLY in the catalog table. That column is narrow
+   * -- 95px below a 1280px viewport -- and "1 hour 30 minutes" wraps onto
+   * two or three lines there.
+   *
+   * Whole hours already read short, so they keep their words; it is the
+   * two-part value and the minutes-only value that are shortened:
+   *
+   *    25 -> "25 min"      60 -> "1 hour"
+   *    90 -> "1h 30m"     120 -> "2 hours"
+   *
+   * Nothing else uses this. The stored value, the form and the detail modal
+   * are untouched by it -- it is a column width problem, not a data one.
+   */
+  function fmtDurationCompact(estTime) {
+    const d = durationParts(estTime);
+    if (d.text) return d.text;
+    if (d.hours && d.minutes) return `${d.hours}h ${d.minutes}m`;
+    if (d.hours) return `${d.hours} ${d.hours === 1 ? 'hour' : 'hours'}`;
+    return d.minutes ? `${d.minutes} min` : '—';
   }
 
   function estTimeMinutes(estTime) {
@@ -159,7 +210,7 @@
         <td class="cell-main">${esc(s.name)}</td>
         <td><span class="badge badge--neutral">${esc(s.category)}</span></td>
         <td class="cell-desc">${s.description ? esc(s.description) : '<span class="muted">—</span>'}</td>
-        <td class="num">${fmtDuration(s.estTime)}</td>
+        <td class="num">${fmtDurationCompact(s.estTime)}</td>
         <td class="num">${money(s.price)}</td>
         <td>${badge(status)}</td>
         <td>${s.createdAt ? fmtDate(s.createdAt) : '—'}</td>
@@ -190,6 +241,12 @@
   function formHtml(s = {}) {
     const catOpts = CATEGORIES.map(c =>
       `<option${c === s.category ? ' selected' : ''}>${esc(c)}</option>`).join('');
+    // Editing shows the stored minutes back as hours + minutes. Anything that
+    // is not a positive number -- absent, null, '', or a legacy string like
+    // "1 hr" -- leaves both boxes empty, which is still "no estimate".
+    const est = Number(s.estTime) > 0
+      ? splitDuration(s.estTime)
+      : { hours: '', minutes: '' };
     return `
       <form id="svcForm" novalidate>
         <div class="form-grid">
@@ -213,9 +270,16 @@
             </select>
           </div>
           <div class="field">
-            <label for="sf-time">Estimated Time (minutes)</label>
-            <input class="input" id="sf-time" name="estTime" type="number" min="0" step="5"
-                   value="${esc(s.estTime ?? '')}" placeholder="60">
+            <label for="sf-hours">Estimated Time (hours &amp; minutes)</label>
+            <div class="field__pair">
+              <input class="input" id="sf-hours" name="estHours" type="number" min="0" step="1"
+                     value="${esc(est.hours)}" placeholder="Hours" aria-label="Estimated hours">
+              <input class="input" id="sf-minutes" name="estMinutes" type="number" min="0" max="59" step="1"
+                     value="${esc(est.minutes)}" placeholder="Minutes" aria-label="Estimated minutes">
+            </div>
+            <!-- One error slot for the pair, still keyed estTime: that is the
+                 name the API answers with, so Utils.wrote() lands a server 422
+                 on the same field the browser's own check would have. -->
             <div class="field__error" data-err="estTime"></div>
           </div>
           <div class="field">
@@ -231,18 +295,54 @@
         </div>`;
   }
 
-  function readForm(form) {
+  /**
+   * The two boxes -> the one minutes figure everything downstream stores.
+   *
+   * `estHours` and `estMinutes` exist only inside this form: the payload
+   * readForm() builds carries `estTime` and nothing else, exactly as before,
+   * so the API contract, the local records, the job card and appointment
+   * pickers and the invoice snapshots all see an unchanged shape.
+   *
+   * Both boxes empty is still "no estimate": '' is what an empty box has
+   * always sent, and src/lib/write.js:166 turns it into a null est_time.
+   */
+  function readDuration(form) {
+    const rawHours = String(form.estHours.value ?? '').trim();
+    const rawMinutes = String(form.estMinutes.value ?? '').trim();
+    if (rawHours === '' && rawMinutes === '') return { estTime: '', error: null };
+
+    // One box filled means the other is zero, so "30 minutes" and "2 hours"
+    // are both typed the way a person would say them.
+    const hours = rawHours === '' ? 0 : Number(rawHours);
+    const minutes = rawMinutes === '' ? 0 : Number(rawMinutes);
+
+    if (!Number.isInteger(hours) || hours < 0) {
+      return { estTime: '', error: 'Hours must be a whole number, 0 or more.' };
+    }
+    if (!Number.isInteger(minutes) || minutes < 0) {
+      return { estTime: '', error: 'Minutes must be a whole number, 0 or more.' };
+    }
+    // 90 in the minutes box is an hour and a half typed in the wrong place --
+    // silently carrying it into the hours would save a figure nobody entered.
+    if (minutes > 59) {
+      return { estTime: '', error: 'Minutes must be between 0 and 59. Use the hours box for an hour or more.' };
+    }
+
+    return { estTime: (hours * 60) + minutes, error: null };
+  }
+
+  function readForm(form, duration = readDuration(form)) {
     return {
       name: form.name.value.trim().replace(/\s+/g, ' '),
       category: form.category.value,
       description: form.description.value.trim(),
-      estTime: form.estTime.value === '' ? '' : Number(form.estTime.value),
+      estTime: duration.estTime,
       price: form.price.value === '' ? '' : Number(form.price.value),
       status: form.status.value
     };
   }
 
-  function validate(values, editingId = null) {
+  function validate(values, editingId = null, duration = null) {
     const errors = {};
     if (!values.name) errors.name = 'Service name is required.';
     if (!values.category) errors.category = 'Select a category.';
@@ -251,7 +351,11 @@
     } else if (values.price < 0) {
       errors.price = 'Price cannot be negative.';
     }
-    if (values.estTime !== '' && values.estTime <= 0)
+    // A malformed hours/minutes pair is reported as typed; a well-formed one
+    // that still adds up to nothing falls through to the rule that was always
+    // here, and that the API states as readNumber(estTime, { min: 1 }).
+    if (duration && duration.error) errors.estTime = duration.error;
+    else if (values.estTime !== '' && values.estTime <= 0)
       errors.estTime = 'Estimated time must be greater than 0.';
 
     if (values.name && values.category) {
@@ -282,8 +386,9 @@
     });
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#svcForm');
-      const values = readForm(form);
-      const { valid, errors } = validate(values);
+      const duration = readDuration(form);
+      const values = readForm(form, duration);
+      const { valid, errors } = validate(values, null, duration);
       if (!valid) {
         showErrors(form, errors);
         toast(errors.name === 'This service already exists in this category.'
@@ -310,8 +415,9 @@
     });
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#svcForm');
-      const values = readForm(form);
-      const { valid, errors } = validate(values, id);
+      const duration = readDuration(form);
+      const values = readForm(form, duration);
+      const { valid, errors } = validate(values, id, duration);
       if (!valid) { showErrors(form, errors); toast('Please fix the highlighted fields.', 'error'); return; }
       const res = await Storage.update('services', id, values);
       if (!Utils.wrote(res, form)) return;
