@@ -156,6 +156,11 @@
     // invoice comes back re-read, not recalculated here.
     if (Storage.isApi()) {
       return (async () => {
+        // `status` is deliberately absent: the API refuses it by name, because
+        // a payment is born Active and leaves that state only through the void
+        // operation, which carries its own rule and its own invoice
+        // recomputation. The local branch below keeps it -- offline there is no
+        // server to set it.
         const res = await Storage.create('payments', {
           invoiceId: invoiceId || null,
           customerId,
@@ -163,8 +168,7 @@
           date: date || Utils.todayStr(),
           amount: Number(amount),
           method: METHODS.includes(method) ? method : 'Cash',
-          notes: (notes || '').trim(),
-          status: 'Active'
+          notes: (notes || '').trim()
         });
         if (!res.ok) return { ok: false, reason: res.message, response: res };
         const stale = res.record.invoiceId ? await Storage.refreshAll('invoices') : [];
