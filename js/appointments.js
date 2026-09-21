@@ -538,10 +538,13 @@
       // word -- which is what catches a booking someone else made meanwhile.
       if (scheduleProblems(values, null, ov)) return;
 
+      // jobCardId is deliberately absent: the API refuses it on an appointment
+      // write at all -- linking is a job card operation (routes/appointments.js
+      // rejects any jobCardId that is not undefined, null included). The column
+      // is nullable, so a new appointment starts unlinked without being told to.
       const res = await Storage.create('appointments', {
         ...values,
-        reminderSent: false,
-        jobCardId: null
+        reminderSent: false
       });
       if (!Utils.wrote(res, form)) return;
       const rec = res.record;
