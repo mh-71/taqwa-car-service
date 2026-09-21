@@ -825,6 +825,26 @@
     };
   }
 
+  /**
+   * The same record, minus the four figures the server derives from the lines
+   * and refuses by name (routes/job-cards.js SERVER_OWNED). Sending any of
+   * them -- even a value that matches what the server would compute -- is a
+   * 422, because a client must not be able to assert a total the lines do not
+   * support.
+   *
+   * `paid` is deliberately NOT stripped: it is a real input on this form and
+   * the server stores it as sent, which is what makes it the frozen snapshot
+   * audit Finding 1 depends on. `labourCost` stays too -- it is an input the
+   * server only overrides when hours x rate is higher.
+   *
+   * buildRecord() keeps all four because 'local' mode has no server to compute
+   * them: there, the record is what gets stored and read back.
+   */
+  function forApi(record) {
+    const { subtotal, tax, total, due, ...rest } = record;
+    return rest;
+  }
+
   /* ---------- create / edit ---------- */
 
   function openCreateModal(fromAppointmentId = '') {
@@ -874,9 +894,11 @@
       if (!valid) { showErrors(ov, errors); toast('Please fix the highlighted fields.', 'error'); return; }
 
       // Totals are recomputed from the lines on the server, so what is sent
-      // is the lines -- not a subtotal it would have to take on trust.
+      // is the lines -- not a subtotal it would have to take on trust. Local
+      // mode has no server, so there the computed record is stored as built.
+      const record = buildRecord(v);
       const created = await Storage.create('jobCards', {
-        ...buildRecord(v),
+        ...(Storage.isApi() ? forApi(record) : record),
         appointmentId: v.appointmentId || null,
         invoiceId: null,
         completedAt: null,
@@ -933,7 +955,7 @@
       // stale issued balance rolls the batch back rather than deducting the
       // same units twice. Reconciling here as well would deduct them twice.
       if (Storage.isApi()) {
-        const res = await Storage.update('jobCards', id, proposed);
+        const res = await Storage.update('jobCards', id, forApi(proposed));
         if (!res.ok) {
           if (res.status === 409) {
             // A shortage, in the server's own words, in the dialog this
