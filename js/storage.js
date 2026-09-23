@@ -440,7 +440,7 @@ const Storage = (() => {
    */
   async function fetchWebsiteBookings() {
     try {
-      const response = await fetch('/api/website-bookings');
+      const response = await fetch('https://taqwa.blinto.workers.dev/api/bookings/list');
       if (!response.ok) return { ok: false, rows: [] };
 
       const data = await response.json();
