@@ -231,6 +231,19 @@ async function health(env) {
   }
 }
 
+// Helper to remove CSP header from response
+function stripCSPHeaders(response) {
+  if (!response.headers) return response;
+  const headers = new Headers(response.headers);
+  headers.delete('content-security-policy');
+  headers.delete('x-content-security-policy');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -354,6 +367,7 @@ export default {
       }
     }
 
-    return notFound(ROUTES);
+    const response = notFound(ROUTES);
+    return stripCSPHeaders(response);
   },
 };
