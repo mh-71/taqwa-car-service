@@ -435,6 +435,45 @@ const Storage = (() => {
   }
 
   /**
+   * Fetch website bookings from the website API and convert them to dashboard format.
+   * Website bookings are merged with local appointments for a unified view.
+   */
+  async function fetchWebsiteBookings() {
+    try {
+      const response = await fetch('https://taqwa.autos/api/bookings/list');
+      if (!response.ok) return { ok: false, rows: [] };
+
+      const data = await response.json();
+      const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+
+      // Convert website bookings to dashboard appointment format
+      return {
+        ok: true,
+        rows: bookings.map(b => ({
+          id: `web_${b.id}`,              // Prefix to avoid collision with local IDs
+          customerId: b.customer_name,     // Fallback: name instead of ID
+          vehicleId: b.vehicle_type,       // Fallback: type instead of ID
+          serviceId: b.service_type,       // Fallback: service name instead of ID
+          mechanicId: null,                // No mechanic assigned yet
+          jobCardId: null,                 // No job card linked
+          date: b.preferred_date,
+          time: b.preferred_time || '09:00',
+          duration: 60,                    // Default duration
+          status: 'Scheduled',             // Map website status to dashboard status
+          source: 'Website',               // Source identifier
+          complaint: `Email: ${b.customer_email}\nPhone: ${b.customer_phone}`,
+          notes: `Website booking #${b.id}`,
+          reminderSent: false,
+          createdAt: b.created_at,
+        }))
+      };
+    } catch (error) {
+      console.error('Error fetching website bookings:', error);
+      return { ok: false, rows: [] };
+    }
+  }
+
+  /**
    * Re-read several collections the server also changed, and return the names
    * of any that could NOT be re-read.
    *
@@ -516,6 +555,12 @@ const Storage = (() => {
         return { mode: 'local', reason: why, collection: COLLECTIONS[failed] };
       }
       COLLECTIONS.forEach((c, i) => { cache[c] = results[i].rows; });
+
+      // Fetch and merge website bookings with local appointments
+      const websiteBookings = await fetchWebsiteBookings();
+      if (websiteBookings.ok && websiteBookings.rows.length) {
+        cache.appointments = [...cache.appointments, ...websiteBookings.rows];
+      }
 
       // A settings row need not exist yet; 404 is a legitimate answer that
       // leaves the browser's own display defaults showing.
