@@ -67,6 +67,7 @@ import {
 // dispatched directly below, beside /api/health, rather than joining
 // COLLECTIONS — see routes/settings.js for why.
 import { getSettings, updateSettings } from './routes/settings.js';
+import { getWebsiteBookings } from './routes/website-bookings.js';
 
 /**
  * Every collection exposes the same two shapes: a list at
@@ -287,6 +288,23 @@ export default {
       if (request.method === 'GET') return run(getSettings);
       if (request.method === 'PUT') return run(updateSettings);
       return methodNotAllowed(['GET', 'PUT']);
+    }
+
+    // Proxy endpoint for website bookings (avoids CORS issues)
+    if (url.pathname === '/api/website-bookings') {
+      if (request.method === 'GET') {
+        const result = await getWebsiteBookings(request);
+        return result.ok
+          ? new Response(JSON.stringify(result.data), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
+            })
+          : new Response(JSON.stringify({ error: 'Failed to fetch website bookings' }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            });
+      }
+      return methodNotAllowed(['GET']);
     }
 
     const match = API_PATH.exec(url.pathname);
