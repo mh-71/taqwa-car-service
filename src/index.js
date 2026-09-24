@@ -12,6 +12,7 @@
 import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
 import { checkAuth } from './lib/auth.js';
 import { session } from './routes/session.js';
+import { handleWebsiteBooking } from './routes/website-bookings.js';
 import {
   listCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer,
 } from './routes/customers.js';
@@ -154,6 +155,8 @@ const detailMethods = (c) => [
 
 const ROUTES = [
   'GET /api/health',
+  // Website booking sync — receives bookings from public website
+  'POST /api/website-bookings',
   ...Object.entries(COLLECTIONS).flatMap(([name, c]) => [
     ...listMethods(c).map((m) => `${m} /api/${name}`),
     ...detailMethods(c).map((m) => `${m} /api/${name}/:id`),
@@ -277,6 +280,15 @@ export default {
     // a credential, so requiring one here would be a closed loop. Each of the
     // three answers is written to give nothing away -- see routes/session.js.
     if (url.pathname === '/api/session') return session(request, env);
+
+    // Website booking sync — receives bookings from the public website with
+    // Authorization: Bearer <WEBSITE_BOOKING_SYNC_SECRET>. This bypasses the
+    // normal session auth gate because the website has no session; instead,
+    // it uses a server-to-server secret.
+    if (url.pathname === '/api/website-bookings') {
+      if (request.method !== 'POST') return methodNotAllowed(['POST']);
+      return handleWebsiteBooking(request, env);
+    }
 
     // The exact path only. Anything below it (/api/settings/1, and there is
     // no other id a singleton could have) is left to fall through to the
