@@ -440,7 +440,8 @@ const Storage = (() => {
    */
   async function fetchWebsiteBookings() {
     try {
-      const response = await fetch('https://taqwa.blinto.workers.dev/api/bookings/list');
+      // Use local proxy endpoint (no CORS/CSP issues)
+      const response = await fetch('/api/website-bookings');
       if (!response.ok) return { ok: false, rows: [] };
 
       const data = await response.json();

@@ -303,19 +303,28 @@ export default {
       return methodNotAllowed(['GET', 'PUT']);
     }
 
-    // Proxy endpoint for website bookings (avoids CORS issues)
+    // PUBLIC proxy endpoint for website bookings (NO AUTH REQUIRED)
     if (url.pathname === '/api/website-bookings') {
       if (request.method === 'GET') {
-        const result = await getWebsiteBookings(request);
-        return result.ok
-          ? new Response(JSON.stringify(result.data), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' }
-            })
-          : new Response(JSON.stringify({ error: 'Failed to fetch website bookings' }), {
-              status: 500,
-              headers: { 'Content-Type': 'application/json' }
-            });
+        try {
+          const result = await getWebsiteBookings(request);
+          const response = result.ok
+            ? new Response(JSON.stringify(result.data), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              })
+            : new Response(JSON.stringify({ error: 'Failed to fetch website bookings' }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+              });
+          return stripCSPHeaders(response);
+        } catch (err) {
+          console.error('Website bookings proxy error:', err);
+          return new Response(JSON.stringify({ error: err.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
       }
       return methodNotAllowed(['GET']);
     }
