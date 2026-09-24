@@ -307,19 +307,23 @@ export default {
     if (url.pathname === '/api/website-bookings') {
       if (request.method === 'GET') {
         try {
-          const result = await getWebsiteBookings(request);
-          const response = result.ok
-            ? new Response(JSON.stringify(result.data), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' }
-              })
-            : new Response(JSON.stringify({ error: 'Failed to fetch website bookings' }), {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' }
-              });
-          return stripCSPHeaders(response);
+          const websiteApiUrl = 'https://taqwa.blinto.workers.dev/api/bookings/list';
+          const res = await fetch(websiteApiUrl);
+          const data = await res.json();
+
+          if (!res.ok) {
+            return new Response(JSON.stringify({ error: 'Website API error', status: res.status }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+
+          return stripCSPHeaders(new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }));
         } catch (err) {
-          console.error('Website bookings proxy error:', err);
+          console.error('Website bookings proxy error:', err.message);
           return new Response(JSON.stringify({ error: err.message }), {
             status: 500,
             headers: { 'Content-Type': 'application/json' }
