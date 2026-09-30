@@ -1,0 +1,22 @@
+{
+  "name": "Taqwa Automobile Service Center",
+  "short_name": "Taqwa ASC",
+  "description": "Taqwa Automobile Service Center Management Software",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#16202c",
+  "background_color": "#16202c",
+  "icons": [
+    {
+      "src": "/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
