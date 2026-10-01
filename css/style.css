@@ -54,6 +54,33 @@
   --shadow-lift: 0 8px 28px rgba(0, 0, 0, .5);
 }
 
+/* "System" before app.js has resolved it. The pre-paint script in each
+   page's <head> copies the saved preference as-is, so a saved "system"
+   arrives as data-theme="system" -- which matched nothing above, and a
+   dark-OS user got the light palette for every page load until app.js
+   resolved it after the data loaded: a white screen between two dark
+   pages. Same values as the dark block above. (The <head> script itself
+   is pinned by a CSP hash in _headers, so this is fixed here instead.) */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --paper:   #131b24;
+    --surface: #1b2735;
+    --line:    #2b3a4d;
+    --text:    #e8edf2;
+    --text-2:  #a4b1bf;
+    --text-3:  #6d7c8c;
+
+    --amber-soft: #3a2f14;
+    --good-soft: #15321f;
+    --info-soft: #17293f;
+    --warn-soft: #382a10;
+    --bad-soft:  #3b1c1f;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
+    --shadow-lift: 0 8px 28px rgba(0, 0, 0, .5);
+  }
+}
+
 /* ---------- base ---------- */
 * { box-sizing: border-box; }
 
@@ -65,9 +92,33 @@ body {
   font-size: .9rem;
   line-height: 1.55;
   color: var(--text);
-  background: var(--paper);
+  /* The topbar strip, painted in the page background itself. Every page
+     is a full document load, and app.js draws the shell only once the data
+     has arrived; until then this keeps the app's frame on screen instead of
+     a blank page. Once the shell is drawn, the topbar covers it exactly. */
+  background:
+    linear-gradient(var(--line), var(--line)) 0 calc(var(--topbar-h) - 1px) / 100% 1px no-repeat,
+    linear-gradient(var(--surface), var(--surface)) 0 0 / 100% var(--topbar-h) no-repeat,
+    var(--paper);
   -webkit-font-smoothing: antialiased;
 }
+/* ...and the sidebar column with its logo, at the exact spot .brand-logo
+   occupies, where the sidebar is docked (it becomes a drawer at 900px and
+   below, see responsive.css). */
+@media (min-width: 901px) {
+  body {
+    background:
+      url("../assets/logo/logo-white.png") 18px 20px / 132px auto no-repeat,
+      linear-gradient(var(--ink-900), var(--ink-900)) 0 0 / var(--sidebar-w) 100% repeat-y,
+      linear-gradient(var(--line), var(--line)) 0 calc(var(--topbar-h) - 1px) / 100% 1px no-repeat,
+      linear-gradient(var(--surface), var(--surface)) 0 0 / 100% var(--topbar-h) no-repeat,
+      var(--paper);
+  }
+}
+
+/* Page content waits, unpainted, until app.js has moved it into the
+   shell -- otherwise its bare toolbar and empty tables flash for a frame. */
+body > #page-content { visibility: hidden; }
 
 body.no-scroll { overflow: hidden; }
 
@@ -164,14 +215,36 @@ a:hover { text-decoration: underline; }
   background: var(--good);
   box-shadow: 0 0 0 3px rgba(31, 157, 97, .25);
 }
-/* Shown only while hydration is in flight; removed before the shell draws. */
+/* Shown only while hydration is in flight; removed before the shell draws.
+   Transparent, so the frame painted on <body> stays visible behind it, and
+   centred in the content area. The text fades in only if the wait passes
+   half a second, so an ordinary page change never flashes it. */
 .app-loading {
-  position: fixed; inset: 0;
+  position: fixed; inset: var(--topbar-h) 0 0 0;
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  background: var(--paper);
+  background: transparent;
   color: var(--text-2);
   font-size: .9rem;
   z-index: 100;
+  animation: app-fade-in .2s ease-out .5s backwards;
+}
+@media (min-width: 901px) {
+  .app-loading { left: var(--sidebar-w); }
+}
+
+/* ---------- page change ----------
+   A subtle fade, no movement. The shell fades in over the frame above (so
+   the sidebar column never blinks), and browsers that support cross-page
+   view transitions also fade the outgoing page instead of cutting it.
+   Both are off under prefers-reduced-motion: the global rule above stops
+   the animation, and the view transition is only declared without it. */
+.shell { animation: app-fade-in .16s ease-out; }
+@keyframes app-fade-in { from { opacity: 0; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation-duration: .16s; }
 }
 .app-loading__dot {
   width: 10px; height: 10px;
