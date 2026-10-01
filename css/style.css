@@ -225,7 +225,10 @@ a:hover { text-decoration: underline; }
   background: transparent;
   color: var(--text-2);
   font-size: .9rem;
-  z-index: 100;
+  /* Under the sidebar drawer and topbar, and never in the way of a click:
+     the shell above it is live while the data loads. */
+  z-index: 20;
+  pointer-events: none;
   animation: app-fade-in .2s ease-out .5s backwards;
 }
 @media (min-width: 901px) {
@@ -233,12 +236,16 @@ a:hover { text-decoration: underline; }
 }
 
 /* ---------- page change ----------
-   A subtle fade, no movement. The shell fades in over the frame above (so
-   the sidebar column never blinks), and browsers that support cross-page
-   view transitions also fade the outgoing page instead of cutting it.
-   Both are off under prefers-reduced-motion: the global rule above stops
-   the animation, and the view transition is only declared without it. */
-.shell { animation: app-fade-in .16s ease-out; }
+   With a backend, app.js draws the shell before the data arrives (see
+   drawShellEarly), so the sidebar and header stay put from page to page and
+   only the content area waits. The content is hidden until its module has
+   rendered it -- never shown as empty tables -- and then fades in: subtle,
+   no movement. Browsers that support cross-page view transitions also fade
+   the outgoing page instead of cutting it. Both are off under
+   prefers-reduced-motion: the global rule above stops the animation, and
+   the view transition is only declared without it. */
+.shell.is-pending #page-content { visibility: hidden; }
+.shell.is-revealed #page-content { animation: app-fade-in .16s ease-out; }
 @keyframes app-fade-in { from { opacity: 0; } }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -279,6 +286,11 @@ a:hover { text-decoration: underline; }
 .sidebar__foot-dot--local {
   background: var(--warn);
   box-shadow: 0 0 0 3px rgba(217, 122, 8, .25);
+}
+/* Shell drawn early, source not known yet ("Connecting…"). */
+.sidebar__foot-dot--pending {
+  background: #8b99a9;
+  box-shadow: 0 0 0 3px rgba(139, 153, 169, .25);
 }
 
 .sidebar-scrim {
