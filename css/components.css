@@ -226,6 +226,9 @@
 .toolbar .spacer { margin-left: auto; }
 .toolbar__count { font-size: .8rem; color: var(--text-3); white-space: nowrap; }
 
+/* Customers: keep the primary action flush right when the toolbar wraps. */
+[data-page="customers"] .toolbar #addCustomerBtn { margin-left: auto; }
+
 /* ---------- row actions ---------- */
 .row-actions { display: flex; gap: 6px; align-items: center; }
 .row-actions--wrap { flex-wrap: wrap; }
