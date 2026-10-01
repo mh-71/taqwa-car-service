@@ -405,3 +405,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .bar-list__track { background: var(--paper); border-radius: 6px; height: 10px; overflow: hidden; }
 .bar-list__fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--amber), var(--amber-deep)); }
 .bar-list__value { font-size: .8rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+
+
+.toolbar__actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
