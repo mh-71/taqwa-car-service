@@ -150,3 +150,331 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ============================================================
+   Dashboard page redesign
+   Every rule below is scoped to [data-page="dashboard"]: the
+   .stat cards and .rev-* chart classes above are shared with the
+   module pages (and Reports), which must not change. Markup and
+   data still come from dashboard.js untouched.
+   ============================================================ */
+
+/* ---------- page title ----------
+   The topbar is drawn by app.js for every page; only its size is
+   changed here, and only on the dashboard. */
+[data-page="dashboard"] .topbar__title h1 { font-size: 1.2rem; font-weight: 700; }
+
+/* ---------- intro ---------- */
+[data-page="dashboard"] .dash-intro { margin: 0 0 18px; }
+[data-page="dashboard"] .dash-intro h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+[data-page="dashboard"] .dash-intro p {
+  margin: 2px 0 0;
+  font-size: .86rem;
+  color: var(--text-2);
+}
+
+/* ---------- stat cards ----------
+   Wide screens (>=1600px): 5 workshop figures on row 1, the 4
+   money / stock figures (wider) on row 2 -- a 20-track grid makes both rows
+   fill the width exactly. */
+[data-page="dashboard"] .stats-grid {
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+[data-page="dashboard"] .stat { grid-column: span 4; }
+[data-page="dashboard"] .stat:nth-child(n+6) { grid-column: span 5; }
+
+/* Icon tile on the left, label above value: done with flex order
+   so the markup (value, then label) dashboard.js renders is unchanged. */
+[data-page="dashboard"] .stat {
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px;
+  min-width: 0;
+}
+/* A faint wash of the card's tone, fading out across the card. */
+[data-page="dashboard"] .stat:has(.stat__icon--info)  { --tone: var(--info); }
+[data-page="dashboard"] .stat:has(.stat__icon--amber) { --tone: var(--amber); }
+[data-page="dashboard"] .stat:has(.stat__icon--warn)  { --tone: var(--warn); }
+[data-page="dashboard"] .stat:has(.stat__icon--good)  { --tone: var(--good); }
+[data-page="dashboard"] .stat:has(.stat__icon--bad)   { --tone: var(--bad); }
+[data-page="dashboard"] .stat {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--tone, var(--surface)) 7%, var(--surface)) 0%,
+    var(--surface) 65%);
+}
+/* space-between keeps every value on one line across a row, even
+   when a longer label wraps onto two lines. */
+[data-page="dashboard"] .stat > div:not(.stat__icon) {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+[data-page="dashboard"] .stat__label {
+  font-size: .84rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+}
+[data-page="dashboard"] .stat__value {
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+/* Solid tone tile with a white glyph. */
+[data-page="dashboard"] .stat__icon {
+  align-self: flex-start;
+  width: 44px; height: 44px;
+  border-radius: 11px;
+  color: #fff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--tone, #000) 30%, transparent);
+}
+[data-page="dashboard"] .stat__icon--info  { background: var(--info); }
+[data-page="dashboard"] .stat__icon--amber { background: var(--amber); color: #241a05; }
+[data-page="dashboard"] .stat__icon--warn  { background: var(--warn); }
+[data-page="dashboard"] .stat__icon--good  { background: var(--good); }
+[data-page="dashboard"] .stat__icon--bad   { background: var(--bad); }
+[data-page="dashboard"] .stat__icon svg { width: 22px; height: 22px; }
+
+/* ---------- panels ---------- */
+[data-page="dashboard"] .dash-grid {
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  gap: 16px;
+}
+/* Grid children default to min-width:auto, which let the nowrap
+   appointment lines push the page wider than a phone screen. */
+[data-page="dashboard"] .dash-grid > .card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-page="dashboard"] .card__head { padding: 15px 20px; }
+[data-page="dashboard"] .dash-card__icon {
+  width: 32px; height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--amber-soft);
+  color: var(--amber-deep);
+}
+[data-page="dashboard"] .dash-card__title { min-width: 0; }
+[data-page="dashboard"] .dash-card__title h2 { font-size: .97rem; }
+[data-page="dashboard"] .dash-card__title p {
+  margin: 1px 0 0;
+  font-size: .75rem;
+  color: var(--text-3);
+}
+
+/* ---------- revenue chart ---------- */
+/* Summary figures read first, chart below (column-reverse keeps
+   the DOM order dashboard.js and its tests expect). */
+[data-page="dashboard"] .dash-rev {
+  flex: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 16px 20px 18px;
+}
+[data-page="dashboard"] .rev-summary {
+  gap: 32px;
+  padding: 0;
+  font-size: .76rem;
+  color: var(--text-3);
+}
+[data-page="dashboard"] .rev-summary span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+[data-page="dashboard"] .rev-summary strong {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+
+[data-page="dashboard"] .rev-chart {
+  height: 220px;
+  gap: 0;
+  padding: 0;
+}
+[data-page="dashboard"] .rev-col { gap: 10px; }
+/* Light horizontal guide lines at 25% steps, drawn on the bar
+   area only so they stop above the day labels. */
+[data-page="dashboard"] .rev-col__bar-wrap {
+  max-width: none;
+  justify-content: center;
+  background-image: linear-gradient(to top, color-mix(in srgb, var(--line) 75%, transparent) 1px, transparent 1px);
+  background-size: 100% 25%;
+  background-position: left bottom;
+}
+[data-page="dashboard"] .rev-col__bar {
+  width: 56%;
+  max-width: 44px;
+  border-radius: 6px 6px 0 0;
+  background: color-mix(in srgb, var(--amber) 45%, var(--surface));
+}
+[data-page="dashboard"] .rev-col--today .rev-col__bar,
+[data-page="dashboard"] .rev-col__bar:hover {
+  background: var(--amber);
+  filter: none;
+}
+[data-page="dashboard"] .rev-col__label { font-size: .74rem; }
+
+/* ---------- today's appointments ---------- */
+[data-page="dashboard"] #apptList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+[data-page="dashboard"] .appt-item {
+  gap: 14px;
+  padding: 12px 20px;
+}
+[data-page="dashboard"] .appt-time {
+  width: auto;
+  min-width: 74px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--amber-soft);
+  color: var(--amber-deep);
+  text-align: center;
+  font-size: .75rem;
+  white-space: nowrap;
+}
+[data-page="dashboard"] .appt-info strong {
+  font-size: .86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- recent service jobs ---------- */
+/* Below this width the table scrolls inside its card (the existing
+   .table-wrap behaviour) instead of crushing rows to one word per line. */
+[data-page="dashboard"] .dash-full .table:not(:has(.empty)) { min-width: 900px; }
+[data-page="dashboard"] .dash-full .table .cell-sub { white-space: nowrap; }
+[data-page="dashboard"] .dash-full .table th {
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--paper) 65%, var(--surface));
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+[data-page="dashboard"] .dash-full .table td { padding: 13px 16px; }
+[data-page="dashboard"] .dash-full .table th:first-child,
+[data-page="dashboard"] .dash-full .table td:first-child { padding-left: 20px; }
+[data-page="dashboard"] .dash-full .table th:last-child,
+[data-page="dashboard"] .dash-full .table td:last-child { padding-right: 20px; white-space: nowrap; }
+[data-page="dashboard"] .dash-full .table .cell-main { white-space: nowrap; }
+[data-page="dashboard"] .dash-full .table td.num { font-weight: 600; white-space: nowrap; }
+[data-page="dashboard"] #recentJobsBody tr:has(.empty):hover { background: none; }
+
+/* Status badges: a leading dot, so the status reads from the
+   shape and the text as well as the colour. */
+[data-page="dashboard"] .table .badge,
+[data-page="dashboard"] .appt-item .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+}
+[data-page="dashboard"] .table .badge::before,
+[data-page="dashboard"] .appt-item .badge::before {
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+/* ---------- empty states ----------
+   dashboard.js renders the heading and text; the icon is drawn
+   here (a tinted tile + a masked glyph) so it follows the theme. */
+[data-page="dashboard"] #apptList > .empty { margin: auto 0; }
+[data-page="dashboard"] #apptList .empty,
+[data-page="dashboard"] #recentJobsBody .empty {
+  position: relative;
+  padding: 116px 24px 48px;
+}
+[data-page="dashboard"] #apptList .empty::before,
+[data-page="dashboard"] #recentJobsBody .empty::before {
+  content: "";
+  position: absolute;
+  top: 40px; left: 50%;
+  width: 60px; height: 60px;
+  transform: translateX(-50%);
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+[data-page="dashboard"] #apptList .empty::after,
+[data-page="dashboard"] #recentJobsBody .empty::after {
+  content: "";
+  position: absolute;
+  top: 55px; left: 50%;
+  width: 30px; height: 30px;
+  transform: translateX(-50%);
+  background: var(--text-3);
+  -webkit-mask: var(--dash-empty-icon) center / contain no-repeat;
+          mask: var(--dash-empty-icon) center / contain no-repeat;
+}
+[data-page="dashboard"] #apptList .empty {
+  --dash-empty-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z'/%3E%3C/svg%3E");
+}
+[data-page="dashboard"] #recentJobsBody .empty {
+  --dash-empty-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6h-4V4c0-1.1-.9-2-2-2h-4C8.9 2 8 2.9 8 4v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4z'/%3E%3C/svg%3E");
+}
+[data-page="dashboard"] #apptList .empty h3,
+[data-page="dashboard"] #recentJobsBody .empty h3 { font-size: .92rem; color: var(--text); }
+[data-page="dashboard"] #apptList .empty p,
+[data-page="dashboard"] #recentJobsBody .empty p { margin: 0; font-size: .8rem; }
+
+/* ---------- responsive (dashboard only) ----------
+   These sit here rather than in responsive.css because the
+   scoped rules above out-rank its generic .stats-grid ones. */
+@media (max-width: 1599px) {
+  [data-page="dashboard"] .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  [data-page="dashboard"] .stat,
+  [data-page="dashboard"] .stat:nth-child(n+6) { grid-column: auto; }
+}
+@media (max-width: 1359px) {
+  [data-page="dashboard"] .dash-grid { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+}
+@media (max-width: 1100px) {
+  [data-page="dashboard"] .dash-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  [data-page="dashboard"] .dash-intro { margin-bottom: 14px; }
+  [data-page="dashboard"] .dash-intro h2 { font-size: 1.12rem; }
+  [data-page="dashboard"] .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  [data-page="dashboard"] .stat:last-child { grid-column: span 2; }
+  [data-page="dashboard"] .stat > div:not(.stat__icon) { gap: 6px; }
+  [data-page="dashboard"] .stat { padding: 12px; gap: 10px; }
+  [data-page="dashboard"] .stat__label { font-size: .76rem; }
+  [data-page="dashboard"] .stat__value { font-size: 1.2rem; }
+  [data-page="dashboard"] .stat__icon { width: 34px; height: 34px; border-radius: 9px; }
+  [data-page="dashboard"] .stat__icon svg { width: 18px; height: 18px; }
+  [data-page="dashboard"] .card__head { padding: 14px 16px; }
+  [data-page="dashboard"] .dash-card__title p { display: none; }
+  [data-page="dashboard"] .dash-rev { padding: 14px 16px 16px; }
+  [data-page="dashboard"] .rev-chart { height: 170px; }
+  [data-page="dashboard"] .appt-item { padding: 12px 16px; gap: 10px; }
+  /* With no rows, the header row alone is wider than a phone and would
+     push the empty-state message off-screen. */
+  [data-page="dashboard"] .dash-full .table:has(.empty) thead { display: none; }
+}
