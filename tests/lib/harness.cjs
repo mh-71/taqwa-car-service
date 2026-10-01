@@ -19,7 +19,7 @@ function makeElement(id) {
     dataset: {}, style: {}, setAttribute(){}, focus(){} };
 }
 
-function boot({ modules = [], tz, fetch: fetchStub, origin } = {}) {
+function boot({ modules = [], tz, fetch: fetchStub, origin, beforeModules } = {}) {
   if (tz) process.env.TZ = tz;
   const store = new Map();
   const els = new Map();
@@ -56,6 +56,9 @@ function boot({ modules = [], tz, fetch: fetchStub, origin } = {}) {
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
+  // Optional: let a suite stand in for parts of the page (e.g. what
+  // querySelector finds) BEFORE the modules run, for code that acts at load.
+  if (beforeModules) beforeModules(doc, ctx);
 
   for (const m of ['js/api.js', 'js/seed-data.js', 'js/storage.js', 'js/utils.js', ...modules]) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, m), 'utf8'), ctx, { filename: m });

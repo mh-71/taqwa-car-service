@@ -131,6 +131,15 @@ const App = (() => {
       + (source.pending ? ' sidebar__foot-dot--pending' : source.offline ? ' sidebar__foot-dot--local' : '');
   }
 
+  // Placeholder blocks for the content area while an early shell waits on its
+  // data. Neutral shapes only -- no invented rows, names or figures -- and
+  // hidden from assistive tech, which hears the loader's status instead.
+  const CONTENT_SKELETON = `
+          <div class="content-skeleton" aria-hidden="true">
+            <div class="content-skeleton__toolbar"><span></span><span></span><span></span></div>
+            <div class="content-skeleton__card">${'<span></span>'.repeat(6)}</div>
+          </div>`;
+
   const SIGN_OUT_BUTTON = `
             <button class="icon-btn" id="signOutBtn" aria-label="Sign out" title="Sign out">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
@@ -195,7 +204,7 @@ const App = (() => {
             </div>
           </div>
         </header>
-        <main class="content" id="content"></main>
+        <main class="content" id="content">${pending ? CONTENT_SKELETON : ''}</main>
       </div>`;
 
     // Move existing page content into the content area
@@ -295,9 +304,9 @@ const App = (() => {
       // Nothing has been read. The sign-in screen covers the whole window;
       // an early shell behind it holds no data (its content was never
       // revealed) and is made inert so focus cannot wander into it.
-      renderSignIn(hydration.canSignIn !== false);
       const shell = earlyShell && document.querySelector('.shell');
       if (shell) shell.inert = true;
+      renderSignIn(hydration.canSignIn !== false);
       return;
     }
     Storage.seedIfEmpty();
@@ -340,6 +349,8 @@ const App = (() => {
     const shell = document.querySelector('.shell');
     if (!shell || !shell.classList.contains('is-pending')) return;
     setTimeout(() => {
+      const skeleton = shell.querySelector('.content-skeleton');
+      if (skeleton) skeleton.remove();
       shell.classList.remove('is-pending');
       shell.classList.add('is-revealed');
     }, 0);

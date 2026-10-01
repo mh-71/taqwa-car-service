@@ -528,21 +528,36 @@ const Storage = (() => {
       return hydration;
     }
 
+    // Every page load runs this, before anything can be shown, so the number
+    // of round trips IS the wait on every navigation. The decisions below are
+    // made in the same order as ever; what changed is that requests which do
+    // not depend on each other's answers are sent together. Two rounds
+    // instead of five: (health + session), then (collections + website
+    // bookings + settings). Api.* and fetchWebsiteBookings() never reject,
+    // so a request whose answer turns out not to be needed simply goes unread.
     hydration = (async () => {
+      // Asked alongside the probe, read only once the probe says the Worker
+      // is up -- so a server that is down still fails at the probe's shorter
+      // timeout, and the session answer is never acted on without it.
+      const asking = Api.session();
       const probe = await Api.probe();
       if (!probe.ok) return { mode: 'local', reason: probe.code };
 
       // The Worker is up. Are we allowed to read it? Asking /api/session is
       // how that is answered without firing eleven requests that would all
       // come back 401.
-      const who = await Api.session();
+      const who = await asking;
       if (!who.ok) return { mode: 'local', reason: who.code || 'network_error' };
       if (!who.authenticated) {
         mode = 'locked';
         return { mode: 'locked', canSignIn: who.passphrase };
       }
 
-      const results = await Promise.all(COLLECTIONS.map(fetchAll));
+      const [results, websiteBookings, settings] = await Promise.all([
+        Promise.all(COLLECTIONS.map(fetchAll)),
+        fetchWebsiteBookings(),
+        Api.get('/settings'),
+      ]);
       const failed = results.findIndex(r => !r.ok);
       if (failed !== -1) {
         const why = results[failed].code;
@@ -557,15 +572,13 @@ const Storage = (() => {
       }
       COLLECTIONS.forEach((c, i) => { cache[c] = results[i].rows; });
 
-      // Fetch and merge website bookings with local appointments
-      const websiteBookings = await fetchWebsiteBookings();
+      // Merge website bookings with local appointments
       if (websiteBookings.ok && websiteBookings.rows.length) {
         cache.appointments = [...cache.appointments, ...websiteBookings.rows];
       }
 
       // A settings row need not exist yet; 404 is a legitimate answer that
       // leaves the browser's own display defaults showing.
-      const settings = await Api.get('/settings');
       cachedSettings = settings.ok ? settings.data : null;
 
       mode = 'api';

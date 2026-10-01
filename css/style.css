@@ -245,8 +245,59 @@ a:hover { text-decoration: underline; }
    prefers-reduced-motion: the global rule above stops the animation, and
    the view transition is only declared without it. */
 .shell.is-pending #page-content { visibility: hidden; }
-.shell.is-revealed #page-content { animation: app-fade-in .16s ease-out; }
+.shell.is-revealed #page-content { animation: content-in .16s ease-out; }
 @keyframes app-fade-in { from { opacity: 0; } }
+/* Content and its placeholder fade in from part-way, never from nothing:
+   a frame at opacity 0 is a frame of blank page background. */
+@keyframes content-in { from { opacity: .35; } }
+
+/* What the content area shows meanwhile: neutral placeholder shapes in the
+   theme's own surface and line colours, laid out like a module page (a
+   toolbar of fields over a card of rows), so the area is never a blank
+   sheet of page background. Every load with a backend takes at least two
+   round trips, so it shows at once with a short fade; app.js removes it the
+   moment the real content is shown. While it is up, the loader's text is
+   kept for screen readers only. */
+.content-skeleton { display: none; }
+.shell.is-pending .content-skeleton {
+  display: block;
+  animation: content-in .12s ease-out;
+}
+.content-skeleton__toolbar { display: flex; gap: 10px; margin-bottom: 18px; }
+.content-skeleton__toolbar span {
+  display: block;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.content-skeleton__card span {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--line);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+.content-skeleton__toolbar span:nth-child(1) { width: min(240px, 40%); }
+.content-skeleton__toolbar span:nth-child(2),
+.content-skeleton__toolbar span:nth-child(3) { width: min(140px, 25%); }
+.content-skeleton__card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.content-skeleton__card span { height: 16px; }
+.content-skeleton__card span:nth-child(3n+2) { width: 82%; }
+.content-skeleton__card span:nth-child(3n) { width: 64%; }
+@keyframes skeleton-pulse { 50% { opacity: .55; } }
+.shell.is-pending ~ .app-loading {
+  clip-path: inset(50%);
+  width: 1px; height: 1px;
+  overflow: hidden;
+}
 
 @media (prefers-reduced-motion: no-preference) {
   @view-transition { navigation: auto; }
