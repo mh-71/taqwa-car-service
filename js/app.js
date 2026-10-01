@@ -106,7 +106,13 @@ const App = (() => {
     form.addEventListener('submit', (ev) => { ev.preventDefault(); button.click(); });
   }
 
-  function dataSource() {
+  function dataSource(pending) {
+    // Drawn before the data source is known (see drawShellEarly): say so,
+    // rather than briefly claiming "This browser only" on every page load.
+    if (pending) {
+      return { offline: false, pending: true, label: 'Connecting…',
+               title: 'Loading the workshop records.' };
+    }
     if (Storage.isLocked()) {
       return { offline: true, label: 'Signed out',
                title: 'Sign in to read or change the workshop records.' };
@@ -120,12 +126,37 @@ const App = (() => {
                   + 'and are not saved to the shared database.' };
   }
 
-  function renderShell() {
+  function footDotClass(source) {
+    return 'sidebar__foot-dot'
+      + (source.pending ? ' sidebar__foot-dot--pending' : source.offline ? ' sidebar__foot-dot--local' : '');
+  }
+
+  // Placeholder blocks for the content area while an early shell waits on its
+  // data. Neutral shapes only -- no invented rows, names or figures -- and
+  // hidden from assistive tech, which hears the loader's status instead.
+  const CONTENT_SKELETON = `
+          <div class="content-skeleton" aria-hidden="true">
+            <div class="content-skeleton__toolbar"><span></span><span></span><span></span></div>
+            <div class="content-skeleton__card">${'<span></span>'.repeat(6)}</div>
+          </div>`;
+
+  const SIGN_OUT_BUTTON = `
+            <button class="icon-btn" id="signOutBtn" aria-label="Sign out" title="Sign out">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
+            </button>`;
+
+  /**
+   * `pending` draws the shell before the data has arrived: the parts that
+   * depend on the source (the footer, the sign-out button, the business
+   * name) are filled in by completeShell() once it is known, and the page's
+   * own content stays hidden until its module has rendered it.
+   */
+  function renderShell(pending = false) {
     const body = document.body;
     const page = body.dataset.page || 'dashboard';
     const root = body.dataset.root || '';
     const settings = Storage.getSettings();
-    const source = dataSource();
+    const source = dataSource(pending);
 
     const navHtml = NAV.map(item => {
       const active = item.key === page ? ' is-active' : '';
@@ -134,7 +165,7 @@ const App = (() => {
     }).join('');
 
     const shell = document.createElement('div');
-    shell.className = 'shell';
+    shell.className = pending ? 'shell is-pending' : 'shell';
     shell.innerHTML = `
       <aside class="sidebar" id="sidebar">
         <div class="sidebar__brand">
@@ -143,7 +174,7 @@ const App = (() => {
         </div>
         <nav class="nav" aria-label="Main navigation">${navHtml}</nav>
         <div class="sidebar__foot" id="dataSource" title="${Utils.esc(source.title)}">
-          <span class="sidebar__foot-dot${source.offline ? ' sidebar__foot-dot--local' : ''}"></span>
+          <span class="${footDotClass(source)}"></span>
           ${Utils.esc(source.label)}
         </div>
       </aside>
@@ -162,10 +193,7 @@ const App = (() => {
               <svg class="ico-sun" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 7a5 5 0 100 10 5 5 0 000-10zm0-5h0v3h0zm0 17v3zm10-7h-3zM5 12H2zm14.1-7.1l-2.1 2.1zM7 17l-2.1 2.1zm12.1 2.1L17 17zM7 7L4.9 4.9z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <svg class="ico-moon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.3 2c-5.6 0-10 4.5-10 10s4.4 10 10 10c3.9 0 7.3-2.3 9-5.6-8 1.9-13.9-6.4-9-14.4z"/></svg>
             </button>
-            ${Storage.isApi() ? `
-            <button class="icon-btn" id="signOutBtn" aria-label="Sign out" title="Sign out">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
-            </button>` : ''}
+            ${Storage.isApi() ? SIGN_OUT_BUTTON : ''}
             <div class="topbar__user">
               <img class="avatar" src="${root}assets/avatar/admin.webp"
                    alt="Admin profile photo" width="36" height="36">
@@ -176,7 +204,7 @@ const App = (() => {
             </div>
           </div>
         </header>
-        <main class="content" id="content"></main>
+        <main class="content" id="content">${pending ? CONTENT_SKELETON : ''}</main>
       </div>`;
 
     // Move existing page content into the content area
@@ -230,6 +258,10 @@ const App = (() => {
       applyTheme(next);
     });
 
+    bindSignOut();
+  }
+
+  function bindSignOut() {
     const signOut = document.getElementById('signOutBtn');
     if (signOut) {
       signOut.addEventListener('click', Utils.saving(async () => {
@@ -269,7 +301,11 @@ const App = (() => {
       });
     }
     if (hydration && hydration.mode === 'locked') {
-      // Nothing has been read, so there is no shell worth drawing behind it.
+      // Nothing has been read. The sign-in screen covers the whole window;
+      // an early shell behind it holds no data (its content was never
+      // revealed) and is made inert so focus cannot wander into it.
+      const shell = earlyShell && document.querySelector('.shell');
+      if (shell) shell.inert = true;
       renderSignIn(hydration.canSignIn !== false);
       return;
     }
@@ -278,15 +314,59 @@ const App = (() => {
     // this session is not reaching the database is the thing that still has
     // to get through.
     warnIfBackendExpected(hydration);
-    renderShell();
+    if (earlyShell) completeShell();
+    else renderShell();
+  }
+
+  /**
+   * Finish a shell that drawShellEarly() put up before the data arrived:
+   * the footer, the sign-out button and the business name all depend on
+   * which source hydration settled on. Then show the page's content.
+   */
+  function completeShell() {
+    const source = dataSource();
+    const foot = document.getElementById('dataSource');
+    if (foot) {
+      foot.title = source.title;
+      foot.innerHTML = `<span class="${footDotClass(source)}"></span>${Utils.esc(source.label)}`;
+    }
+    if (Storage.isApi() && !document.getElementById('signOutBtn')) {
+      const user = document.querySelector('.topbar__user');
+      if (user) { user.insertAdjacentHTML('beforebegin', SIGN_OUT_BUTTON); bindSignOut(); }
+    }
+    const tagline = document.querySelector('.topbar__user-text span');
+    if (tagline) tagline.textContent = `${Storage.getSettings().businessName.split(' ')[0]} ASC`;
+    revealContent();
+  }
+
+  /**
+   * The page module renders in its own Storage.ready() callback, which runs
+   * right after this one (app.js registers first). A zero timeout lands after
+   * it, so the content is shown already filled in -- never as empty tables
+   * with buttons that are not wired up yet.
+   */
+  function revealContent() {
+    const shell = document.querySelector('.shell');
+    if (!shell || !shell.classList.contains('is-pending')) return;
+    setTimeout(() => {
+      const skeleton = shell.querySelector('.content-skeleton');
+      if (skeleton) skeleton.remove();
+      shell.classList.remove('is-pending');
+      shell.classList.add('is-revealed');
+    }, 0);
   }
 
   /* ---------- while the data is on its way ----------
 
-     The shell is not drawn until hydration settles, so without this a slow
-     server means a blank page with nothing to say for itself. It is removed
-     by init(), which runs the moment the source is decided -- with no
-     backend that is the same tick, so nobody ever sees it.              */
+     Every page is a full document load, and with a backend the data takes
+     several round trips to arrive (hydrate() in storage.js). The shell does
+     not need that data, so when there is a wait it is drawn straight away
+     (drawShellEarly, below) and the sidebar and header stay put from one
+     page to the next. Only the content area waits; this loader sits there
+     and shows its text only if the wait is long enough to notice (see
+     .app-loading in style.css). It is removed by init(), which runs the
+     moment the source is decided -- with no backend that is the same tick,
+     so nobody ever sees it.                                              */
 
   let loader = null;
 
@@ -312,6 +392,30 @@ const App = (() => {
   } else {
     showLoading();
   }
+
+  /**
+   * Draw the shell now, before hydration, when there is a network wait to
+   * cover. app.js runs at the end of <body>, after #page-content, so the
+   * page is already parsed up to here. With no backend there is no wait --
+   * hydration settles in the same tick -- and init() draws the shell exactly
+   * as it always has.
+   */
+  let earlyShell = false;
+
+  function drawShellEarly() {
+    if (!Api.baseUrl || !document.body || !document.getElementById('page-content')) return;
+    try {
+      applyTheme(Storage.getTheme());
+      renderShell(true);
+    } catch (e) {
+      console.error('Early shell failed; it will be drawn once the data arrives:', e);
+    }
+    // A shell that made it into the page is completed later rather than
+    // drawn a second time, even if something after the prepend threw.
+    earlyShell = !!document.querySelector('.shell');
+  }
+
+  drawShellEarly();
 
   // Storage.ready() hands init the hydration result, so the shell can say
   // which source it is showing and warn when that is not the one expected.
