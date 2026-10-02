@@ -171,34 +171,100 @@ a:hover { text-decoration: underline; }
   letter-spacing: .05em;
 }
 
+/* The nav scrolls on its own between the fixed brand and footer, so on a
+   short screen every item stays reachable. */
 .nav {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 10px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, .16) transparent;
+  padding: 6px 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+}
+
+/* Groups (Main, Workshop, Communication, Billing, Reports, Settings),
+   separated by a hairline. */
+.nav__group { display: flex; flex-direction: column; gap: 1px; padding: 3px 0; }
+.nav__group + .nav__group {
+  margin-top: 3px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+}
+.nav__heading {
+  margin: 0 0 3px;
+  padding: 0 12px;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8b99a9;
 }
 
 .nav__link {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 12px;
+  padding: 7px 12px;
   border-radius: 8px;
   color: #c6d0dc;
   font-size: .88rem;
-  border-left: 3px solid transparent;
 }
 .nav__link svg { flex: none; opacity: .8; }
 .nav__link:hover { background: rgba(255, 255, 255, .06); color: #fff; text-decoration: none; }
+/* Active page: solid blue pill, white text (4.6:1 contrast). */
 .nav__link.is-active {
-  background: rgba(229, 154, 23, .13);
-  border-left-color: var(--amber);
+  background: #1f6feb;
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(31, 111, 235, .35);
 }
-.nav__link.is-active svg { color: var(--amber); opacity: 1; }
+.nav__link.is-active svg { color: #fff; opacity: 1; }
+
+/* Social Inbox: a native <details>, so it opens with the keyboard and needs
+   no script beyond remembering its state. */
+.nav__summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  color: #c6d0dc;
+  font-size: .88rem;
+  cursor: pointer;
+}
+.nav__summary::-webkit-details-marker { display: none; }
+.nav__summary svg { flex: none; opacity: .8; }
+.nav__summary:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.nav__chevron { margin-left: auto; transition: transform .15s ease; }
+.nav__inbox[open] .nav__chevron { transform: rotate(180deg); }
+.nav__subs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 4px 20px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, .1);
+}
+.nav__sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  color: #c6d0dc;
+  font-size: .82rem;
+}
+.nav__sub svg { flex: none; width: 16px; height: 16px; opacity: .8; }
+/* Label over a small status line: the 248px column has no room for both side by side. */
+.nav__sub-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.nav__sub small { font-size: .68rem; color: #8b99a9; }
+a.nav__sub:hover { background: rgba(255, 255, 255, .06); color: #fff; text-decoration: none; }
+/* Not built yet: plain text, not a link, and says so. */
+.nav__sub--off { color: #8592a3; cursor: default; }
+.nav__sub--off svg { opacity: .55; }
 
 .sidebar__foot {
   padding: 14px 18px;

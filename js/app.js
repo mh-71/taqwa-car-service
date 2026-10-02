@@ -24,6 +24,37 @@ const App = (() => {
     { key: 'settings',     label: 'Settings',     href: 'pages/settings.html',   icon: 'M19.1 12.9c0-.3.1-.6.1-.9s0-.6-.1-.9l2-1.6c.2-.1.2-.4.1-.6l-1.9-3.3c-.1-.2-.4-.3-.6-.2l-2.4 1c-.5-.4-1-.7-1.6-.9l-.4-2.5c0-.2-.2-.4-.5-.4h-3.8c-.2 0-.4.2-.5.4l-.4 2.5c-.6.2-1.1.6-1.6.9l-2.4-1c-.2-.1-.5 0-.6.2L2.6 9c-.1.2-.1.4.1.6l2 1.6c0 .3-.1.6-.1.9s0 .6.1.9l-2 1.6c-.2.1-.2.4-.1.6l1.9 3.3c.1.2.4.3.6.2l2.4-1c.5.4 1 .7 1.6.9l.4 2.5c0 .2.2.4.5.4h3.8c.2 0 .4-.2.5-.4l.4-2.5c.6-.2 1.1-.6 1.6-.9l2.4 1c.2.1.5 0 .6-.2l1.9-3.3c.1-.2.1-.4-.1-.6l-2-1.6zM12 15.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5z' }
   ];
 
+  /* Sidebar groups. Every entry is an existing NAV page above; grouping only
+     changes how the same 13 links are laid out. */
+  const NAV_GROUPS = [
+    { label: null,            keys: ['dashboard', 'customers', 'vehicles', 'appointments', 'job-cards'] },
+    { label: 'Workshop',      keys: ['services', 'mechanics', 'inventory'] },
+    { label: 'Communication', inbox: true },
+    { label: 'Billing',       keys: ['invoices', 'payments', 'expenses'] },
+    { label: 'Reports',       keys: ['reports'] },
+    { label: 'Settings',      keys: ['settings'] },
+  ];
+
+  /* Social Inbox. Only website bookings exist today: the Worker merges them
+     into Appointments (source "Website"), so that entry links there. The rest
+     have no backend yet and are shown as not configured -- never as links,
+     never with invented counts. Ready to become links when they exist. */
+  const INBOX_ICON = 'M19 3H4.99C3.88 3 3.01 3.89 3.01 5L3 19c0 1.1.88 2 1.99 2H19c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm0 12h-4c0 1.66-1.35 3-3 3s-3-1.34-3-3H4.99V5H19v10z';
+  const CHEVRON_ICON = 'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z';
+  const INBOX = [
+    { label: 'All Conversations', icon: 'M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z' },
+    { label: 'Facebook',          icon: 'M24 12.07C24 5.41 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.5c-1.5 0-1.96.93-1.96 1.89v2.26h3.32l-.53 3.5h-2.8V24C19.62 23.1 24 18.1 24 12.07z' },
+    { label: 'WhatsApp',          icon: 'M12 2C6.48 2 2 6.03 2 11c0 2.84 1.46 5.36 3.74 7L5 22l4.27-2.18c.87.12 1.79.18 2.73.18 5.52 0 10-4.03 10-9S17.52 2 12 2z' },
+    { label: 'Website Contact Forms', icon: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z' },
+    { label: 'Website Bookings',  icon: 'M16.53 11.06L15.47 10l-4.88 4.88-2.12-2.12-1.06 1.06L10.59 17l5.94-5.94zM19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z',
+      href: 'pages/appointments.html', hint: 'in Appointments',
+      title: 'Bookings made on the website are listed in Appointments (Source: Website).' },
+    { label: 'Comments',          icon: 'M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z' },
+  ];
+  // Whether Social Inbox was left open, so it does not snap shut on every page
+  // change (each one is a full document load). Display state only.
+  const INBOX_OPEN_KEY = 'taqwa_nav_inbox_open';
+
   const PAGE_TITLES = {
     dashboard: 'Dashboard', customers: 'Customers', vehicles: 'Vehicles',
     appointments: 'Appointments', 'job-cards': 'Job Cards', services: 'Service Catalog',
@@ -188,10 +219,31 @@ const App = (() => {
     const settings = Storage.getSettings();
     const source = dataSource(pending);
 
-    const navHtml = NAV.map(item => {
+    const linkHtml = item => {
       const active = item.key === page ? ' is-active' : '';
+      const current = item.key === page ? ' aria-current="page"' : '';
       const href = item.key === 'dashboard' ? `${root}index.html` : `${root}${item.href}`;
-      return `<a class="nav__link${active}" href="${href}">${icon(item.icon)}<span>${item.label}</span></a>`;
+      return `<a class="nav__link${active}" href="${href}"${current}>${icon(item.icon)}<span>${item.label}</span></a>`;
+    };
+    const inboxHtml = () => {
+      let open = false;
+      try { open = sessionStorage.getItem(INBOX_OPEN_KEY) === '1'; } catch (e) { /* no hint */ }
+      const subs = INBOX.map(s => s.href
+        ? `<a class="nav__sub" href="${root}${s.href}" title="${Utils.esc(s.title)}">${icon(s.icon)}<span class="nav__sub-text"><span>${s.label}</span><small>${s.hint}</small></span></a>`
+        : `<span class="nav__sub nav__sub--off" aria-disabled="true" title="${s.label} is not configured yet.">${icon(s.icon)}<span class="nav__sub-text"><span>${s.label}</span><small>Not configured</small></span></span>`
+      ).join('');
+      return `<details class="nav__inbox" id="navInbox"${open ? ' open' : ''}>
+            <summary class="nav__summary">${icon(INBOX_ICON)}<span>Social Inbox</span>
+              <svg class="nav__chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="${CHEVRON_ICON}"/></svg></summary>
+            <div class="nav__subs">${subs}</div>
+          </details>`;
+    };
+    const byKey = Object.fromEntries(NAV.map(item => [item.key, item]));
+    const navHtml = NAV_GROUPS.map((g, i) => {
+      const id = g.label ? `nav-group-${i}` : '';
+      const heading = g.label ? `<p class="nav__heading" id="${id}">${g.label}</p>` : '';
+      const body = g.inbox ? inboxHtml() : g.keys.map(k => linkHtml(byKey[k])).join('');
+      return `<div class="nav__group" role="group" ${id ? `aria-labelledby="${id}"` : 'aria-label="Main"'}>${heading}${body}</div>`;
     }).join('');
 
     const shell = document.createElement('div');
@@ -288,6 +340,13 @@ const App = (() => {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       applyTheme(next);
     });
+
+    const inbox = document.getElementById('navInbox');
+    if (inbox) {
+      inbox.addEventListener('toggle', () => {
+        try { sessionStorage.setItem(INBOX_OPEN_KEY, inbox.open ? '1' : '0'); } catch (e) { /* private mode */ }
+      });
+    }
 
     bindSignOut();
   }
