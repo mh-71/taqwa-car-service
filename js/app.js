@@ -106,18 +106,40 @@ const App = (() => {
     form.addEventListener('submit', (ev) => { ev.preventDefault(); button.click(); });
   }
 
+  /* What the footer said on the previous page of this tab. Every page change is
+     a full document load, so without this the indicator would read
+     "Connecting…" and then flip back on every click. It is a display hint
+     only -- nothing is decided by it -- and completeShell() corrects it as
+     soon as this page's own hydration has settled. */
+  const LAST_SOURCE_KEY = 'taqwa_shell_source';
+
+  function lastSource() {
+    try { return sessionStorage.getItem(LAST_SOURCE_KEY); } catch (e) { return null; }
+  }
+
+  function rememberSource() {
+    const kind = Storage.isLocked() ? 'locked' : Storage.isApi() ? 'api' : 'local';
+    try { sessionStorage.setItem(LAST_SOURCE_KEY, kind); } catch (e) { /* private mode: no hint */ }
+  }
+
   function dataSource(pending) {
-    // Drawn before the data source is known (see drawShellEarly): say so,
-    // rather than briefly claiming "This browser only" on every page load.
+    // Drawn before the data source is known (see drawShellEarly). Repeat what
+    // this tab last knew, so the footer holds still across a page change; on
+    // a first page, say it is connecting rather than claim "This browser only".
     if (pending) {
+      if (lastSource() === 'api') return sourceFor('api');
       return { offline: false, pending: true, label: 'Connecting…',
                title: 'Loading the workshop records.' };
     }
-    if (Storage.isLocked()) {
+    return sourceFor(Storage.isLocked() ? 'locked' : Storage.isApi() ? 'api' : 'local');
+  }
+
+  function sourceFor(kind) {
+    if (kind === 'locked') {
       return { offline: true, label: 'Signed out',
                title: 'Sign in to read or change the workshop records.' };
     }
-    if (Storage.isApi()) {
+    if (kind === 'api') {
       return { offline: false, label: 'Connected to the database',
                title: 'Records are read from and saved to the shared database.' };
     }
@@ -139,6 +161,14 @@ const App = (() => {
             <div class="content-skeleton__toolbar"><span></span><span></span><span></span></div>
             <div class="content-skeleton__card">${'<span></span>'.repeat(6)}</div>
           </div>`;
+
+  // In an early shell, draw the sign-out button wherever a session is likely
+  // (a backend is configured and this tab was not last offline or signed
+  // out), so the header's buttons do not shift when it would otherwise appear
+  // after the data. completeShell() removes it if this load ends up local.
+  function earlySignOut() {
+    return !!Api.baseUrl && !['local', 'locked'].includes(lastSource());
+  }
 
   const SIGN_OUT_BUTTON = `
             <button class="icon-btn" id="signOutBtn" aria-label="Sign out" title="Sign out">
@@ -169,7 +199,8 @@ const App = (() => {
     shell.innerHTML = `
       <aside class="sidebar" id="sidebar">
         <div class="sidebar__brand">
-          <img class="brand-logo" src="${root}assets/logo/logo-white.png" alt="Taqwa Automobile">
+          <img class="brand-logo" src="${root}assets/logo/logo-white.png" alt="Taqwa Automobile"
+               width="1555" height="593">
           <span class="brand-tag">Service Center Management</span>
         </div>
         <nav class="nav" aria-label="Main navigation">${navHtml}</nav>
@@ -193,7 +224,7 @@ const App = (() => {
               <svg class="ico-sun" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 7a5 5 0 100 10 5 5 0 000-10zm0-5h0v3h0zm0 17v3zm10-7h-3zM5 12H2zm14.1-7.1l-2.1 2.1zM7 17l-2.1 2.1zm12.1 2.1L17 17zM7 7L4.9 4.9z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <svg class="ico-moon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.3 2c-5.6 0-10 4.5-10 10s4.4 10 10 10c3.9 0 7.3-2.3 9-5.6-8 1.9-13.9-6.4-9-14.4z"/></svg>
             </button>
-            ${Storage.isApi() ? SIGN_OUT_BUTTON : ''}
+            ${(pending ? earlySignOut() : Storage.isApi()) ? SIGN_OUT_BUTTON : ''}
             <div class="topbar__user">
               <img class="avatar" src="${root}assets/avatar/admin.webp"
                    alt="Admin profile photo" width="36" height="36">
@@ -306,6 +337,7 @@ const App = (() => {
       // revealed) and is made inert so focus cannot wander into it.
       const shell = earlyShell && document.querySelector('.shell');
       if (shell) shell.inert = true;
+      rememberSource();
       renderSignIn(hydration.canSignIn !== false);
       return;
     }
@@ -315,7 +347,7 @@ const App = (() => {
     // to get through.
     warnIfBackendExpected(hydration);
     if (earlyShell) completeShell();
-    else renderShell();
+    else { renderShell(); rememberSource(); }
   }
 
   /**
@@ -330,9 +362,15 @@ const App = (() => {
       foot.title = source.title;
       foot.innerHTML = `<span class="${footDotClass(source)}"></span>${Utils.esc(source.label)}`;
     }
-    if (Storage.isApi() && !document.getElementById('signOutBtn')) {
+    rememberSource();
+    const signOut = document.getElementById('signOutBtn');
+    if (Storage.isApi() && !signOut) {
       const user = document.querySelector('.topbar__user');
       if (user) { user.insertAdjacentHTML('beforebegin', SIGN_OUT_BUTTON); bindSignOut(); }
+    } else if (!Storage.isApi() && signOut) {
+      // Drawn early on the expectation of a session; this load fell back to
+      // the browser instead, where there is nothing to sign out of.
+      signOut.remove();
     }
     const tagline = document.querySelector('.topbar__user-text span');
     if (tagline) tagline.textContent = `${Storage.getSettings().businessName.split(' ')[0]} ASC`;

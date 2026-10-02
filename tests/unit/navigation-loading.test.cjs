@@ -54,9 +54,15 @@ function pageWithShell() {
     // Elements built with innerHTML (the sign-in screen) find their parts.
     const create = doc.createElement;
     doc.createElement = (tag) => Object.assign(create(tag), { querySelector: () => makeElement('part') });
-    // The sign-out button exists only once completeShell() has inserted it.
+    // The sign-out button exists if the early shell drew it (and nothing has
+    // removed it since), or once completeShell() has inserted it.
+    parts.signOut = Object.assign(makeElement('signOutBtn'), { remove() { parts.signOutRemoved = true; log.push('sign-out removed'); } });
     const byId = doc.getElementById;
-    doc.getElementById = (id) => (id === 'signOutBtn' && !parts.inserted ? null : byId(id));
+    doc.getElementById = (id) => {
+      if (id !== 'signOutBtn') return byId(id);
+      const drawn = /id="signOutBtn"/.test(doc.body._lastShellHtml || '') && !parts.signOutRemoved;
+      return drawn || parts.inserted ? parts.signOut : null;
+    };
   };
   return { log, parts, beforeModules };
 }
@@ -108,10 +114,28 @@ console.log('-- 1. the shell goes up before hydration finishes --');
   ok('   ...which holds no invented data (no text, digits or currency)',
     sk && !/[0-9৳]/.test(sk.replace(/<[^>]+>/g, '')) && sk.replace(/<[^>]+>/g, '').trim() === '', sk);
   ok('   ...hidden from screen readers', /content-skeleton" aria-hidden="true"/.test(html), '');
-  ok('the footer says it is connecting -- not a false "This browser only"',
+  ok('on a first page the footer says it is connecting -- not a false "This browser only"',
     /Connecting/.test(html) && !/This browser only/.test(html), html.slice(html.indexOf('dataSource'), html.indexOf('dataSource') + 200));
-  ok('   ...and no sign-out button before the server has said there is a session',
-    !/signOutBtn/.test(html), 'sign-out drawn before hydration');
+  ok('   ...and the sign-out button is already in the header, so the buttons do not shift when the data lands',
+    /id="signOutBtn"/.test(html), 'sign-out missing from the early shell');
+}
+{
+  // The previous page of this tab was connected: the footer holds still.
+  const store = new Map([['taqwa_shell_source', 'api']]);
+  const h = boot({ modules: ['js/app.js'], origin: API, fetch: () => new Promise(() => {}),
+                   beforeModules: (doc, ctx) => { ctx.sessionStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }; } });
+  const html = h.ctx.document.body._lastShellHtml || '';
+  ok('after a connected page, the early footer repeats "Connected to the database"',
+    /Connected to the database/.test(html) && !/Connecting/.test(html), html.slice(html.indexOf('dataSource'), html.indexOf('dataSource') + 200));
+}
+{
+  // ...but not after an offline one: no sign-out button is promised.
+  const store = new Map([['taqwa_shell_source', 'local']]);
+  const h = boot({ modules: ['js/app.js'], origin: API, fetch: () => new Promise(() => {}),
+                   beforeModules: (doc, ctx) => { ctx.sessionStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }; } });
+  const html = h.ctx.document.body._lastShellHtml || '';
+  ok('after an offline page, no early sign-out button and no claim to be connected',
+    !/signOutBtn/.test(html) && /Connecting/.test(html), html.slice(html.indexOf('dataSource'), html.indexOf('dataSource') + 200));
 }
 {
   const h = boot({ modules: ['js/app.js'], origin: '' });     // no backend at all
@@ -142,7 +166,8 @@ console.log('\n-- 2. completing the early shell --');
   ok('the footer is updated in place to say so',
     foot && /Connected to the database/.test(foot.innerHTML) && !/sidebar__foot-dot--(local|pending)/.test(foot.innerHTML),
     foot && foot.innerHTML);
-  ok('   ...the sign-out button is added beside the profile', /id="signOutBtn"/.test(p.parts.inserted || ''), '');
+  ok('   ...the sign-out button drawn early is kept, and not added a second time',
+    /id="signOutBtn"/.test(drawnBefore) && !p.parts.inserted && !p.parts.signOutRemoved, JSON.stringify(p.log));
   check('   ...and the business name filled in', p.parts.tagline.textContent, 'Taqwa ASC');
   const iModule = p.log.indexOf('module rendered'), iReveal = p.log.indexOf('-is-pending');
   ok('the content is revealed only AFTER the page module has rendered it',
@@ -175,6 +200,7 @@ console.log('\n-- 2. completing the early shell --');
   ok('   ...the footer says so', /This browser only/.test((h.els.get('dataSource') || {}).innerHTML || '')
     && /sidebar__foot-dot--local/.test(h.els.get('dataSource').innerHTML), '');
   ok('   ...the warning is still raised', toasts.length === 1 && toasts[0].type === 'warning', JSON.stringify(toasts));
+  ok('   ...and the early sign-out button is taken away: there is no session to end', p.parts.signOutRemoved === true, JSON.stringify(p.log));
   ok('   ...and the page is revealed rather than left on the placeholder', p.log.includes('-is-pending'), JSON.stringify(p.log));
 }
 
