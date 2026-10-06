@@ -595,10 +595,24 @@
       fields: ['status', 'notes'] }
   ];
 
-  /* Add Vehicle (customerSearch) groups the fields into titled sections;
-     Edit Vehicle keeps the plain grid. Both render the same fields, with the
-     same ids and names, in the same order. */
-  function formHtml(v = {}, { customerSearch = false } = {}) {
+  /* Section headings for the Edit Vehicle form (same fields, ids and order of
+     inputs as Add; grouped as the edit reference). `cols: 3` uses the existing
+     three-column grid. */
+  const EDIT_SECTIONS = [
+    { ...FORM_SECTIONS[0], desc: 'Select or change the customer for this vehicle' },
+    { key: 'ident', title: 'Vehicle Identification', desc: 'Basic information about the vehicle',
+      icon: FORM_SECTIONS[1].icon, fields: ['reg', 'year', 'brand', 'model', 'color'] },
+    { key: 'tech', title: 'Technical Details', desc: 'Engine, transmission and other technical information',
+      icon: 'M19.1 12.9c0-.3.1-.6.1-.9s0-.6-.1-.9l2-1.6c.2-.1.2-.4.1-.6l-1.9-3.3c-.1-.2-.4-.3-.6-.2l-2.4 1c-.5-.4-1-.7-1.6-.9l-.4-2.5c0-.2-.2-.4-.5-.4h-3.8c-.2 0-.4.2-.5.4l-.4 2.5c-.6.2-1.1.6-1.6.9l-2.4-1c-.2-.1-.5 0-.6.2L2.6 9c-.1.2-.1.4.1.6l2 1.6c0 .3-.1.6-.1.9s0 .6.1.9l-2 1.6c-.2.1-.2.4-.1.6l1.9 3.3c.1.2.4.3.6.2l2.4-1c.5.4 1 .7 1.6.9l.4 2.5c0 .2.2.4.5.4h3.8c.2 0 .4-.2.5-.4l.4-2.5c.6-.2 1.1-.6 1.6-.9l2.4 1c.2.1.5 0 .6-.2l1.9-3.3c.1-.2.1-.4-.1-.6l-2-1.6zM12 15.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5z',
+      fields: ['mileage', 'fuel', 'trans', 'vin', 'chassis', 'engine'], cols: 3 },
+    { key: 'service', title: 'Service & Status', desc: 'Service schedule, current status and additional notes',
+      icon: FORM_SECTIONS[2].icon, fields: ['next', 'status', 'notes'] }
+  ];
+
+  /* Add Vehicle (customerSearch) and Edit Vehicle (EDIT_SECTIONS) group the
+     fields into titled sections; with no sections the plain grid is used. All
+     render the same fields, with the same ids and names, in the same order. */
+  function formHtml(v = {}, { customerSearch = false, sections = customerSearch ? FORM_SECTIONS : null } = {}) {
     const f = {
       customer: `
           <div class="field span-2">
@@ -700,7 +714,7 @@
             <textarea class="textarea" id="vf-notes" name="notes" rows="2">${esc(v.notes || '')}</textarea>
           </div>`
     };
-    if (!customerSearch) {
+    if (!sections) {
       return `
       <form id="vehForm" novalidate>
         <div class="form-grid">
@@ -710,7 +724,7 @@ ${Object.values(f).join('\n')}
     }
     return `
       <form id="vehForm" class="veh-form" novalidate>
-        ${FORM_SECTIONS.map(s => `
+        ${sections.map(s => `
         <div class="form-section form-section--${s.key}" role="group" aria-labelledby="vfs-${s.key}">
           <div class="form-section__head">
             <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="${s.icon}"/></svg></span>
@@ -719,7 +733,7 @@ ${Object.values(f).join('\n')}
               <p class="form-section__desc">${s.desc}</p>
             </div>
           </div>
-          <div class="form-grid form-section__body">
+          <div class="form-grid${s.cols === 3 ? ' form-grid--3' : ''} form-section__body">
 ${s.fields.map(k => f[k]).join('\n')}
           </div>
         </div>`).join('')}
@@ -796,6 +810,21 @@ ${s.fields.map(k => f[k]).join('\n')}
     });
   }
 
+  /* Add and Edit Vehicle presentation: an icon and a one-line description in
+     the shared modal header; .veh-add scopes the sectioned form styling. */
+  function decorateFormModal(ov, subtitle) {
+    const modal = ov.querySelector('.modal');
+    modal.classList.add('veh-add');
+    const title = modal.querySelector('.modal__head h2');
+    title.insertAdjacentHTML('beforebegin', `<span class="veh-add__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${FORM_SECTIONS[1].icon}"/></svg></span>`);
+    const titles = document.createElement('div');
+    titles.className = 'veh-add__titles';
+    title.replaceWith(titles);
+    titles.append(title);
+    titles.insertAdjacentHTML('beforeend', `<p class="veh-add__sub" id="veh-add-sub">${subtitle}</p>`);
+    modal.setAttribute('aria-describedby', 'veh-add-sub');
+  }
+
   function openAddModal(prefillCustomerId = '') {
     if (!Storage.getData('customers').length) {
       Modal.open({
@@ -812,18 +841,7 @@ ${s.fields.map(k => f[k]).join('\n')}
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Vehicle</button>`
     });
-    // Add-only presentation: an icon and a one-line description in the shared
-    // modal header; .veh-add scopes the sectioned styling to this modal.
-    const modal = ov.querySelector('.modal');
-    modal.classList.add('veh-add');
-    const title = modal.querySelector('.modal__head h2');
-    title.insertAdjacentHTML('beforebegin', `<span class="veh-add__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${FORM_SECTIONS[1].icon}"/></svg></span>`);
-    const titles = document.createElement('div');
-    titles.className = 'veh-add__titles';
-    title.replaceWith(titles);
-    titles.append(title);
-    titles.insertAdjacentHTML('beforeend', `<p class="veh-add__sub" id="veh-add-sub">Add a new vehicle to the customer profile</p>`);
-    modal.setAttribute('aria-describedby', 'veh-add-sub');
+    decorateFormModal(ov, 'Add a new vehicle to the customer profile');
     bindCustomerPicker(ov);
     bindBrandPicker(ov);
     bindModelPicker(ov);
@@ -852,10 +870,11 @@ ${s.fields.map(k => f[k]).join('\n')}
     if (!v) return;
     const ov = Modal.open({
       title: `Edit Vehicle — ${v.id}`, size: 'lg',
-      body: formHtml(v),
+      body: formHtml(v, { sections: EDIT_SECTIONS }),
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
+    decorateFormModal(ov, 'Update vehicle information');
     bindBrandPicker(ov);
     bindModelPicker(ov);
     bindColorPicker(ov);
