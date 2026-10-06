@@ -25,6 +25,78 @@
     'MG', 'Deepal', 'Jaecoo', 'Omoda', 'Tata', 'Mahindra', 'Ashok Leyland', 'Maruti Suzuki', 'Renault',
     'Peugeot', 'Citroën', 'Proton', 'Fiat'
   ];
+  /* Brand -> common models (Bangladesh new/reconditioned market). Suggestions
+     only: the model field still accepts any text, so a missing or uncommon
+     model can always be typed. */
+  const VEHICLE_MODELS = {
+    'Toyota': ['Corolla', 'Corolla Axio', 'Corolla Fielder', 'Corolla Cross', 'Allion', 'Premio', 'Camry', 'Crown', 'Mark X',
+      'Aqua', 'Prius', 'Yaris', 'Vitz', 'Belta', 'Passo', 'C-HR', 'Raize', 'Rush', 'Harrier', 'RAV4', 'Fortuner',
+      'Land Cruiser', 'Land Cruiser Prado', 'Hilux', 'Noah', 'Voxy', 'Esquire', 'Sienta', 'Wish', 'Estima',
+      'Alphard', 'Vellfire', 'Hiace', 'Probox', 'Succeed', 'Townace', 'Liteace', 'Avanza', 'Innova'],
+    'Honda': ['Civic', 'City', 'Accord', 'Fit', 'Grace', 'Insight', 'Vezel', 'HR-V', 'CR-V', 'WR-V', 'BR-V', 'Freed',
+      'Shuttle', 'Jade', 'Stepwgn', 'Odyssey', 'Pilot'],
+    'Nissan': ['Sunny', 'Sylphy', 'Bluebird Sylphy', 'Tiida', 'Note', 'Almera', 'Teana', 'Leaf', 'Wingroad', 'AD Van',
+      'Juke', 'Kicks', 'Qashqai', 'X-Trail', 'Murano', 'Pathfinder', 'Patrol', 'Navara', 'Serena', 'Elgrand',
+      'Caravan', 'Urvan'],
+    'Mitsubishi': ['Mirage', 'Attrage', 'Lancer', 'ASX', 'RVR', 'Eclipse Cross', 'Outlander', 'Pajero', 'Pajero Sport',
+      'Xpander', 'Delica', 'L200', 'Triton'],
+    'Suzuki': ['Alto', 'Wagon R', 'Celerio', 'Swift', 'Dzire', 'Baleno', 'Ciaz', 'Ertiga', 'XL7', 'Vitara',
+      'Grand Vitara', 'S-Cross', 'Jimny', 'Every', 'Carry', 'APV'],
+    'Mazda': ['Mazda2', 'Demio', 'Mazda3', 'Axela', 'Mazda6', 'Atenza', 'CX-3', 'CX-30', 'CX-5', 'CX-8', 'CX-9',
+      'BT-50', 'Bongo'],
+    'Subaru': ['Impreza', 'XV', 'Forester', 'Outback', 'Legacy', 'Levorg', 'WRX'],
+    'Daihatsu': ['Mira', 'Move', 'Tanto', 'Boon', 'Rocky', 'Terios', 'Xenia', 'Gran Max', 'Hijet'],
+    'Isuzu': ['D-Max', 'MU-X', 'Trooper', 'Elf', 'NKR', 'NPR'],
+    'Lexus': ['CT', 'IS', 'ES', 'GS', 'LS', 'RC', 'UX', 'NX', 'RX', 'GX', 'LX'],
+    'Infiniti': ['Q50', 'Q60', 'QX50', 'QX60', 'QX80'],
+    'Hyundai': ['i10', 'Grand i10', 'i20', 'Accent', 'Elantra', 'Sonata', 'Venue', 'Creta', 'Kona', 'Tucson',
+      'Santa Fe', 'Palisade', 'Ioniq 5', 'H-1', 'Starex'],
+    'Kia': ['Picanto', 'Rio', 'Cerato', 'K5', 'Optima', 'Soul', 'Sonet', 'Seltos', 'Sportage', 'Sorento', 'Carens',
+      'Carnival', 'EV6'],
+    'Genesis': ['G70', 'G80', 'G90', 'GV70', 'GV80'],
+    'SsangYong': ['Tivoli', 'Korando', 'Rexton', 'Musso'],
+    'BMW': ['1 Series', '3 Series', '5 Series', '7 Series', 'X1', 'X3', 'X5', 'X6', 'X7', 'i4', 'iX'],
+    'Mercedes-Benz': ['A-Class', 'C-Class', 'E-Class', 'S-Class', 'CLA', 'GLA', 'GLC', 'GLE', 'GLS', 'G-Class',
+      'EQS', 'Sprinter'],
+    'Audi': ['A3', 'A4', 'A6', 'A8', 'Q3', 'Q5', 'Q7', 'Q8', 'e-tron'],
+    'Volkswagen': ['Polo', 'Vento', 'Golf', 'Jetta', 'Passat', 'Tiguan', 'Touareg', 'Transporter'],
+    'Porsche': ['911', 'Macan', 'Cayenne', 'Panamera', 'Taycan'],
+    'Land Rover': ['Range Rover', 'Range Rover Sport', 'Range Rover Velar', 'Range Rover Evoque', 'Discovery',
+      'Discovery Sport', 'Defender', 'Freelander'],
+    'Jaguar': ['XE', 'XF', 'XJ', 'E-Pace', 'F-Pace', 'F-Type'],
+    'Volvo': ['S60', 'S90', 'V40', 'XC40', 'XC60', 'XC90'],
+    'Skoda': ['Fabia', 'Rapid', 'Octavia', 'Superb', 'Kushaq', 'Kodiaq'],
+    'Ford': ['Fiesta', 'Focus', 'EcoSport', 'Everest', 'Explorer', 'Ranger', 'F-150', 'Mustang', 'Transit'],
+    'Chevrolet': ['Spark', 'Beat', 'Aveo', 'Optra', 'Cruze', 'Malibu', 'Captiva', 'Trailblazer', 'Tahoe'],
+    'Jeep': ['Renegade', 'Compass', 'Cherokee', 'Grand Cherokee', 'Wrangler'],
+    'GMC': ['Terrain', 'Acadia', 'Yukon', 'Sierra'],
+    'Cadillac': ['CT5', 'XT4', 'XT5', 'Escalade'],
+    'Tesla': ['Model 3', 'Model S', 'Model X', 'Model Y'],
+    'BYD': ['Seagull', 'Dolphin', 'Atto 3', 'Seal', 'Sealion 7', 'Song Plus', 'Han', 'Tang', 'e6'],
+    'Chery': ['QQ', 'Arrizo 5', 'Tiggo 2', 'Tiggo 4 Pro', 'Tiggo 7 Pro', 'Tiggo 8 Pro'],
+    'Geely': ['Emgrand', 'Geometry C', 'Coolray', 'Azkarra', 'Okavango', 'Monjaro'],
+    'Haval': ['H2', 'Jolion', 'H6', 'Dargo', 'H9'],
+    'GWM': ['Ora Good Cat', 'Wingle', 'Poer', 'Tank 300', 'Tank 500'],
+    'BAIC': ['D20', 'X25', 'X35', 'X55', 'BJ40'],
+    'JAC': ['JS2', 'JS4', 'J7', 'T6', 'T8', 'Sunray'],
+    'Jetour': ['Dashing', 'X70', 'X90', 'T2'],
+    'Changan': ['Alsvin', 'CS35 Plus', 'CS55 Plus', 'CS75 Plus', 'Uni-K', 'Uni-T', 'Hunter'],
+    'DFSK': ['Glory 500', 'Glory 580', 'Glory iX5', 'C35', 'K01'],
+    'Foton': ['View', 'Gratour', 'Tunland', 'Aumark'],
+    'MG': ['MG3', 'MG5', 'MG6', 'ZS', 'ZS EV', 'MG4 EV', 'HS', 'RX5'],
+    'Deepal': ['S07', 'L07'],
+    'Jaecoo': ['J7', 'J8'],
+    'Omoda': ['C5', 'E5'],
+    'Tata': ['Tiago', 'Tigor', 'Altroz', 'Punch', 'Nexon', 'Harrier', 'Safari', 'Sumo', 'Xenon', 'Ace'],
+    'Mahindra': ['XUV300', 'XUV500', 'XUV700', 'Scorpio', 'Scorpio-N', 'Thar', 'Bolero', 'Pik-Up'],
+    'Ashok Leyland': ['Dost', 'Partner', 'Falcon'],
+    'Maruti Suzuki': ['Alto', 'Wagon R', 'Celerio', 'Swift', 'Dzire', 'Baleno', 'Brezza', 'Ertiga'],
+    'Renault': ['Kwid', 'Triber', 'Duster', 'Captur', 'Megane', 'Koleos'],
+    'Peugeot': ['208', '301', '308', '508', '2008', '3008', '5008'],
+    'Citroën': ['C3', 'C4', 'C5 Aircross', 'Berlingo'],
+    'Proton': ['Saga', 'Persona', 'Iriz', 'Exora', 'X50', 'X70'],
+    'Fiat': ['500', 'Punto', 'Linea', 'Tipo', 'Doblo']
+  };
 
   /* ============================================================
      Derived vehicle stats (from real job cards / invoices only)
@@ -339,6 +411,94 @@
     input.addEventListener('blur', close);
   }
 
+  /* Searchable model field (Add and Edit), suggesting the chosen brand's
+     models. Like the brand field, the input itself stays the `model` value and
+     free text is still accepted. When the brand is changed, a model that does
+     not belong to the new brand is cleared; a vehicle loaded for editing keeps
+     whatever model it was saved with. */
+  const lower = s => String(s || '').trim().toLowerCase();
+
+  function modelsForBrand(brand) {
+    const key = Object.keys(VEHICLE_MODELS).find(b => lower(b) === lower(brand));
+    return key ? VEHICLE_MODELS[key] : [];
+  }
+
+  function matchModels(brand, query) {
+    const q = lower(query);
+    const all = modelsForBrand(brand);
+    if (!q) return all.slice();
+    const starts = [], contains = [];
+    all.forEach(m => {
+      const i = m.toLowerCase().indexOf(q);
+      if (i === 0) starts.push(m); else if (i > 0) contains.push(m);
+    });
+    return starts.concat(contains);
+  }
+
+  function bindModelPicker(root) {
+    const brandInput = root.querySelector('#vf-brand');
+    const input = root.querySelector('#vf-model');
+    const list = root.querySelector('#vf-model-list');
+    let matches = [];
+    let active = -1;
+    let lastBrand = lower(brandInput.value);
+
+    const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; };
+    const highlight = i => {
+      active = i;
+      list.querySelectorAll('[role="option"]').forEach((li, n) => li.classList.toggle('is-active', n === i));
+      const li = list.querySelector(`[data-index="${i}"]`);
+      if (li) { li.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', li.id); }
+      else input.removeAttribute('aria-activedescendant');
+    };
+    const render = () => {
+      const brand = brandInput.value.trim();
+      matches = brand ? matchModels(brand, input.value) : [];
+      list.innerHTML = matches.length
+        ? matches.map((m, i) => `<li role="option" id="vf-model-opt-${i}" data-index="${i}" aria-selected="${m === input.value}"><span class="cust-picker__name">${esc(m)}</span></li>`).join('')
+        : `<li class="cust-picker__empty">${brand ? 'No models found' : 'Select a brand first'}</li>`;
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      highlight(matches.length && input.value.trim() ? 0 : -1);
+    };
+    const choose = m => { input.value = m; close(); };
+
+    // Brand committed (typed and left, or picked from its list): drop a model
+    // that does not belong to the new brand.
+    const brandCommitted = () => {
+      const now = lower(brandInput.value);
+      if (now === lastBrand) return;
+      lastBrand = now;
+      const model = lower(input.value);
+      if (model && !modelsForBrand(brandInput.value).some(m => lower(m) === model)) input.value = '';
+    };
+    brandInput.addEventListener('change', brandCommitted);
+    brandInput.addEventListener('blur', brandCommitted);
+
+    input.addEventListener('click', () => { if (list.hidden) render(); });
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) { render(); return; }
+        if (matches.length) highlight((active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!list.hidden && active >= 0) choose(matches[active]);
+      } else if (e.key === 'Escape' && !list.hidden) {
+        e.stopPropagation(); // close the list, not the whole modal
+        close();
+      }
+    });
+    // mousedown (not click) so the choice lands before the input's blur closes the list
+    list.addEventListener('mousedown', e => {
+      const li = e.target.closest('[role="option"]');
+      e.preventDefault();
+      if (li) choose(matches[Number(li.dataset.index)]);
+    });
+    input.addEventListener('blur', close);
+  }
+
   function selectOptions(list, selected) {
     return `<option value="">— Select —</option>` +
       list.map(o => `<option${o === selected ? ' selected' : ''}>${esc(o)}</option>`).join('');
@@ -377,7 +537,11 @@
           </div>
           <div class="field">
             <label for="vf-model">Model <span class="req">*</span></label>
-            <input class="input" id="vf-model" name="model" value="${esc(v.model || '')}" placeholder="Corolla" autocomplete="off">
+            <div class="cust-picker">
+              <input class="input" id="vf-model" name="model" value="${esc(v.model || '')}" placeholder="🔍 Search model" autocomplete="off"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="vf-model-list">
+              <ul class="cust-picker__list" id="vf-model-list" role="listbox" aria-label="Matching models" hidden></ul>
+            </div>
             <div class="field__error" data-err="model"></div>
           </div>
           <div class="field">
@@ -498,6 +662,7 @@
     });
     bindCustomerPicker(ov);
     bindBrandPicker(ov);
+    bindModelPicker(ov);
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
@@ -527,6 +692,7 @@
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
     bindBrandPicker(ov);
+    bindModelPicker(ov);
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
