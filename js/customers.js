@@ -110,39 +110,84 @@
      Add / Edit form
      ============================================================ */
 
-  function formHtml(c = {}) {
-    return `
-      <form id="custForm" novalidate>
-        <div class="form-grid">
+  /* Section headings for the Add Customer form. The fields keep the same ids,
+     names and order as Edit; icons reuse the sidebar's paths. */
+  const ICON_PERSON = 'M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z';
+  const ADD_SECTIONS = [
+    { key: 'basic', title: 'Basic Information', desc: "Enter the customer's name and contact details",
+      icon: ICON_PERSON, fields: ['name', 'phone', 'altPhone', 'email'] },
+    { key: 'address', title: 'Address Information', desc: "Enter the customer's address",
+      icon: 'M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5S10.6 6.5 12 6.5s2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z',
+      fields: ['address'] },
+    { key: 'notes', title: 'Additional Information', desc: 'Add any important notes about this customer',
+      icon: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+      fields: ['notes'] }
+  ];
+
+  /* Edit uses the plain grid; Add (with `sections`) groups the same fields into
+     titled sections and adds placeholder and example hints. */
+  function formHtml(c = {}, { sections = null } = {}) {
+    const ph = text => sections ? ` placeholder="${text}"` : '';
+    const hint = text => sections ? `<p class="muted-note">${text}</p>` : '';
+    const f = {
+      name: `
           <div class="field span-2">
             <label for="cf-name">Full Name <span class="req">*</span></label>
-            <input class="input" id="cf-name" name="name" value="${esc(c.name || '')}" autocomplete="off">
+            <input class="input" id="cf-name" name="name" value="${esc(c.name || '')}"${ph('e.g. Md. Rahim Uddin')} autocomplete="off">
             <div class="field__error" data-err="name"></div>
-          </div>
+          </div>`,
+      phone: `
           <div class="field">
             <label for="cf-phone">Phone <span class="req">*</span></label>
             <input class="input" id="cf-phone" name="phone" value="${esc(c.phone || '')}" placeholder="01XXX-XXXXXX" autocomplete="off">
+            ${hint('Example: 01712-345678')}
             <div class="field__error" data-err="phone"></div>
-          </div>
+          </div>`,
+      altPhone: `
           <div class="field">
             <label for="cf-alt">Alternate Phone</label>
-            <input class="input" id="cf-alt" name="altPhone" value="${esc(c.altPhone || '')}" autocomplete="off">
+            <input class="input" id="cf-alt" name="altPhone" value="${esc(c.altPhone || '')}"${ph('01XXX-XXXXXX')} autocomplete="off">
+            ${hint('Example: 01612-345678')}
             <div class="field__error" data-err="altPhone"></div>
-          </div>
+          </div>`,
+      email: `
           <div class="field span-2">
             <label for="cf-email">Email</label>
-            <input class="input" id="cf-email" name="email" value="${esc(c.email || '')}" autocomplete="off">
+            <input class="input" id="cf-email" name="email" value="${esc(c.email || '')}"${ph('e.g. rahim@example.com')} autocomplete="off">
             <div class="field__error" data-err="email"></div>
-          </div>
+          </div>`,
+      address: `
           <div class="field span-2">
             <label for="cf-address">Address</label>
-            <input class="input" id="cf-address" name="address" value="${esc(c.address || '')}" autocomplete="off">
-          </div>
+            <input class="input" id="cf-address" name="address" value="${esc(c.address || '')}"${ph('e.g. House 40, Road 3/A, Sector 15, Uttara, Dhaka')} autocomplete="off">
+          </div>`,
+      notes: `
           <div class="field span-2">
             <label for="cf-notes">Notes</label>
-            <textarea class="textarea" id="cf-notes" name="notes" rows="2">${esc(c.notes || '')}</textarea>
-          </div>
+            <textarea class="textarea" id="cf-notes" name="notes" rows="2"${ph('e.g. Preferred contact time, vehicle preferences, special instructions')}>${esc(c.notes || '')}</textarea>
+          </div>`
+    };
+    if (!sections) {
+      return `
+      <form id="custForm" novalidate>
+        <div class="form-grid">${Object.values(f).join('')}
         </div>
+      </form>`;
+    }
+    return `
+      <form id="custForm" class="veh-form" novalidate>
+        ${sections.map(s => `
+        <div class="form-section form-section--${s.key}" role="group" aria-labelledby="cfs-${s.key}">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="${s.icon}"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="cfs-${s.key}">${s.title}</h3>
+              <p class="form-section__desc">${s.desc}</p>
+            </div>
+          </div>
+          <div class="form-grid form-section__body">${s.fields.map(k => f[k]).join('')}
+          </div>
+        </div>`).join('')}
       </form>`;
   }
 
@@ -194,11 +239,24 @@
   function openAddModal() {
     const ov = Modal.open({
       title: 'Add Customer',
-      body: formHtml(),
+      body: formHtml({}, { sections: ADD_SECTIONS }),
       footer: `
         <button class="btn btn--ghost" data-modal-close>Cancel</button>
         <button class="btn btn--primary" data-save>Save Customer</button>`
     });
+    // Add-only presentation: an icon and a one-line description in the shared
+    // modal header. .veh-add is the sectioned form-modal styling the vehicle
+    // forms use; this modal reuses it unchanged.
+    const modal = ov.querySelector('.modal');
+    modal.classList.add('veh-add');
+    const title = modal.querySelector('.modal__head h2');
+    title.insertAdjacentHTML('beforebegin', `<span class="veh-add__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${ICON_PERSON}"/></svg></span>`);
+    const titles = document.createElement('div');
+    titles.className = 'veh-add__titles';
+    title.replaceWith(titles);
+    titles.append(title);
+    titles.insertAdjacentHTML('beforeend', `<p class="veh-add__sub" id="cust-add-sub">Create a new customer profile</p>`);
+    modal.setAttribute('aria-describedby', 'cust-add-sub');
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#custForm');
       const values = readForm(form);
