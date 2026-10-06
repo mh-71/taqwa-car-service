@@ -160,18 +160,128 @@
     ).join('');
   }
 
+  /* Searchable customer picker (Add Vehicle only). The chosen customer's id
+     goes into a hidden input named customerId, so readForm, validate and the
+     API payload see exactly what the <select> used to give them. */
+  const PICKER_LIMIT = 50;
+  const digitsOf = s => String(s || '').replace(/\D/g, '');
+
+  function customerPickerHtml(selectedId = '') {
+    const c = selectedId ? Storage.getById('customers', selectedId) : null;
+    return `
+      <div class="cust-picker">
+        <div class="cust-picker__box">
+          <input class="input" id="vf-customer-search" type="text" autocomplete="off"
+                 placeholder="🔍 Search customer by name or phone"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="vf-customer-list"
+                 value="${c ? esc(`${c.name} — ${c.phone}`) : ''}">
+          <button type="button" class="cust-picker__clear" aria-label="Clear selected customer"${c ? '' : ' hidden'}>&times;</button>
+        </div>
+        <input type="hidden" id="vf-customer" name="customerId" value="${c ? esc(c.id) : ''}">
+        <ul class="cust-picker__list" id="vf-customer-list" role="listbox" aria-label="Matching customers" hidden></ul>
+        <div class="cust-picker__picked muted-note"${c ? '' : ' hidden'}>${c ? `Selected: ${esc(c.id)}` : ''}</div>
+      </div>`;
+  }
+
+  function matchCustomers(query) {
+    const all = Storage.getData('customers')
+      .slice().sort((a, b) => a.name.localeCompare(b.name));
+    const q = query.trim().toLowerCase();
+    if (!q) return all;
+    const qDigits = digitsOf(q);
+    return all.filter(c =>
+      (c.name || '').toLowerCase().includes(q) ||
+      (qDigits.length >= 3 && digitsOf(c.phone).includes(qDigits)));
+  }
+
+  function bindCustomerPicker(root) {
+    const hidden = root.querySelector('#vf-customer');
+    const input = root.querySelector('#vf-customer-search');
+    const list = root.querySelector('#vf-customer-list');
+    const clear = root.querySelector('.cust-picker__clear');
+    const picked = root.querySelector('.cust-picker__picked');
+    let matches = [];
+    let active = -1;
+
+    const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; };
+    const highlight = i => {
+      active = i;
+      list.querySelectorAll('[role="option"]').forEach((li, n) => li.classList.toggle('is-active', n === i));
+      const li = list.querySelector(`[data-index="${i}"]`);
+      if (li) { li.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', li.id); }
+      else input.removeAttribute('aria-activedescendant');
+    };
+    const render = () => {
+      matches = matchCustomers(input.value);
+      const shown = matches.slice(0, PICKER_LIMIT);
+      list.innerHTML = shown.length
+        ? shown.map((c, i) => `
+            <li role="option" id="vf-cust-opt-${i}" data-index="${i}" aria-selected="${c.id === hidden.value}">
+              <span class="cust-picker__name">${esc(c.name)}</span>
+              <span class="cust-picker__meta">${esc(c.phone || '')} · ${esc(c.id)}</span>
+            </li>`).join('') +
+          (matches.length > PICKER_LIMIT
+            ? `<li class="cust-picker__more" aria-hidden="true">Showing ${PICKER_LIMIT} of ${matches.length} — keep typing to narrow down.</li>` : '')
+        : `<li class="cust-picker__empty">No customers found</li>`;
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      highlight(shown.length ? 0 : -1);
+    };
+    const choose = c => {
+      hidden.value = c.id;
+      input.value = `${c.name} — ${c.phone}`;
+      picked.textContent = `Selected: ${c.id}`;
+      picked.hidden = false;
+      clear.hidden = false;
+      close();
+    };
+    const unselect = () => {
+      hidden.value = '';
+      picked.hidden = true;
+      clear.hidden = true;
+    };
+
+    input.addEventListener('click', () => { if (list.hidden) render(); });
+    input.addEventListener('input', () => { unselect(); render(); });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) { render(); return; }
+        const n = Math.min(matches.length, PICKER_LIMIT);
+        if (n) highlight((active + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!list.hidden && active >= 0) choose(matches[active]);
+      } else if (e.key === 'Escape' && !list.hidden) {
+        e.stopPropagation(); // close the list, not the whole modal
+        close();
+      }
+    });
+    // mousedown (not click) so the choice lands before the input's blur closes the list
+    list.addEventListener('mousedown', e => {
+      const li = e.target.closest('[role="option"]');
+      e.preventDefault();
+      if (li) choose(matches[Number(li.dataset.index)]);
+    });
+    input.addEventListener('blur', close);
+    clear.addEventListener('click', () => { input.value = ''; unselect(); input.focus(); });
+  }
+
   function selectOptions(list, selected) {
     return `<option value="">— Select —</option>` +
       list.map(o => `<option${o === selected ? ' selected' : ''}>${esc(o)}</option>`).join('');
   }
 
-  function formHtml(v = {}) {
+  function formHtml(v = {}, { customerSearch = false } = {}) {
     return `
       <form id="vehForm" novalidate>
         <div class="form-grid">
           <div class="field span-2">
-            <label for="vf-customer">Customer <span class="req">*</span></label>
-            <select class="select" id="vf-customer" name="customerId">${customerOptions(v.customerId)}</select>
+            ${customerSearch
+              ? `<label for="vf-customer-search">Customer <span class="req">*</span></label>
+            ${customerPickerHtml(v.customerId)}`
+              : `<label for="vf-customer">Customer <span class="req">*</span></label>
+            <select class="select" id="vf-customer" name="customerId">${customerOptions(v.customerId)}</select>`}
             <div class="field__error" data-err="customerId"></div>
           </div>
           <div class="field">
@@ -306,10 +416,11 @@
     }
     const ov = Modal.open({
       title: 'Add Vehicle', size: 'lg',
-      body: formHtml({ customerId: prefillCustomerId }),
+      body: formHtml({ customerId: prefillCustomerId }, { customerSearch: true }),
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Vehicle</button>`
     });
+    bindCustomerPicker(ov);
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
