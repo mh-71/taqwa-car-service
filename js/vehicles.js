@@ -15,7 +15,7 @@
   let fBrand = 'all', fFuel = 'all', fService = 'all', fStatus = 'all';
   let sortBy = 'added-desc';
 
-  const FUEL_TYPES = ['Petrol', 'Octane', 'Diesel', 'CNG', 'CNG + Octane', 'Hybrid', 'Electric'];
+  const FUEL_TYPES = ['Petrol', 'Octane', 'Diesel', 'Hybrid', 'CNG', 'LPG', 'Hybrid + LPG', 'CNG + Octane', 'LPG + Octane', 'Electric'];
   const TRANSMISSIONS = ['Manual', 'Automatic', 'CVT', 'AMT', 'Other'];
 
   /* ============================================================
