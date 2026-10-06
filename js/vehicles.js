@@ -670,10 +670,18 @@
       </form>`;
   }
 
+  /* Registration number: trim, collapse inner whitespace to one space and
+     uppercase -- applied only when the form is saved. No format pattern is
+     enforced (old, reconditioned and other formats all exist); only a sane
+     length, with the maximum matching what the API accepts. */
+  const REG_MIN = 3;
+  const REG_MAX = 40;
+  const normalizeRegNo = s => String(s || '').trim().replace(/\s+/g, ' ').toUpperCase();
+
   function readForm(form) {
     const val = n => form[n].value.trim();
     return {
-      customerId: val('customerId'), regNo: val('regNo').toUpperCase(),
+      customerId: val('customerId'), regNo: normalizeRegNo(form.regNo.value),
       brand: val('brand'), model: val('model'),
       year: val('year') ? Number(val('year')) : '',
       color: val('color'),
@@ -697,6 +705,10 @@
     }
     if (!values.regNo) {
       errors.regNo = 'Registration number is required.';
+    } else if (values.regNo.length < REG_MIN) {
+      errors.regNo = `Registration number is too short (at least ${REG_MIN} characters).`;
+    } else if (values.regNo.length > REG_MAX) {
+      errors.regNo = `Registration number is too long (at most ${REG_MAX} characters).`;
     } else {
       const norm = values.regNo.replace(/[\s-]/g, '').toLowerCase();
       const dup = Storage.getData('vehicles').find(v =>
