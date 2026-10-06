@@ -25,6 +25,11 @@
     'MG', 'Deepal', 'Jaecoo', 'Omoda', 'Tata', 'Mahindra', 'Ashok Leyland', 'Maruti Suzuki', 'Renault',
     'Peugeot', 'Citroën', 'Proton', 'Fiat'
   ];
+  const VEHICLE_COLORS = [
+    'Black', 'White', 'Silver', 'Grey', 'Gray', 'Red', 'Blue', 'Dark Blue', 'Light Blue', 'Green', 'Dark Green',
+    'Light Green', 'Brown', 'Beige', 'Gold', 'Bronze', 'Orange', 'Yellow', 'Purple', 'Maroon', 'Wine', 'Burgundy',
+    'Cream', 'Pearl White', 'Off White', 'Champagne', 'Gunmetal', 'Charcoal'
+  ];
   /* Brand -> common models (Bangladesh new/reconditioned market). Suggestions
      only: the model field still accepts any text, so a missing or uncommon
      model can always be typed. */
@@ -499,6 +504,75 @@
     input.addEventListener('blur', close);
   }
 
+  /* Searchable color field (Add and Edit). Same pattern as the brand field:
+     the input stays the `color` value, a color outside the list can still be
+     typed, and a saved color is shown as-is. Grey and Gray are treated as one
+     spelling when matching, so "gre" also finds Gray. Colors that start with
+     the typed text come first; each group keeps list order. */
+  const colorKey = s => String(s || '').toLowerCase().replace(/gray/g, 'grey');
+
+  function matchColors(query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return VEHICLE_COLORS.slice();
+    const qKey = colorKey(q);
+    const starts = [], contains = [];
+    VEHICLE_COLORS.forEach(c => {
+      const raw = c.toLowerCase(), key = colorKey(c);
+      if (raw.startsWith(q) || key.startsWith(qKey)) starts.push(c);
+      else if (raw.includes(q) || key.includes(qKey)) contains.push(c);
+    });
+    return starts.concat(contains);
+  }
+
+  function bindColorPicker(root) {
+    const input = root.querySelector('#vf-color');
+    const list = root.querySelector('#vf-color-list');
+    let matches = [];
+    let active = -1;
+
+    const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; };
+    const highlight = i => {
+      active = i;
+      list.querySelectorAll('[role="option"]').forEach((li, n) => li.classList.toggle('is-active', n === i));
+      const li = list.querySelector(`[data-index="${i}"]`);
+      if (li) { li.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', li.id); }
+      else input.removeAttribute('aria-activedescendant');
+    };
+    const render = () => {
+      matches = matchColors(input.value);
+      list.innerHTML = matches.length
+        ? matches.map((c, i) => `<li role="option" id="vf-color-opt-${i}" data-index="${i}" aria-selected="${c === input.value}"><span class="cust-picker__name">${esc(c)}</span></li>`).join('')
+        : `<li class="cust-picker__empty">No colors found</li>`;
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      highlight(matches.length && input.value.trim() ? 0 : -1);
+    };
+    const choose = c => { input.value = c; close(); };
+
+    input.addEventListener('click', () => { if (list.hidden) render(); });
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) { render(); return; }
+        if (matches.length) highlight((active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!list.hidden && active >= 0) choose(matches[active]);
+      } else if (e.key === 'Escape' && !list.hidden) {
+        e.stopPropagation(); // close the list, not the whole modal
+        close();
+      }
+    });
+    // mousedown (not click) so the choice lands before the input's blur closes the list
+    list.addEventListener('mousedown', e => {
+      const li = e.target.closest('[role="option"]');
+      e.preventDefault();
+      if (li) choose(matches[Number(li.dataset.index)]);
+    });
+    input.addEventListener('blur', close);
+  }
+
   function selectOptions(list, selected) {
     return `<option value="">— Select —</option>` +
       list.map(o => `<option${o === selected ? ' selected' : ''}>${esc(o)}</option>`).join('');
@@ -546,7 +620,11 @@
           </div>
           <div class="field">
             <label for="vf-color">Color</label>
-            <input class="input" id="vf-color" name="color" value="${esc(v.color || '')}" autocomplete="off">
+            <div class="cust-picker">
+              <input class="input" id="vf-color" name="color" value="${esc(v.color || '')}" placeholder="🔍 Search color" autocomplete="off"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="vf-color-list">
+              <ul class="cust-picker__list" id="vf-color-list" role="listbox" aria-label="Matching colors" hidden></ul>
+            </div>
           </div>
           <div class="field">
             <label for="vf-mileage">Mileage (km)</label>
@@ -663,6 +741,7 @@
     bindCustomerPicker(ov);
     bindBrandPicker(ov);
     bindModelPicker(ov);
+    bindColorPicker(ov);
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
@@ -693,6 +772,7 @@
     });
     bindBrandPicker(ov);
     bindModelPicker(ov);
+    bindColorPicker(ov);
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
