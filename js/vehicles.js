@@ -17,6 +17,14 @@
 
   const FUEL_TYPES = ['Petrol', 'Octane', 'Diesel', 'Hybrid', 'CNG', 'LPG', 'Hybrid + LPG', 'CNG + Octane', 'LPG + Octane', 'Electric'];
   const TRANSMISSIONS = ['Manual', 'Automatic', 'CVT', 'AMT', 'Other'];
+  const VEHICLE_BRANDS = [
+    'Toyota', 'Honda', 'Nissan', 'Mitsubishi', 'Suzuki', 'Mazda', 'Subaru', 'Daihatsu', 'Isuzu', 'Lexus',
+    'Infiniti', 'Hyundai', 'Kia', 'Genesis', 'SsangYong', 'BMW', 'Mercedes-Benz', 'Audi', 'Volkswagen',
+    'Porsche', 'Land Rover', 'Jaguar', 'Volvo', 'Skoda', 'Ford', 'Chevrolet', 'Jeep', 'GMC', 'Cadillac',
+    'Tesla', 'BYD', 'Chery', 'Geely', 'Haval', 'GWM', 'BAIC', 'JAC', 'Jetour', 'Changan', 'DFSK', 'Foton',
+    'MG', 'Deepal', 'Jaecoo', 'Omoda', 'Tata', 'Mahindra', 'Ashok Leyland', 'Maruti Suzuki', 'Renault',
+    'Peugeot', 'Citroën', 'Proton', 'Fiat'
+  ];
 
   /* ============================================================
      Derived vehicle stats (from real job cards / invoices only)
@@ -267,6 +275,70 @@
     clear.addEventListener('click', () => { input.value = ''; unselect(); input.focus(); });
   }
 
+  /* Searchable brand field (Add and Edit). The input itself stays the `brand`
+     value, so picking from the list just fills it in; a brand outside the
+     list can still be typed, exactly as before. Reuses the customer picker's
+     dropdown styles. */
+  function matchBrands(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return VEHICLE_BRANDS.slice();
+    const starts = [], contains = [];
+    VEHICLE_BRANDS.forEach(b => {
+      const i = b.toLowerCase().indexOf(q);
+      if (i === 0) starts.push(b); else if (i > 0) contains.push(b);
+    });
+    return starts.concat(contains);
+  }
+
+  function bindBrandPicker(root) {
+    const input = root.querySelector('#vf-brand');
+    const list = root.querySelector('#vf-brand-list');
+    let matches = [];
+    let active = -1;
+
+    const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; };
+    const highlight = i => {
+      active = i;
+      list.querySelectorAll('[role="option"]').forEach((li, n) => li.classList.toggle('is-active', n === i));
+      const li = list.querySelector(`[data-index="${i}"]`);
+      if (li) { li.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', li.id); }
+      else input.removeAttribute('aria-activedescendant');
+    };
+    const render = () => {
+      matches = matchBrands(input.value);
+      list.innerHTML = matches.length
+        ? matches.map((b, i) => `<li role="option" id="vf-brand-opt-${i}" data-index="${i}" aria-selected="${b === input.value}"><span class="cust-picker__name">${esc(b)}</span></li>`).join('')
+        : `<li class="cust-picker__empty">No brands found</li>`;
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      highlight(matches.length && input.value.trim() ? 0 : -1);
+    };
+    const choose = b => { input.value = b; close(); };
+
+    input.addEventListener('click', () => { if (list.hidden) render(); });
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) { render(); return; }
+        if (matches.length) highlight((active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!list.hidden && active >= 0) choose(matches[active]);
+      } else if (e.key === 'Escape' && !list.hidden) {
+        e.stopPropagation(); // close the list, not the whole modal
+        close();
+      }
+    });
+    // mousedown (not click) so the choice lands before the input's blur closes the list
+    list.addEventListener('mousedown', e => {
+      const li = e.target.closest('[role="option"]');
+      e.preventDefault();
+      if (li) choose(matches[Number(li.dataset.index)]);
+    });
+    input.addEventListener('blur', close);
+  }
+
   function selectOptions(list, selected) {
     return `<option value="">— Select —</option>` +
       list.map(o => `<option${o === selected ? ' selected' : ''}>${esc(o)}</option>`).join('');
@@ -296,7 +368,11 @@
           </div>
           <div class="field">
             <label for="vf-brand">Brand <span class="req">*</span></label>
-            <input class="input" id="vf-brand" name="brand" value="${esc(v.brand || '')}" placeholder="Toyota" autocomplete="off">
+            <div class="cust-picker">
+              <input class="input" id="vf-brand" name="brand" value="${esc(v.brand || '')}" placeholder="🔍 Search brand" autocomplete="off"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="vf-brand-list">
+              <ul class="cust-picker__list" id="vf-brand-list" role="listbox" aria-label="Matching brands" hidden></ul>
+            </div>
             <div class="field__error" data-err="brand"></div>
           </div>
           <div class="field">
@@ -421,6 +497,7 @@
                <button class="btn btn--primary" data-save>Save Vehicle</button>`
     });
     bindCustomerPicker(ov);
+    bindBrandPicker(ov);
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
@@ -449,6 +526,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
+    bindBrandPicker(ov);
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#vehForm');
       const values = readForm(form);
