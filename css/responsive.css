@@ -58,12 +58,27 @@
   .veh-add .modal__foot { padding: 12px 16px; }
   .form-section__head { padding: 10px 12px; }
   .form-section__body { padding: 14px 12px 0; }
+
+  .veh-view .modal__head { padding: 14px 16px; gap: 12px; align-items: flex-start; }
+  .veh-view__icon { width: 40px; height: 40px; }
+  .veh-view .modal__body { padding: 14px 12px; }
+  .veh-view .modal__foot { padding: 12px 16px; }
+  .vd-section__body { padding: 12px; }
+  .vd-ident { grid-template-columns: 1fr; gap: 12px; }
+  .vd-photo { flex-direction: row; min-height: 0; padding: 10px; }
+  .vd-photo svg { width: 28px; height: 28px; }
+  .vd-grid, .vd-grid--2 { grid-template-columns: 1fr; gap: 8px; }
+  .vd-item { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .vd-item__label { margin: 0; flex: none; }
+  .vd-item__value { text-align: right; }
+  .vd-stats { grid-template-columns: 1fr 1fr; }
 }
 
 /* ---------- ≤400px ---------- */
 @media (max-width: 400px) {
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .content { padding: 12px; }
+  .vd-stats { grid-template-columns: 1fr; }
 }
 
 /* ---------- print: hide app chrome ---------- */

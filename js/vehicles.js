@@ -948,7 +948,7 @@ ${s.fields.map(k => f[k]).join('\n')}
               <td>${badge(j.status)}</td>
             </tr>`).join('')}
           </tbody></table></div>`
-      : `<p class="muted-note">No service history yet.</p>`;
+      : emptyState('No service history yet.', 'Service records will appear here once available.');
 
     const invs = st.invoices.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const invoiceHtml = invs.length
@@ -965,48 +965,104 @@ ${s.fields.map(k => f[k]).join('\n')}
               <td>${badge(i.status)}</td>
             </tr>`).join('')}
           </tbody></table></div>`
-      : `<p class="muted-note">No invoice history yet.</p>`;
+      : emptyState('No invoice history yet.', 'Invoice records will appear here once available.');
 
-    Modal.open({
+    const TECH = ['VIN', 'Chassis No', 'Engine No'];
+    const item = ([k, val]) => `<div class="vd-item"><span class="vd-item__label">${k}</span><strong class="vd-item__value">${esc(String(val))}</strong></div>`;
+    const stat = (icon, value, label, tone = '') =>
+      `<div class="vd-stat${tone ? ' vd-stat--' + tone : ''}"><span class="vd-stat__icon" aria-hidden="true">${svg(icon, 18)}</span>` +
+      `<div><strong>${value}</strong><span>${label}</span></div></div>`;
+
+    const ov = Modal.open({
       title: `${v.brand} ${v.model} — ${v.regNo}`,
       size: 'lg',
       body: `
-        <div class="detail-grid detail-grid--3">
-          ${info.map(([k, val]) => `<div class="detail-item"><span>${k}</span><strong>${esc(String(val))}</strong></div>`).join('')}
-          <div class="detail-item"><span>Status</span><strong>${badge(v.status || 'Active')}</strong></div>
-        </div>
-
-        <h3 class="detail-section-title">Owner</h3>
-        ${owner ? `
-        <div class="detail-grid">
-          <div class="detail-item"><span>Name</span><strong>${esc(owner.name)} (${esc(owner.id)})</strong></div>
-          <div class="detail-item"><span>Phone</span><strong>${esc(owner.phone)}</strong></div>
-          <div class="detail-item"><span>Email</span><strong>${owner.email ? esc(owner.email) : '—'}</strong></div>
-          <div class="detail-item"><span>Address</span><strong>${owner.address ? esc(owner.address) : '—'}</strong></div>
-        </div>` : `<p class="muted-note">Owner record not found (${esc(v.customerId || 'none')}).</p>`}
-
-        <div class="summary-row summary-row--6">
-          <div class="summary-tile"><strong>${st.serviceCount}</strong><span>Total Services</span></div>
-          <div class="summary-tile"><strong>${money(st.totalSpent)}</strong><span>Total Spent</span></div>
-          <div class="summary-tile summary-tile--good"><strong>${money(st.totalPaid)}</strong><span>Total Paid</span></div>
-          <div class="summary-tile ${st.totalDue > 0 ? 'summary-tile--bad' : ''}"><strong>${money(st.totalDue)}</strong><span>Total Due</span></div>
-          <div class="summary-tile"><strong>${st.lastServiceDate ? fmtDate(st.lastServiceDate) : 'No service yet'}</strong><span>Last Service</span></div>
-          <div class="summary-tile"><strong>${v.nextServiceDate ? fmtDate(v.nextServiceDate) : '—'}</strong><span>Next Service</span></div>
-        </div>
-
-        <h3 class="detail-section-title">Service History</h3>
-        ${historyHtml}
-
-        <h3 class="detail-section-title">Invoice History</h3>
-        ${invoiceHtml}`,
+        <div class="vd">
+          ${detailSection('ident', ICONS.vehicle, 'Vehicle Identification', 'Basic information about this vehicle', `
+            <div class="vd-ident">
+              <div class="vd-photo" role="img" aria-label="No vehicle photo">${svg(ICONS.vehicle, 52)}<span>No vehicle photo</span></div>
+              <div class="vd-grid">${info.filter(([k]) => !TECH.includes(k)).map(item).join('')}</div>
+            </div>`)}
+          ${detailSection('tech', ICONS.wrench, 'Technical Details', 'Identification numbers and technical information', `
+            <div class="vd-grid">${info.filter(([k]) => TECH.includes(k)).map(item).join('')}</div>`)}
+          ${detailSection('owner', ICONS.person, 'Owner Information', 'Registered owner details', owner ? `
+            <div class="vd-grid vd-grid--2">
+              ${item(['Name', `${owner.name} (${owner.id})`])}
+              ${item(['Phone', owner.phone])}
+              ${item(['Email', owner.email || '—'])}
+              ${item(['Address', owner.address || '—'])}
+            </div>` : `<p class="vd-note">Owner record not found (${esc(v.customerId || 'none')}).</p>`)}
+          ${detailSection('summary', ICONS.chart, 'Service Summary', 'Quick overview of service and payment information', `
+            <div class="vd-stats">
+              ${stat(ICONS.wrench, st.serviceCount, 'Total Services')}
+              ${stat(ICONS.invoice, money(st.totalSpent), 'Total Spent')}
+              ${stat(ICONS.card, money(st.totalPaid), 'Total Paid', 'good')}
+              ${stat(ICONS.clock, money(st.totalDue), 'Total Due', st.totalDue > 0 ? 'bad' : '')}
+              ${stat(ICONS.calendar, st.lastServiceDate ? fmtDate(st.lastServiceDate) : 'No service yet', 'Last Service')}
+              ${stat(ICONS.calendar, v.nextServiceDate ? fmtDate(v.nextServiceDate) : '—', 'Next Service')}
+            </div>`)}
+          ${detailSection('history', ICONS.job, 'Service History', '', historyHtml, jobs.length > 0)}
+          ${detailSection('invoices', ICONS.invoice, 'Invoice History', '', invoiceHtml, invs.length > 0)}
+        </div>`,
       footer: `
-        ${owner ? `<a class="btn btn--ghost" href="customers.html?view=${encodeURIComponent(owner.id)}">View Customer</a>` : ''}
+        ${owner ? `<a class="btn btn--ghost" href="customers.html?view=${encodeURIComponent(owner.id)}">${svg(ICONS.eye, 16)}View Customer</a>` : ''}
         <button class="btn btn--ghost" data-modal-close>Close</button>
-        <button class="btn btn--primary" data-edit-from-view>Edit Vehicle</button>`
-    }).querySelector('[data-edit-from-view]').addEventListener('click', () => {
+        <button class="btn btn--primary" data-edit-from-view>${svg(ICONS.edit, 16)}Edit Vehicle</button>`
+    });
+    // Details-only presentation: vehicle icon, the model as the title with the
+    // registration and status beneath it. The dialog keeps its full aria-label.
+    // (Skipped when Modal.open hands back no real element, as in the unit tests' stub.)
+    const modal = ov.querySelector('.modal');
+    if (modal && modal.classList) {
+      modal.classList.add('veh-view');
+      const title = modal.querySelector('.modal__head h2');
+      title.textContent = `${v.brand} ${v.model}`;
+      title.insertAdjacentHTML('beforebegin', `<span class="veh-view__icon" aria-hidden="true">${svg(ICONS.vehicle, 26)}</span>`);
+      const titles = document.createElement('div');
+      titles.className = 'veh-view__titles';
+      title.replaceWith(titles);
+      titles.append(title);
+      titles.insertAdjacentHTML('beforeend', `<div class="veh-view__meta"><span class="veh-view__reg">${esc(v.regNo)}</span>${badge(v.status || 'Active')}</div>`);
+    }
+    ov.querySelector('[data-edit-from-view]').addEventListener('click', () => {
       Modal.close();
       openEditModal(id);
     });
+  }
+
+  /* Icons for the details view, taken from the sidebar and table actions so
+     the modal uses the app's existing icon set. */
+  const ICONS = {
+    vehicle: FORM_SECTIONS[1].icon,
+    person: FORM_SECTIONS[0].icon,
+    wrench: FORM_SECTIONS[2].icon,
+    invoice: FORM_SECTIONS[3].icon,
+    chart: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z',
+    job: 'M20 6h-4V4c0-1.1-.9-2-2-2h-4C8.9 2 8 2.9 8 4v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4z',
+    card: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z',
+    calendar: 'M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z',
+    clock: 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z',
+    eye: 'M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5zm0-8c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3z',
+    edit: 'M3 17.2V21h3.8l11-11.1-3.7-3.7L3 17.2zM20.7 7c.4-.4.4-1 0-1.4l-2.3-2.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.7 3.7L20.7 7z'
+  };
+  const svg = (d, size) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>`;
+
+  function detailSection(key, icon, title, desc, content, flush = false) {
+    return `
+          <section class="form-section vd-section vd-section--${key}" aria-labelledby="vd-${key}">
+            <div class="form-section__head">
+              <span class="form-section__icon" aria-hidden="true">${svg(icon, 18)}</span>
+              <div>
+                <h3 class="form-section__title" id="vd-${key}">${title}</h3>
+                ${desc ? `<p class="form-section__desc">${desc}</p>` : ''}
+              </div>
+            </div>
+            <div class="vd-section__body${flush ? ' vd-section__body--flush' : ''}">${content}</div>
+          </section>`;
+  }
+
+  function emptyState(title, hint) {
+    return `<div class="vd-empty">${svg(ICONS.invoice, 26)}<p>${title}</p><span>${hint}</span></div>`;
   }
 
   /* ============================================================
