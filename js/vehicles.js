@@ -618,7 +618,7 @@
       year: `
           <div class="field">
             <label for="vf-year">Year</label>
-            <input class="input" id="vf-year" name="year" type="number" min="1950" value="${esc(v.year || '')}">
+            <input class="input" id="vf-year" name="year" type="text" inputmode="numeric" value="${esc(v.year || '')}">
             <div class="field__error" data-err="year"></div>
           </div>`,
       brand: `
@@ -734,12 +734,17 @@ ${s.fields.map(k => f[k]).join('\n')}
   const REG_MAX = 40;
   const normalizeRegNo = s => String(s || '').trim().replace(/\s+/g, ' ').toUpperCase();
 
+  /* Year is optional; when given it must be exactly 4 digits (no other characters)
+     and within the database's range, 1900-2200. */
+  const YEAR_RE = /^[0-9]{4}$/;
+
   function readForm(form) {
     const val = n => form[n].value.trim();
     return {
       customerId: val('customerId'), regNo: normalizeRegNo(form.regNo.value),
       brand: val('brand'), model: val('model'),
-      year: val('year') ? Number(val('year')) : '',
+      // a Year that is not exactly 4 digits stays text so validate() can reject it
+      year: val('year') === '' ? '' : YEAR_RE.test(val('year')) ? Number(val('year')) : val('year'),
       color: val('color'),
       mileage: val('mileage') ? Number(val('mileage')) : '',
       fuelType: val('fuelType'), transmission: val('transmission'),
@@ -752,7 +757,6 @@ ${s.fields.map(k => f[k]).join('\n')}
 
   function validate(values, editingId = null) {
     const errors = {};
-    const thisYear = new Date().getFullYear();
 
     if (!values.customerId) {
       errors.customerId = 'Select the customer who owns this vehicle.';
@@ -773,8 +777,10 @@ ${s.fields.map(k => f[k]).join('\n')}
     }
     if (!values.brand) errors.brand = 'Brand is required.';
     if (!values.model) errors.model = 'Model is required.';
-    if (values.year !== '' && (values.year < 1950 || values.year > thisYear + 1))
-      errors.year = `Year must be between 1950 and ${thisYear + 1}.`;
+    if (typeof values.year === 'string' && values.year !== '')
+      errors.year = 'Year must be exactly 4 digits.';
+    else if (values.year !== '' && (values.year < 1900 || values.year > 2200))
+      errors.year = 'Year must be between 1900 and 2200.';
     if (values.mileage !== '' && values.mileage < 0)
       errors.mileage = 'Mileage cannot be negative.';
 
