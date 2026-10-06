@@ -63,17 +63,17 @@ const normReg = (reg) => String(reg || '').replace(/[\s-]/g, '').toLowerCase();
 function readFields(body, mode) {
   const f = fieldSet(body, mode);
   const required = mode === 'create';
-  // vehicles.js:281 — the upper bound moves with the calendar, exactly as the
-  // form's does, so a new model year is accepted the day it becomes plausible.
-  const maxYear = new Date().getUTCFullYear() + 1;
 
   f.take('customer_id', 'customerId', readString(body, 'customerId', { required, max: 32 }));
   f.take('reg_no', 'regNo', readString(body, 'regNo', { required, max: 40 }));
   f.take('brand', 'brand', readString(body, 'brand', { required, max: 80 }));
   f.take('model', 'model', readString(body, 'model', { required, max: 80 }));
-  // The form's range is narrower than the column's CHECK (1900-2200); the
-  // form's is the one users see, so it is the one enforced.
-  f.take('year', 'year', readNumber(body, 'year', { min: 1950, max: maxYear, integer: true }));
+  // Year is optional; when given it must be exactly 4 digits within the
+  // column's CHECK (1900-2200) -- the same rule as the form.
+  f.take('year', 'year', readNumber(body, 'year', { min: 1900, max: 2200, integer: true }));
+  if (body.year !== undefined && body.year !== null && body.year !== '' && !/^[0-9]{4}$/.test(String(body.year))) {
+    f.reject('year', '`year` must be exactly 4 digits.');
+  }
   f.take('color', 'color', readString(body, 'color', { max: 40 }));
   f.take('vin', 'vin', readString(body, 'vin', { max: 64 }));
   f.take('engine_no', 'engineNo', readString(body, 'engineNo', { max: 64 }));

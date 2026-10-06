@@ -429,7 +429,7 @@ console.log('\n-- 12. Field values: zero and empty survive --');
     ['services', { ...VALID.services, price: -1 }, 'price'],
     ['mechanics', { ...VALID.mechanics, commissionRate: 101 }, 'commissionRate'],
     ['mechanics', { ...VALID.mechanics, experience: -1 }, 'experience'],
-    ['vehicles', { ...VALID.vehicles, year: 1900 }, 'year'],
+    ['vehicles', { ...VALID.vehicles, year: 2201 }, 'year'],
     ['vehicles', { ...VALID.vehicles, mileage: -5 }, 'mileage'],
     ['parts', { ...VALID.parts, purchasePrice: -1 }, 'purchasePrice'],
   ]) {
@@ -453,6 +453,24 @@ console.log('\n-- 12. Field values: zero and empty survive --');
     ok_(`${entity}.${field} invalid -> 422`, r.status === 422, `got ${r.status}`);
     ok_('   ...names the field', b.error.fields && field in b.error.fields, b.error);
   }
+
+  // Vehicle year: optional; when given, exactly 4 digits and 1900-2200.
+  for (const year of ['0000', '0024', 1899, 2201, 24, '123', '12345', '20A4', '2024abc', -2024, '+2024', '20 24', '2 024', 2024.5]) {
+    const db = stubDB();
+    const r = await post('/api/vehicles', { ...VALID.vehicles, year }, db);
+    const b = await r.json();
+    ok_(`vehicles.year ${JSON.stringify(year)} -> 422`, r.status === 422 && b.error.fields && 'year' in b.error.fields, `got ${r.status}`);
+    ok_('   ...and never reaches the database', !db.find('INSERT INTO vehicles'));
+  }
+  for (const year of [1900, 1950, 2024, 2200, '1998', '', null]) {
+    const db = stubDB({ returning: { id: 'VEH-0001' } });
+    const r = await post('/api/vehicles', { ...VALID.vehicles, year }, db);
+    ok_(`vehicles.year ${JSON.stringify(year)} -> 201`, r.status === 201, `got ${r.status}`);
+    const want = year === '' || year === null ? null : Number(year);
+    ok_('   ...binds ' + JSON.stringify(want), db.find('INSERT INTO vehicles').binds.includes(want), JSON.stringify(db.find('INSERT INTO vehicles').binds));
+  }
+  const yearPut = await put('/api/vehicles/VEH-0001', { year: '0024' }, stubDB({ returning: { id: 'VEH-0001' } }));
+  ok_('PUT vehicles.year "0024" -> 422', yearPut.status === 422, `got ${yearPut.status}`);
 }
 
 console.log('\n-- 13. Constraint errors from the database --');
