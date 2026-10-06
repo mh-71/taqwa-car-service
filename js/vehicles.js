@@ -578,10 +578,29 @@
       list.map(o => `<option${o === selected ? ' selected' : ''}>${esc(o)}</option>`).join('');
   }
 
+  /* Section headings for the Add Vehicle form. Icons reuse the sidebar's
+     paths so the modal speaks the same visual language as the navigation. */
+  const FORM_SECTIONS = [
+    { key: 'customer', title: 'Customer Information', desc: 'Who owns this vehicle',
+      icon: 'M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z',
+      fields: ['customer'] },
+    { key: 'ident', title: 'Vehicle Identification', desc: 'Basic details used to identify the vehicle',
+      icon: 'M18.9 6c-.2-.6-.8-1-1.4-1H6.5c-.6 0-1.2.4-1.4 1L3 12v8c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-1h12v1c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-8l-2.1-6zM6.5 15c-.8 0-1.5-.7-1.5-1.5S5.7 12 6.5 12s1.5.7 1.5 1.5S7.3 15 6.5 15zm11 0c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5zM5 10l1.5-4.5h11L19 10H5z',
+      fields: ['reg', 'year', 'brand', 'model', 'color', 'mileage'] },
+    { key: 'tech', title: 'Technical Details', desc: 'Additional technical information (optional)',
+      icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z',
+      fields: ['fuel', 'trans', 'vin', 'chassis', 'engine', 'next'] },
+    { key: 'status', title: 'Status & Notes', desc: 'Vehicle status and any additional notes',
+      icon: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+      fields: ['status', 'notes'] }
+  ];
+
+  /* Add Vehicle (customerSearch) groups the fields into titled sections;
+     Edit Vehicle keeps the plain grid. Both render the same fields, with the
+     same ids and names, in the same order. */
   function formHtml(v = {}, { customerSearch = false } = {}) {
-    return `
-      <form id="vehForm" novalidate>
-        <div class="form-grid">
+    const f = {
+      customer: `
           <div class="field span-2">
             ${customerSearch
               ? `<label for="vf-customer-search">Customer <span class="req">*</span></label>
@@ -589,17 +608,20 @@
               : `<label for="vf-customer">Customer <span class="req">*</span></label>
             <select class="select" id="vf-customer" name="customerId">${customerOptions(v.customerId)}</select>`}
             <div class="field__error" data-err="customerId"></div>
-          </div>
+          </div>`,
+      reg: `
           <div class="field">
             <label for="vf-reg">Registration Number <span class="req">*</span></label>
             <input class="input" id="vf-reg" name="regNo" value="${esc(v.regNo || '')}" placeholder="DHAKA-METRO-GA-1234" autocomplete="off">
             <div class="field__error" data-err="regNo"></div>
-          </div>
+          </div>`,
+      year: `
           <div class="field">
             <label for="vf-year">Year</label>
             <input class="input" id="vf-year" name="year" type="number" min="1950" value="${esc(v.year || '')}">
             <div class="field__error" data-err="year"></div>
-          </div>
+          </div>`,
+      brand: `
           <div class="field">
             <label for="vf-brand">Brand <span class="req">*</span></label>
             <div class="cust-picker">
@@ -608,7 +630,8 @@
               <ul class="cust-picker__list" id="vf-brand-list" role="listbox" aria-label="Matching brands" hidden></ul>
             </div>
             <div class="field__error" data-err="brand"></div>
-          </div>
+          </div>`,
+      model: `
           <div class="field">
             <label for="vf-model">Model <span class="req">*</span></label>
             <div class="cust-picker">
@@ -617,7 +640,8 @@
               <ul class="cust-picker__list" id="vf-model-list" role="listbox" aria-label="Matching models" hidden></ul>
             </div>
             <div class="field__error" data-err="model"></div>
-          </div>
+          </div>`,
+      color: `
           <div class="field">
             <label for="vf-color">Color</label>
             <div class="cust-picker">
@@ -625,48 +649,80 @@
                      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="vf-color-list">
               <ul class="cust-picker__list" id="vf-color-list" role="listbox" aria-label="Matching colors" hidden></ul>
             </div>
-          </div>
+          </div>`,
+      mileage: `
           <div class="field">
             <label for="vf-mileage">Mileage (km)</label>
             <input class="input" id="vf-mileage" name="mileage" type="number" min="0" value="${esc(v.mileage || '')}">
             <div class="field__error" data-err="mileage"></div>
-          </div>
+          </div>`,
+      fuel: `
           <div class="field">
             <label for="vf-fuel">Fuel Type</label>
             <select class="select" id="vf-fuel" name="fuelType">${selectOptions(FUEL_TYPES, v.fuelType)}</select>
-          </div>
+          </div>`,
+      trans: `
           <div class="field">
             <label for="vf-trans">Transmission</label>
             <select class="select" id="vf-trans" name="transmission">${selectOptions(TRANSMISSIONS, v.transmission)}</select>
-          </div>
+          </div>`,
+      vin: `
           <div class="field">
             <label for="vf-vin">VIN</label>
             <input class="input" id="vf-vin" name="vin" value="${esc(v.vin || '')}" autocomplete="off">
-          </div>
+          </div>`,
+      chassis: `
           <div class="field">
             <label for="vf-chassis">Chassis Number</label>
             <input class="input" id="vf-chassis" name="chassisNo" value="${esc(v.chassisNo || '')}" autocomplete="off">
-          </div>
+          </div>`,
+      engine: `
           <div class="field">
             <label for="vf-engine">Engine Number</label>
             <input class="input" id="vf-engine" name="engineNo" value="${esc(v.engineNo || '')}" autocomplete="off">
-          </div>
+          </div>`,
+      next: `
           <div class="field">
             <label for="vf-next">Next Service Date</label>
             <input class="input" id="vf-next" name="nextServiceDate" type="date" value="${esc(v.nextServiceDate || '')}">
-          </div>
+          </div>`,
+      status: `
           <div class="field">
             <label for="vf-status">Status</label>
             <select class="select" id="vf-status" name="status">
               <option${(v.status || 'Active') === 'Active' ? ' selected' : ''}>Active</option>
               <option${v.status === 'Inactive' ? ' selected' : ''}>Inactive</option>
             </select>
-          </div>
+          </div>`,
+      notes: `
           <div class="field span-2">
             <label for="vf-notes">Notes</label>
             <textarea class="textarea" id="vf-notes" name="notes" rows="2">${esc(v.notes || '')}</textarea>
-          </div>
+          </div>`
+    };
+    if (!customerSearch) {
+      return `
+      <form id="vehForm" novalidate>
+        <div class="form-grid">
+${Object.values(f).join('\n')}
         </div>
+      </form>`;
+    }
+    return `
+      <form id="vehForm" class="veh-form" novalidate>
+        ${FORM_SECTIONS.map(s => `
+        <div class="form-section form-section--${s.key}" role="group" aria-labelledby="vfs-${s.key}">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="${s.icon}"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="vfs-${s.key}">${s.title}</h3>
+              <p class="form-section__desc">${s.desc}</p>
+            </div>
+          </div>
+          <div class="form-grid form-section__body">
+${s.fields.map(k => f[k]).join('\n')}
+          </div>
+        </div>`).join('')}
       </form>`;
   }
 
@@ -750,6 +806,18 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Vehicle</button>`
     });
+    // Add-only presentation: an icon and a one-line description in the shared
+    // modal header; .veh-add scopes the sectioned styling to this modal.
+    const modal = ov.querySelector('.modal');
+    modal.classList.add('veh-add');
+    const title = modal.querySelector('.modal__head h2');
+    title.insertAdjacentHTML('beforebegin', `<span class="veh-add__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${FORM_SECTIONS[1].icon}"/></svg></span>`);
+    const titles = document.createElement('div');
+    titles.className = 'veh-add__titles';
+    title.replaceWith(titles);
+    titles.append(title);
+    titles.insertAdjacentHTML('beforeend', `<p class="veh-add__sub" id="veh-add-sub">Add a new vehicle to the customer profile</p>`);
+    modal.setAttribute('aria-describedby', 'veh-add-sub');
     bindCustomerPicker(ov);
     bindBrandPicker(ov);
     bindModelPicker(ov);

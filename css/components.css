@@ -444,3 +444,49 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .cust-picker__meta { font-size: .76rem; color: var(--text-2); }
 .cust-picker__empty, .cust-picker__more { padding: 10px; font-size: .82rem; color: var(--text-2); }
 .cust-picker__picked { margin-top: 4px; }
+
+/* ---------- Add Vehicle modal: header, titled sections, sticky footer ---------- */
+.veh-add { max-width: 880px; }
+.veh-add .modal__head { gap: 14px; padding: 16px 22px; z-index: 3; }
+.veh-add__icon {
+  flex: none; display: grid; place-items: center; width: 44px; height: 44px;
+  border-radius: var(--radius); background: var(--amber-soft); color: var(--amber-deep);
+}
+.veh-add__titles { min-width: 0; }
+.veh-add .modal__head h2 { font-size: 1.15rem; font-weight: 700; line-height: 1.25; }
+.veh-add__sub { margin: 2px 0 0; font-size: .82rem; color: var(--text-2); }
+.veh-add .modal__body { padding: 18px 22px; background: var(--paper); }
+.veh-add .field label { color: var(--text); }
+.veh-add .input, .veh-add .select { height: 40px; }
+/* brand / model / color open a list on click: show it like a dropdown */
+.veh-add .cust-picker > .input[role="combobox"] {
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238a97a6'%3E%3Cpath d='M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 18px;
+}
+.veh-add .modal__foot {
+  position: sticky; bottom: 0; z-index: 2;
+  padding: 14px 22px; background: var(--surface);
+}
+.veh-add .modal__foot .btn { min-height: 40px; padding: 9px 20px; }
+.veh-add .modal__foot .btn--primary { box-shadow: 0 2px 8px color-mix(in srgb, var(--amber) 35%, transparent); }
+
+.veh-form { display: grid; gap: 16px; }
+.form-section {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.form-section__head {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0;
+  background: color-mix(in srgb, var(--amber-soft) 45%, var(--surface));
+}
+.form-section__icon {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--amber-deep);
+}
+.form-section__title { margin: 0; font-size: .92rem; font-weight: 700; color: var(--text); }
+.form-section__desc { margin: 1px 0 0; font-size: .76rem; color: var(--text-2); }
+.form-section__body { padding: 16px 16px 2px; gap: 0 18px; }
+/* Status beside Notes on wide screens (Notes is span-2 in the shared field markup) */
+.form-section--status .span-2 { grid-column: auto; }
