@@ -318,4 +318,62 @@
   .jcp-sign__line { display: block; height: 0; margin-bottom: 5px; border-top: 1px solid #1b1f24; }
   .jcp-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 14px; margin-top: 10px; padding-top: 6px; border-top: 1px solid #e1e4e8; font-size: 8.5pt; color: #666; }
   .jcp-foot p { margin: 0; }
+
+  /* ---------- Payment receipt (A4) ----------
+     Its own .rcp-* classes and named page, like the Job Card, so the invoice,
+     expense and report prints that share .pr-* are untouched. */
+  @page receipt { size: A4 portrait; margin: 14mm 14mm 16mm; }
+  /* printing from the Payment Details dialog must not print the dialog */
+  body.printing-payment .modal-overlay { display: none !important; }
+  .rcp { page: receipt; color: #1b1f24; font-size: 10.5pt; line-height: 1.4; }
+  .rcp h2, .rcp h3, .rcp p, .rcp dl, .rcp dd { margin: 0; }
+  .rcp h3 {
+    margin-bottom: 8px; font-size: 8pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #8a5a00;
+    break-after: avoid;
+  }
+
+  /* header: logo and workshop details left, document title and numbers right */
+  .rcp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 14px; border-bottom: 2px solid #1b1f24; break-inside: avoid; }
+  .rcp-brand { min-width: 0; }
+  .rcp-logo { display: block; height: 46px; width: auto; margin-bottom: 10px; }
+  .rcp-org { font-size: 9pt; color: #444; line-height: 1.45; }
+  .rcp-org__name { font-size: 11pt; font-weight: 700; color: #1b1f24; }
+  .rcp-org strong { color: #1b1f24; font-size: 10pt; letter-spacing: .02em; }
+  .rcp-doc { flex: none; text-align: right; }
+  .rcp-doc__title { font-size: 15pt; font-weight: 800; letter-spacing: .14em; }
+  .rcp-void {
+    display: inline-block; margin-top: 6px; padding: 2px 12px; border: 2px solid #b3261e; border-radius: 4px;
+    color: #b3261e; font-size: 13pt; font-weight: 800; letter-spacing: .3em;
+  }
+  .rcp-meta { margin-top: 10px; }
+  .rcp-meta .rcp-row { display: flex; justify-content: flex-end; gap: 12px; padding: 1px 0; }
+  .rcp-meta dt { color: #666; }
+  .rcp-meta dd { min-width: 96px; font-weight: 600; text-align: right; }
+
+  /* customer & reference */
+  .rcp-sec { margin-top: 18px; break-inside: avoid; }
+  .rcp-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #d5d9de; border-radius: 6px; }
+  .rcp-grid .rcp-row { padding: 8px 12px; border-top: 1px solid #e6e9ec; }
+  .rcp-grid .rcp-row:nth-child(-n+2) { border-top: 0; }
+  .rcp-grid .rcp-row:nth-child(even) { border-left: 1px solid #e6e9ec; }
+  .rcp-grid dt { font-size: 8pt; color: #666; text-transform: uppercase; letter-spacing: .06em; }
+  .rcp-grid dd { margin-top: 1px; font-size: 11pt; font-weight: 600; overflow-wrap: anywhere; }
+
+  /* amount received, to the fore; invoice figures beneath when linked */
+  .rcp-amount {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; padding: 14px 18px;
+    border: 1.5px solid #1b1f24; border-left: 5px solid #c47f06; border-radius: 6px; background: #fbf4e6; break-inside: avoid;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .rcp-amount__label { font-size: 10pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .rcp-amount__value { font-size: 22pt; font-weight: 800; white-space: nowrap; }
+  .rcp-inv { width: 100%; margin-top: 8px; border-collapse: collapse; break-inside: avoid; }
+  .rcp-inv td { padding: 5px 12px; border-bottom: 1px solid #e6e9ec; }
+  .rcp-inv td:last-child { text-align: right; white-space: nowrap; }
+  .rcp-inv__due td { font-weight: 700; }
+
+  /* notes and thank-you footer */
+  .rcp-notes p { padding: 8px 12px; border: 1px solid #e6e9ec; border-radius: 6px; white-space: pre-line; overflow-wrap: anywhere; }
+  .rcp-foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid #d5d9de; text-align: center; font-size: 9pt; color: #555; break-inside: avoid; }
+  .rcp-foot__thanks { font-size: 10pt; font-weight: 600; color: #1b1f24; }
 }
