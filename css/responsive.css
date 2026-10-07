@@ -139,6 +139,39 @@
   .bar-list__label { font-size: .76rem; }
 }
 
+/* ---------- Job Card Details ---------- */
+@media (max-width: 1000px) {
+  .jcv-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .jcv-strip__item:nth-child(4) { border-left: 0; }
+  .jcv-strip__item:nth-child(n+4) { border-top: 1px solid var(--line); }
+}
+@media (max-width: 900px) {
+  .jcv-cols, .jcv-cols--end { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .jcv-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .jcv-strip__item { padding: 10px 12px; border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
+  .jcv-strip__item:nth-child(odd) { border-left: 0; }
+  .jcv-strip__item:nth-child(-n+2) { border-top: 0; }
+  .jcv-card__head { padding: 10px 12px; }
+  .jcv-card__body, .jcv-panel { padding: 12px; }
+  .jcv-tabs { padding: 8px 8px 0; gap: 4px; }
+  .jcv-tab { padding: 8px 10px; font-size: .8rem; }
+  .jcv-dl__row { grid-template-columns: minmax(96px, 40%) minmax(0, 1fr); }
+  .jcv .totals-panel--view .totals-grand, .jcv .totals-panel--view > div:nth-child(9) { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
+  .jcv .totals-panel--view > div:nth-child(9) { margin-bottom: -12px; }
+  /* line tables become one card per line: name on top, figures labelled beneath */
+  .jcv-table thead { display: none; }
+  .jcv-table, .jcv-table tbody { display: block; }
+  .jcv-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .jcv-table tr:last-child { border-bottom: 0; }
+  .jcv-table td { display: block; padding: 0; border: 0; text-align: left !important; }
+  .jcv-table td[data-label]::before { content: attr(data-label); display: block; font-size: .7rem; font-weight: 600; color: var(--text-3); }
+  .jcv-table .jcv-table__no { display: none; }
+  .jcv-table .cell-main, .jcv-table--parts td[data-label="Part No."] { grid-column: 1 / -1; }
+  .jcv-table tbody tr:hover { background: none; }
+}
+
 /* ---------- print: job card / invoice / payment / expense / report ---------- */
 .print-area { display: none; }
 
