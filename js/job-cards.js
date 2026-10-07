@@ -108,13 +108,16 @@
     return { serviceTotal, partsTotal, labourCost, subtotal, discount, taxRate, tax, total, paid, due: Math.max(total - paid, 0) };
   }
 
+  /** Custom work: a service line with no catalogue service behind it. serviceId null, never a name marker. */
+  const isCustomWork = l => !!l && l.serviceId === null;
+
   /** Normalize line items with recalculated totals (never trust the UI). */
   function normalizeLines(lines, isService) {
     return (lines || [])
-      .filter(l => (isService ? l.serviceId : (l.name || '').trim()))
+      .filter(l => (isService ? (l.serviceId || (isCustomWork(l) && (l.name || '').trim())) : (l.name || '').trim()))
       .map(l => ({
         ...(isService
-          ? { serviceId: l.serviceId, name: l.name }
+          ? { serviceId: isCustomWork(l) ? null : l.serviceId, name: isCustomWork(l) ? l.name.trim() : l.name }
           : { partId: l.partId || null, name: (l.name || '').trim(), partNo: (l.partNo || '').trim() }),
         qty: Number(l.qty) || 1,
         unitPrice: Number(l.unitPrice) || 0,
@@ -476,6 +479,7 @@
   }
 
   function serviceLineHtml(line = {}) {
+    if (isCustomWork(line)) return customWorkLineHtml(line);
     return `
       <div class="line-row" data-line="service">
         <select class="select line-service" aria-label="Service">${serviceSelectOptions(line.serviceId)}</select>
@@ -483,6 +487,26 @@
         <input class="input line-price" type="number" min="0" step="50" value="${Number(line.unitPrice) || 0}" aria-label="Unit price">
         <span class="line-total num" aria-label="Line total">${money((Number(line.qty) || 1) * (Number(line.unitPrice) || 0))}</span>
         <button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-remove-line aria-label="Remove line">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+        </button>
+      </div>`;
+  }
+
+  /* A custom work row: its own name box instead of the catalogue select. It
+     is still data-line="service", so totals, remove and save treat it as a
+     service line; readLines() tells it apart by its .line-work input. */
+  function customWorkLineHtml(line = {}) {
+    return `
+      <div class="line-row line-row--custom" data-line="service">
+        <div class="line-work-wrap">
+          <input class="input line-work" type="text" maxlength="200" value="${esc(line.name || '')}"
+                 placeholder="Custom work, e.g. Leather work" aria-label="Custom work name">
+          <span class="line-work-tag" aria-hidden="true">Custom</span>
+        </div>
+        <input class="input line-qty" type="number" min="1" step="1" value="${Number(line.qty) || 1}" aria-label="Quantity">
+        <input class="input line-price" type="number" min="0" step="50" value="${Number(line.unitPrice) || 0}" aria-label="Unit price">
+        <span class="line-total num" aria-label="Line total">${money((Number(line.qty) || 1) * (Number(line.unitPrice) || 0))}</span>
+        <button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-remove-line aria-label="Remove custom work">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
         </button>
       </div>`;
@@ -640,9 +664,10 @@
         </div>
 
         <h3 class="detail-section-title">Services</h3>
-        <div class="line-head"><span>Service</span><span>Qty</span><span>Unit Price</span><span>Total</span><span></span></div>
+        <div class="line-head"><span>Service / Work</span><span>Qty</span><span>Unit Price</span><span>Total</span><span></span></div>
         <div id="serviceLines">${services.map(serviceLineHtml).join('')}</div>
         <button type="button" class="btn btn--ghost btn--sm" id="addServiceLine">+ Add Service</button>
+        <button type="button" class="btn btn--ghost btn--sm" id="addCustomLine">+ Add Custom Work</button>
         <div class="field__error" data-err="services"></div>
 
         <h3 class="detail-section-title">Parts Used <span class="muted-note-inline">(manual entry until Inventory module)</span></h3>
@@ -704,6 +729,16 @@
 
   function readLines(ov) {
     const services = [...ov.querySelectorAll('[data-line="service"]')].map(row => {
+      // custom work is known by its own name box, never by the select's placeholder text
+      const work = row.querySelector('.line-work');
+      if (work) {
+        return {
+          serviceId: null,
+          name: work.value.trim(),
+          qty: Number(row.querySelector('.line-qty').value) || 0,
+          unitPrice: Number(row.querySelector('.line-price').value) || 0
+        };
+      }
       const sel = row.querySelector('.line-service');
       const opt = sel.selectedOptions[0];
       return {
@@ -817,6 +852,13 @@
       ov.querySelector('#serviceLines').insertAdjacentHTML('beforeend', serviceLineHtml());
       updateLiveTotals(ov);
     });
+    ov.querySelector('#addCustomLine').addEventListener('click', () => {
+      const host = ov.querySelector('#serviceLines');
+      host.insertAdjacentHTML('beforeend', customWorkLineHtml());
+      const added = host.lastElementChild && host.lastElementChild.querySelector('.line-work');
+      if (added) added.focus();
+      updateLiveTotals(ov);
+    });
     ov.querySelector('#addPartLine').addEventListener('click', () => {
       ov.querySelector('#partLines').insertAdjacentHTML('beforeend', partLineHtml());
       updateLiveTotals(ov);
@@ -920,7 +962,15 @@
     if (badService) errors.services = 'A selected service no longer exists in the catalog.';
     else if (v.services.some(l => l.serviceId && (l.qty <= 0 || l.unitPrice < 0)))
       errors.services = 'Service quantity must be > 0 and price cannot be negative.';
-    else if (!v.services.some(l => l.serviceId) && !v.parts.some(p => p.name.trim()) && !(Number(v.labourCost) > 0 || (Number(v.labourHours) > 0 && Number(v.labourRate) > 0)))
+    // custom work lines (serviceId null): a name of at most 200 characters, qty > 0, price >= 0
+    else if (v.services.some(l => isCustomWork(l) && !l.name.trim()))
+      errors.services = 'Enter a name for each custom work line, or remove it.';
+    else if (v.services.some(l => isCustomWork(l) && l.name.trim().length > 200))
+      errors.services = 'Custom work name must be 200 characters or fewer.';
+    else if (v.services.some(l => isCustomWork(l) &&
+        (!Number.isFinite(l.qty) || !Number.isFinite(l.unitPrice) || l.qty <= 0 || l.unitPrice < 0)))
+      errors.services = 'Custom work quantity must be > 0 and price cannot be negative.';
+    else if (!v.services.some(l => l.serviceId || isCustomWork(l)) && !v.parts.some(p => p.name.trim()) && !(Number(v.labourCost) > 0 || (Number(v.labourHours) > 0 && Number(v.labourRate) > 0)))
       errors.services = 'Add at least one service, part, or labour entry.';
 
     if (v.parts.some(p => p.name.trim() && (p.qty <= 0 || p.unitPrice < 0)))
@@ -1366,7 +1416,7 @@
       <tbody>${lines.map(l => {
         const inactive = isService && l.serviceId && (() => { const s = svc(l.serviceId); return s && (s.status || 'Active') !== 'Active'; })();
         return `<tr>
-          <td class="cell-main">${esc(l.name)}${inactive ? ' <span class="badge badge--neutral">Inactive</span>' : ''}</td>
+          <td class="cell-main">${esc(l.name)}${isService && isCustomWork(l) ? ' (Custom)' : ''}${inactive ? ' <span class="badge badge--neutral">Inactive</span>' : ''}</td>
           ${isService ? '' : `<td>${esc(l.partNo || '—')}</td>`}
           <td class="num">${l.qty}</td>
           <td class="num">${money(l.unitPrice)}</td>
@@ -1478,7 +1528,7 @@
     const customer = Storage.getById('customers', j.customerId);
 
     const lineRows = (lines, isService) => (lines || []).map(l =>
-      `<tr><td>${esc(l.name)}${!isService && l.partNo ? ` (${esc(l.partNo)})` : ''}</td>
+      `<tr><td>${esc(l.name)}${isService && isCustomWork(l) ? ' (Custom)' : ''}${!isService && l.partNo ? ` (${esc(l.partNo)})` : ''}</td>
        <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num">${money(l.total)}</td></tr>`).join('');
 
     const inspRows = Object.entries(j.inspectionChecklist || {})

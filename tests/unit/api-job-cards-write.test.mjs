@@ -431,7 +431,7 @@ console.log('\n-- 9. Line items --');
     ...VALID,
     services: [
       { serviceId: 'SRV-0001', name: 'A', qty: 1, unitPrice: 100 },
-      { name: 'no id — the form\'s leftover empty row', qty: 1, unitPrice: 5 },
+      { serviceId: '', name: '— Select service —', qty: 1, unitPrice: 5 },
       { serviceId: 'SRV-0002', name: 'B', qty: 2, unitPrice: 50 },
     ],
     partsUsed: [
@@ -442,7 +442,7 @@ console.log('\n-- 9. Line items --');
   }, db);
   const svc = db.all('INSERT INTO job_card_services');
   const prt = db.all('INSERT INTO job_card_parts');
-  check('a service line with no serviceId is dropped, not rejected', svc.length, 2);
+  check('a catalogue row left unpicked (serviceId \'\') is dropped, not rejected -- even with a name', svc.length, 2);
   check('a part line with no name and no partId is dropped too', prt.length, 2);
   check('line_no is 1-based over the surviving service lines',
     svc.map((c) => c.binds[6]), [1, 2]);
@@ -488,6 +488,114 @@ for (const [label, lines] of [
   const res = await post({ ...VALID, services: [{ serviceId: 'SRV-0001', name: 'A', qty: 1.5, unitPrice: 200 }] }, db);
   ok_('a fractional qty is accepted', res.status === 201, `got ${res.status}`);
   check('   ...and multiplies out', db.find('INSERT INTO job_card_services').binds[5], 300);
+}
+
+console.log('\n-- 9b. Custom work: a service line with serviceId null --');
+const CUSTOM = { serviceId: null, name: 'Leather work', qty: 1, unitPrice: 3000 };
+const jobInsert = (db) => {
+  const insert = db.find('INSERT INTO job_cards');
+  const names = insert.sql.match(/INSERT INTO job_cards \(([^)]+)\)/)[1].split(',').map((s) => s.trim());
+  return (col) => insert.binds[names.indexOf(col)];
+};
+{
+  const db = stubDB();
+  const res = await post({ ...VALID, services: [{ ...CUSTOM, total: 1 }] }, db);
+  check('custom work alone is a valid job card -> 201', res.status, 201);
+  const line = db.find('INSERT INTO job_card_services');
+  check('   ...stored with service_id NULL, its own name, qty, price and a recomputed total',
+    line.binds.slice(0, 7), ['JOB-0001', null, 'Leather work', 1, 3000, 3000, 1]);
+  check('   ...and the bill is built from it', jobInsert(db)('subtotal'), 3000);
+  ok_('   ...without any catalogue lookup', !/FROM services/.test(db.sql), db.sql);
+  ok_('   ...and without creating a catalogue service', !/INSERT INTO services/.test(db.sql), db.sql);
+}
+{
+  const db = stubDB();
+  const { serviceId, ...noKey } = CUSTOM;
+  await post({ ...VALID, services: [{ ...noKey, name: '  Denting  ', qty: 2, unitPrice: 750 }] }, db);
+  const line = db.find('INSERT INTO job_card_services');
+  check('an absent serviceId with a name is custom work too, name trimmed, qty x price',
+    [line.binds[1], line.binds[2], line.binds[3], line.binds[5]], [null, 'Denting', 2, 1500]);
+}
+{
+  const db = stubDB();
+  const res = await post({ ...VALID, services: [{ ...CUSTOM, unitPrice: 0 }] }, db);
+  check('a custom work price of 0 is accepted, as for a catalogue line', res.status, 201);
+  check('   ...and stored as 0', db.find('INSERT INTO job_card_services').binds[5], 0);
+}
+for (const [label, line] of [
+  ['qty 0', { ...CUSTOM, qty: 0 }],
+  ['a negative qty', { ...CUSTOM, qty: -2 }],
+  ['a missing qty', { serviceId: null, name: 'Painting', unitPrice: 10 }],
+  ['a negative price', { ...CUSTOM, unitPrice: -1 }],
+  ['a price that is not finite', { ...CUSTOM, unitPrice: 'Infinity' }],
+  ['a name over 200 characters', { ...CUSTOM, name: 'x'.repeat(201) }],
+]) {
+  const db = stubDB();
+  const res = await post({ ...VALID, services: [line] }, db);
+  check(`custom work with ${label} -> 422`, res.status, 422);
+  ok_('   ...and nothing was written', db.batches.length === 0);
+}
+{
+  const res = await post({ ...VALID, services: [{ ...CUSTOM, name: 'x'.repeat(200) }] });
+  check('a 200-character custom work name is accepted', res.status, 201);
+}
+for (const [label, name] of [['a blank name', ''], ['a whitespace-only name', '   \t ']]) {
+  const db = stubDB();
+  const res = await post({ ...VALID, services: [{ ...CUSTOM, name }] }, db);
+  check(`custom work with ${label} is never stored -- alone it leaves nothing -> 422`, res.status, 422);
+  check('   ...with the "record something" wording', (await bodyOf(res)).error.fields.services,
+    'Add at least one service, part, or labour entry.');
+  const db2 = stubDB();
+  await post({ ...VALID, services: [VALID.services[0], { ...CUSTOM, name }] }, db2);
+  check(`   ...and beside a catalogue line, ${label} row is dropped`, db2.all('INSERT INTO job_card_services').length, 1);
+}
+{
+  const db = stubDB();
+  await post({ ...VALID, services: [{ serviceId: '   ', name: 'Leather work', qty: 1, unitPrice: 3000 }] }, db);
+  check('a blank-string serviceId never becomes custom work', db.all('INSERT INTO job_card_services').length, 0);
+}
+{
+  const res = await post({ ...VALID, services: [{ ...CUSTOM, serviceId: 12 }] });
+  check('a serviceId that is not a string is still 422', res.status, 422);
+}
+{
+  // catalogue + custom, several customs, parts, labour, discount and tax together
+  const db = stubDB();
+  const res = await post({
+    ...VALID,
+    services: [
+      { serviceId: 'SRV-0001', name: 'Brake pad change', qty: 1, unitPrice: 1500 },
+      { serviceId: 'SRV-0002', name: 'Engine oil change', qty: 1, unitPrice: 500 },
+      { serviceId: 'SRV-0003', name: 'Suspension open and fitting', qty: 1, unitPrice: 5000 },
+      { ...CUSTOM },
+      { serviceId: null, name: 'Welding', qty: 2, unitPrice: 250 },
+    ],
+    partsUsed: [{ partId: 'PRT-0001', name: 'Filter', qty: 2, unitPrice: 300 }],
+    labourHours: 2, labourRate: 400, discount: 1000, taxRate: 5,
+  }, db);
+  check('a mixed job card -> 201', res.status, 201);
+  const svc = db.all('INSERT INTO job_card_services');
+  check('every line is kept, in the order sent', svc.map((c) => [c.binds[1], c.binds[2], c.binds[6]]), [
+    ['SRV-0001', 'Brake pad change', 1], ['SRV-0002', 'Engine oil change', 2],
+    ['SRV-0003', 'Suspension open and fitting', 3], [null, 'Leather work', 4], [null, 'Welding', 5],
+  ]);
+  const at = jobInsert(db);
+  // services 7000 + custom 3000 + 500, parts 600, labour 800 = 11900
+  check('custom work counts in the subtotal like any service', at('subtotal'), 11900);
+  check('   ...the discount applies to it', at('discount'), 1000);
+  check('   ...and the tax: round((11900 - 1000) x 5%)', at('tax'), 545);
+  check('   ...giving the total', at('total'), 11445);
+}
+{
+  const db = stubDB();
+  await put({ services: [VALID.services[0], { ...CUSTOM, name: 'Leather work (edited)', qty: 2 }] }, db);
+  const svc = db.all('INSERT INTO job_card_services');
+  ok_('an edit rewrites the set with the custom line in it', !!db.find('DELETE FROM job_card_services'), db.sql);
+  check('   ...custom line kept with service_id NULL and its new values',
+    svc.map((c) => c.binds.slice(1, 7)), [['SRV-0001', 'Oil Change', 1, 1000, 1000, 1], [null, 'Leather work (edited)', 2, 3000, 6000, 2]]);
+  const db2 = stubDB({ svcRows: [...STORED_SERVICE_ROWS, { job_card_id: 'JOB-0001', service_id: null, name: 'Leather work', qty: 1, unit_price: 3000, total: 3000 }] });
+  await put({ services: [VALID.services[0]] }, db2);
+  check('   ...and removing it leaves only the catalogue line', db2.all('INSERT INTO job_card_services').length, 1);
 }
 
 console.log('\n-- 10. The inspection checklist --');
