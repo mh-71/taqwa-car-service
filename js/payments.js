@@ -372,10 +372,157 @@
     ).join('');
   }
 
-  function customerOptions(selected) {
-    return `<option value="">— Select customer —</option>` +
-      Storage.getData('customers').slice().sort((a, b) => a.name.localeCompare(b.name))
-        .map(c => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.name)} — ${esc(c.phone)}</option>`).join('');
+  /* ---------- searchable customer picker ----------
+     The interaction and .cust-combo styles of New Job Card's picker
+     (job-cards.js). A hidden input keeps id="pf-customer" and
+     name="customerId", so the save handler and the invoice / job card
+     cascade read exactly what the old <select> carried: the customer's id.
+     The search runs over the customers already loaded on this page. */
+  const CUSTOMER_LIST_LIMIT = 50;
+  const digitsOf = s => String(s || '').replace(/\D/g, '');
+
+  function customerLabel(c) {
+    return c ? [c.name, c.phone].filter(Boolean).join(' — ') : '';
+  }
+
+  function customerPickerHtml(selected) {
+    const c = selected ? Storage.getById('customers', selected) : null;
+    return `
+      <label for="pf-customer-search">Customer <span class="req">*</span></label>
+      <div class="cust-combo">
+        <input type="hidden" id="pf-customer" name="customerId" value="${esc(c ? c.id : '')}">
+        <input class="input cust-combo__input" id="pf-customer-search" type="text" role="combobox"
+               autocomplete="off" spellcheck="false" placeholder="Search customer name, phone or ID..."
+               aria-autocomplete="list" aria-expanded="false" aria-controls="pf-customer-list"
+               value="${esc(customerLabel(c))}">
+        <button type="button" class="cust-combo__clear" aria-label="Clear customer"${c ? '' : ' hidden'}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+        </button>
+        <svg class="cust-combo__caret" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
+        <div class="cust-combo__list" id="pf-customer-list" role="listbox" aria-label="Customers" hidden></div>
+      </div>`;
+  }
+
+  /** Name, id, phone and alternate phone; a digits-only query also matches phones ignoring dashes and spaces. */
+  function matchCustomers(sorted, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return sorted;
+    const digits = /^[\d\s+()-]+$/.test(q) ? digitsOf(q) : '';
+    return sorted.filter(c =>
+      [c.name, c.id, c.phone, c.altPhone].some(v => String(v || '').toLowerCase().includes(q)) ||
+      (digits && (digitsOf(c.phone).includes(digits) || digitsOf(c.altPhone).includes(digits))));
+  }
+
+  function customerOptionHtml(c, i) {
+    const phones = [c.phone, c.altPhone].filter(Boolean).map(esc).join(' / ');
+    return `
+      <div class="cust-combo__opt" id="pf-cust-opt-${i}" role="option" aria-selected="false" data-id="${esc(c.id)}">
+        <span class="cust-combo__name">${esc(c.name)}</span>
+        <span class="cust-combo__meta">${esc(c.id)}${phones ? ` • ${phones}` : ''}</span>
+      </div>`;
+  }
+
+  /** Wire the picker. Choosing a customer sets the hidden input and fires its change event, as the <select> did. */
+  function bindCustomerPicker(ov) {
+    const hidden = ov.querySelector('#pf-customer');
+    const input = ov.querySelector('#pf-customer-search');
+    const list = ov.querySelector('#pf-customer-list');
+    const clearBtn = ov.querySelector('.cust-combo__clear');
+    if (!hidden || !input || !list || !clearBtn || typeof input.setAttribute !== 'function') return;
+
+    const sorted = Storage.getData('customers').slice().sort((a, b) => a.name.localeCompare(b.name));
+    let shown = [];
+    let active = -1;
+
+    const current = () => (hidden.value && Storage.getById('customers', hidden.value)) || null;
+
+    function showSelected() {
+      const c = current();
+      input.value = customerLabel(c);
+      clearBtn.hidden = !c;
+    }
+
+    function close() {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      active = -1;
+    }
+
+    function highlight(i) {
+      const opts = list.querySelectorAll('[role="option"]');
+      if (!opts.length) return;
+      active = Math.max(0, Math.min(i, opts.length - 1));
+      opts.forEach((o, k) => {
+        o.classList.toggle('is-active', k === active);
+        o.setAttribute('aria-selected', String(k === active));
+      });
+      input.setAttribute('aria-activedescendant', opts[active].id);
+      opts[active].scrollIntoView({ block: 'nearest' });
+    }
+
+    function render(query) {
+      const matches = matchCustomers(sorted, query);
+      shown = matches.slice(0, CUSTOMER_LIST_LIMIT);
+      list.innerHTML = shown.length
+        ? shown.map(customerOptionHtml).join('') +
+          (matches.length > shown.length
+            ? `<div class="cust-combo__note">Showing ${shown.length} of ${matches.length} — keep typing to narrow the list.</div>`
+            : '')
+        : `<div class="cust-combo__note">No customers found</div>`;
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      // on short screens scroll the modal just enough that the list is not cut off at its bottom edge
+      list.scrollIntoView({ block: 'nearest' });
+      active = -1;
+      input.removeAttribute('aria-activedescendant');
+      if (query.trim()) highlight(0);
+      else {
+        const sel = shown.findIndex(c => c.id === hidden.value);
+        if (sel !== -1) highlight(sel);
+      }
+    }
+
+    function choose(id) {
+      const changed = hidden.value !== id;
+      hidden.value = id;
+      showSelected();
+      close();
+      if (changed) hidden.dispatchEvent(new Event('change'));
+    }
+
+    input.addEventListener('focus', () => { render(''); input.select(); });
+    input.addEventListener('click', () => { if (list.hidden) render(''); });
+    input.addEventListener('input', () => render(input.value));
+    input.addEventListener('blur', () => {
+      // emptied and left → the same as pressing ×; otherwise put the selection back
+      if (!input.value.trim() && hidden.value) choose('');
+      else { showSelected(); close(); }
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) { render(''); return; }
+        highlight(active === -1 ? 0 : active + (e.key === 'ArrowDown' ? 1 : -1));
+      } else if (e.key === 'Enter') {
+        if (list.hidden) return;
+        e.preventDefault();
+        if (active !== -1 && shown[active]) choose(shown[active].id);
+      } else if (e.key === 'Escape' && !list.hidden) {
+        // close the list only -- the modal's own Escape must not fire too
+        e.preventDefault();
+        e.stopPropagation();
+        showSelected();
+        close();
+      }
+    });
+    // keep focus in the input while picking, so blur does not close the list first
+    list.addEventListener('mousedown', e => e.preventDefault());
+    list.addEventListener('click', e => {
+      const opt = e.target.closest('[data-id]');
+      if (opt) choose(opt.dataset.id);
+    });
+    clearBtn.addEventListener('click', () => { choose(''); input.focus(); });
   }
 
   function methodOptions(selected) {
@@ -399,8 +546,7 @@
             </select>
           </div>
           <div class="field">
-            <label for="pf-customer">Customer</label>
-            <select class="select" id="pf-customer" name="customerId">${customerOptions(initialCustomer)}</select>
+            ${customerPickerHtml(initialCustomer)}
             <div class="field__error" data-err="customerId"></div>
           </div>
           <div class="field" id="pf-invoice-wrap">
@@ -435,6 +581,7 @@
                <button class="btn btn--primary" data-save>Record Payment</button>`
     });
 
+    bindCustomerPicker(ov);
     const typeSel = ov.querySelector('#pf-type');
     const custSel = ov.querySelector('#pf-customer');
     const invWrap = ov.querySelector('#pf-invoice-wrap');
