@@ -30,6 +30,14 @@
   .cd-top .vd-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none; }
 }
 
+/* ---------- ≤900px : Invoice Details facts move under the title, cards stack ---------- */
+@media (max-width: 900px) {
+  .inv-view .modal__head { flex-wrap: wrap; row-gap: 14px; }
+  .inv-view .modal__close { order: 2; }
+  .inv-view__facts { order: 3; flex: 1 1 100%; }
+  .inv-view__cols, .inv-view__cols--end { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* ---------- ≤640px : phone ---------- */
 @media (max-width: 640px) {
   .stats-grid { gap: 10px; }
@@ -76,6 +84,46 @@
   .pay-view__fact--status { grid-column: 1 / -1; }
   .pay-view__item, .pay-view__item:nth-child(3n+1) { padding: 0; border-left: 0; }
   .pay-view .modal__foot { padding: 12px 16px; }
+  .inv-view .modal__head { padding: 14px 16px; gap: 12px; row-gap: 10px; }
+  .inv-view__icon { width: 40px; height: 40px; }
+  .inv-view__icon::before { inset: 10px; }
+  .inv-view .modal__head h2 { font-size: 1.3rem; }
+  .inv-view__sub, .inv-view__note { display: none; }
+  .inv-view__facts { flex-wrap: wrap; gap: 8px 16px; }
+  .inv-view__fact { padding: 0; border-left: 0; }
+  .inv-view__fact--status { margin-right: 0; padding: 5px 12px; border-radius: 999px; column-gap: 7px; }
+  .inv-view__fact--status::before, .inv-view__fact--date::before, .inv-view__fact--job::before { grid-row: auto; width: 17px; height: 17px; }
+  .inv-view__fact--date, .inv-view__fact--job { column-gap: 6px; }
+  .inv-view .inv-view__fact--date > span, .inv-view .inv-view__fact--job > span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .inv-view .inv-view__fact > strong { font-size: .9rem; }
+  .inv-view .inv-view__fact--status .badge { font-size: .9rem; }
+  .inv-view .modal__body { padding: 16px; gap: 14px; }
+  .inv-view__card-head { padding: 10px 14px; }
+  .inv-view__card-body { padding: 12px 14px; }
+  .inv-view__list { padding: 2px 14px 6px; }
+  .inv-view__list--2 { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-flow: row; }
+  .inv-view__list--2 .inv-view__row:nth-child(n) { padding-left: 0; padding-right: 0; border-left: 0; border-bottom: 1px solid var(--line); }
+  .inv-view__list--2 .inv-view__row:last-child { border-bottom: 0; }
+  /* services / parts: each line becomes a compact card, no sideways scrolling */
+  .inv-view .inv-view__lines thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .inv-view .inv-view__lines, .inv-view .inv-view__lines tbody { display: block; width: 100%; }
+  .inv-view .inv-view__lines tr {
+    display: grid; grid-template-columns: minmax(0, .6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px;
+    padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  }
+  .inv-view .inv-view__lines tr + tr { margin-top: 10px; }
+  .inv-view .inv-view__lines td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; }
+  .inv-view .inv-view__lines td.inv-view__no { display: none; }
+  .inv-view .inv-view__lines td.inv-view__name { grid-column: 1 / -1; min-width: 0; font-weight: 700; }
+  .inv-view .inv-view__lines td.inv-view__partno { grid-column: 1 / -1; margin-top: -4px; font-size: .84rem; }
+  .inv-view .inv-view__lines td.inv-view__partno::before { content: attr(data-label) " "; }
+  .inv-view .inv-view__lines td.num { white-space: normal; }   /* an amount may only break after its currency sign */
+  .inv-view .inv-view__lines td.num::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: .74rem; font-weight: 500; color: var(--text-2); }
+  .inv-view .inv-view__lines td.inv-view__total { text-align: right; font-weight: 700; }
+  .inv-view .totals-panel--view .totals-grand strong { font-size: 1.35rem; }
+  .inv-view .modal__foot { padding: 12px 16px; }
   .form-section__head { padding: 10px 12px; }
   .form-section__body { padding: 14px 12px 0; }
 
@@ -109,6 +157,7 @@
   .pay-rec__icon { display: none; }
   .pay-view__icon { display: none; }
   .pay-view .totals-panel--view .totals-grand strong { font-size: 1.3rem; }
+  .inv-view__icon { display: none; }
 }
 
 /* ---------- ≤340px : Customer Details summary tiles in one column ---------- */
@@ -221,6 +270,8 @@
   .pr-sign div { flex: 1; text-align: center; font-size: 11px; }
   .pr-sign span { display: block; border-top: 1px solid #111; margin-bottom: 4px; padding-top: 4px; }
   .pr-foot { margin-top: 20px; text-align: center; font-size: 10px; color: #666; }
+  /* printing from the Invoice Details dialog must not print the dialog */
+  body.printing-invoice .modal-overlay { display: none !important; }
 
   /* ---------- Job Card document (A4) ----------
      Its own .jcp-* classes and a named page, so the invoice, payment,

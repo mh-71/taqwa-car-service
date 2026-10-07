@@ -560,15 +560,70 @@
 
   function lineRows(lines, isService) {
     if (!lines || !lines.length) return `<p class="muted-note">${isService ? 'No services.' : 'No parts.'}</p>`;
-    return `<div class="table-wrap"><table class="table table--compact">
+    return `<div class="table-wrap"><table class="table table--compact inv-view__lines">
       <thead><tr>
-        <th>${isService ? 'Service' : 'Part'}</th>${isService ? '' : '<th>Part No.</th>'}
+        <th class="inv-view__no">#</th><th>${isService ? 'Service / Work' : 'Part'}</th>${isService ? '' : '<th>Part No.</th>'}
         <th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th>
       </tr></thead>
-      <tbody>${lines.map(l => `<tr>
-        <td>${esc(l.name)}</td>${isService ? '' : `<td>${esc(l.partNo || '—')}</td>`}
-        <td class="num">${l.qty}</td><td class="num">${money(l.unitPrice)}</td><td class="num">${money(l.total)}</td>
+      <tbody>${lines.map((l, n) => `<tr>
+        <td class="inv-view__no">${n + 1}</td>
+        <td class="inv-view__name">${esc(l.name)}</td>${isService ? '' : `<td class="inv-view__partno" data-label="Part No.">${esc(l.partNo || '—')}</td>`}
+        <td class="num" data-label="Qty">${l.qty}</td><td class="num" data-label="Unit Price">${money(l.unitPrice)}</td><td class="num inv-view__total" data-label="Total">${money(l.total)}</td>
       </tr>`).join('')}</tbody></table></div>`;
+  }
+
+  /* Presentation only: how the Details dialog dresses each status. The status
+     itself, and every figure, is the stored one. */
+  const VIEW_TONE = { Paid: 'good', Partial: 'warn', Unpaid: 'bad', Void: 'neutral' };
+  const VIEW_NOTE = { Paid: 'Fully settled', Partial: 'Partly paid', Unpaid: 'Awaiting payment', Void: 'Kept for history' };
+
+  function paymentStatusCard(i) {
+    const say = {
+      Paid: ['This invoice has been fully paid.', `A total of ${money(i.paid)} has been received.`],
+      Partial: ['This invoice is partly paid.', `${money(i.paid)} received \u00b7 ${money(i.due)} outstanding.`],
+      Unpaid: ['This invoice is unpaid.', `${money(i.due)} is outstanding.`],
+      Void: ['This invoice has been voided.', 'It is kept for history and is no longer billable.']
+    }[i.status];
+    if (!say) return '';
+    return `<section class="inv-view__pay inv-view__pay--${VIEW_TONE[i.status]}">
+      <span class="inv-view__pay-icon" aria-hidden="true"></span>
+      <div class="inv-view__pay-text">
+        <h3 class="inv-view__title">Payment Status</h3>
+        <p class="inv-view__pay-msg">${say[0]}</p>
+        <p class="inv-view__pay-sub">${say[1]}</p>
+      </div>
+    </section>`;
+  }
+
+  const cardHead = (title, extra = '') =>
+    `<div class="inv-view__card-head"><span class="inv-view__card-icon" aria-hidden="true"></span><h3 class="detail-section-title inv-view__title">${title}</h3>${extra}</div>`;
+  const itemCount = lines => { const n = (lines || []).length; return `<span class="inv-view__count">${n} item${n === 1 ? '' : 's'}</span>`; };
+
+  /** Presentation only: the scope class, a header icon, title, subtitle and the status / date / job card facts. */
+  function decorateDetailModal(ov, i) {
+    const modal = ov.querySelector('.modal');
+    const title = modal && modal.querySelector('.modal__head h2');
+    if (!title || typeof modal.setAttribute !== 'function') return;
+    modal.classList.add('inv-view');
+    if (i.status === 'Void') modal.classList.add('inv-view--void');
+    // the heading still reads "Invoice INV-xxxx"; "Invoice" becomes a small kicker above the number
+    title.innerHTML = `<span class="inv-view__kicker">Invoice</span> ${esc(i.id)}`;
+    title.insertAdjacentHTML('beforebegin', '<span class="inv-view__icon" aria-hidden="true"></span>');
+    const titles = document.createElement('div');
+    titles.className = 'inv-view__titles';
+    title.before(titles);
+    titles.append(title);
+    titles.insertAdjacentHTML('beforeend', `<p class="inv-view__sub" id="inv-view-sub">${i.jobCardId ? 'Service invoice for a completed job card' : 'Service invoice'}</p>`);
+    modal.setAttribute('aria-describedby', 'inv-view-sub');
+    titles.insertAdjacentHTML('afterend', `
+      <div class="inv-view__facts">
+        <div class="detail-item inv-view__fact inv-view__fact--status inv-view__fact--${VIEW_TONE[i.status] || 'neutral'}"><span>Status</span><strong>${badge(i.status)}</strong>${VIEW_NOTE[i.status] ? `<small class="inv-view__note">${VIEW_NOTE[i.status]}</small>` : ''}</div>
+        <div class="detail-item inv-view__fact inv-view__fact--date"><span>Invoice Date</span><strong>${fmtDate(i.date)}</strong></div>
+        <div class="detail-item inv-view__fact inv-view__fact--job"><span>Job Card</span><strong>${i.jobCardId ? esc(i.jobCardId) : '—'}</strong></div>
+      </div>`);
+    // Modal.open already focused the first footer button, scrolling to it before
+    // this header grew; open the invoice at its header instead (focus is unchanged)
+    modal.scrollTop = 0;
   }
 
   function openDetailModal(id) {
@@ -579,40 +634,55 @@
     const ov = Modal.open({
       title: `Invoice ${i.id}`, size: 'lg',
       body: `
-        <div class="detail-grid detail-grid--3">
-          <div class="detail-item"><span>Status</span><strong>${badge(i.status)}</strong></div>
-          <div class="detail-item"><span>Date</span><strong>${fmtDate(i.date)}</strong></div>
-          <div class="detail-item"><span>Job Card</span><strong>${i.jobCardId ? esc(i.jobCardId) : '—'}</strong></div>
+        <div class="inv-view__cols">
+          <section class="inv-view__card inv-view__card--customer">
+            ${cardHead('Customer Information')}
+            <div class="inv-view__list">
+              <div class="detail-item inv-view__row"><span>Customer</span><strong>${esc(custName(i.customerId))}</strong></div>
+              <div class="detail-item inv-view__row"><span>Phone</span><strong>${esc(custPhone(i.customerId))}</strong></div>
+            </div>
+          </section>
+          <section class="inv-view__card inv-view__card--vehicle">
+            ${cardHead('Vehicle Information')}
+            <div class="inv-view__list inv-view__list--2">
+              <div class="detail-item inv-view__row"><span>Vehicle</span><strong>${esc(vehText(i.vehicleId))}</strong></div>
+              <div class="detail-item inv-view__row"><span>Registration</span><strong>${esc(vehReg(i.vehicleId))}</strong></div>
+              <div class="detail-item inv-view__row"><span>Year</span><strong>${vehicle && vehicle.year ? vehicle.year : 'N/A'}</strong></div>
+              <div class="detail-item inv-view__row"><span>VIN</span><strong>${vehicle && vehicle.vin ? esc(vehicle.vin) : 'N/A'}</strong></div>
+            </div>
+          </section>
         </div>
 
-        <h3 class="detail-section-title">Customer &amp; Vehicle</h3>
-        <div class="detail-grid detail-grid--3">
-          <div class="detail-item"><span>Customer</span><strong>${esc(custName(i.customerId))}</strong></div>
-          <div class="detail-item"><span>Phone</span><strong>${esc(custPhone(i.customerId))}</strong></div>
-          <div class="detail-item"><span>Registration</span><strong>${esc(vehReg(i.vehicleId))}</strong></div>
-          <div class="detail-item"><span>Vehicle</span><strong>${esc(vehText(i.vehicleId))}</strong></div>
-          <div class="detail-item"><span>Year</span><strong>${vehicle && vehicle.year ? vehicle.year : 'N/A'}</strong></div>
-          <div class="detail-item"><span>VIN</span><strong>${vehicle && vehicle.vin ? esc(vehicle.vin) : 'N/A'}</strong></div>
-        </div>
+        <section class="inv-view__card inv-view__card--services">
+          ${cardHead('Services / Work', itemCount(i.services))}
+          <div class="inv-view__card-body">${lineRows(i.services, true)}</div>
+        </section>
 
-        <h3 class="detail-section-title">Services</h3>
-        ${lineRows(i.services, true)}
+        <section class="inv-view__card inv-view__card--parts">
+          ${cardHead('Parts', itemCount(i.partsUsed))}
+          <div class="inv-view__card-body">${lineRows(i.partsUsed, false)}</div>
+        </section>
 
-        <h3 class="detail-section-title">Parts</h3>
-        ${lineRows(i.partsUsed, false)}
-
-        <h3 class="detail-section-title">Totals</h3>
-        <div class="totals-panel totals-panel--view">
-          <div><span>Labour</span><strong>${money(i.labourCost)}</strong></div>
-          <div><span>Subtotal</span><strong>${money(i.subtotal)}</strong></div>
-          <div><span>Discount</span><strong>\u2212 ${money(i.discount)}</strong></div>
-          <div><span>Tax (${i.taxRate || 0}%)</span><strong>+ ${money(i.tax)}</strong></div>
-          <div class="totals-grand"><span>Grand Total</span><strong>${money(i.total)}</strong></div>
-          <div><span>Paid</span><strong>${money(i.paid)}</strong></div>
-          <div class="${Number(i.due) > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(i.due)}</strong></div>
-        </div>
-
-        ${i.notes ? `<h3 class="detail-section-title">Notes</h3><p class="detail-text">${esc(i.notes)}</p>` : ''}`,
+        <div class="inv-view__cols inv-view__cols--end">
+          <section class="inv-view__card inv-view__card--summary">
+            ${cardHead('Financial Summary')}
+            <div class="inv-view__card-body">
+              <div class="totals-panel totals-panel--view">
+                <div><span>Labour</span><strong>${money(i.labourCost)}</strong></div>
+                <div><span>Subtotal</span><strong>${money(i.subtotal)}</strong></div>
+                <div><span>Discount</span><strong>\u2212 ${money(i.discount)}</strong></div>
+                <div><span>Tax (${i.taxRate || 0}%)</span><strong>+ ${money(i.tax)}</strong></div>
+                <div class="totals-grand"><span>Grand Total</span><strong>${money(i.total)}</strong></div>
+                <div class="inv-view__paid"><span>Paid</span><strong>${money(i.paid)}</strong></div>
+                <div class="inv-view__due ${Number(i.due) > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(i.due)}</strong></div>
+              </div>
+            </div>
+          </section>
+          <div class="inv-view__stack">
+            ${paymentStatusCard(i)}
+            ${i.notes ? `<section class="inv-view__card inv-view__card--notes">${cardHead('Notes')}<div class="inv-view__card-body"><p class="detail-text">${esc(i.notes)}</p></div></section>` : ''}
+          </div>
+        </div>`,
       footer: `
         <button class="btn btn--ghost" data-print-view>Print</button>
         <button class="btn btn--ghost" data-modal-close>Close</button>
@@ -623,6 +693,7 @@
         ${i.status !== 'Void' ? '<button class="btn btn--ghost" data-edit-notes>Edit Notes</button>' : ''}
         ${i.status !== 'Void' ? '<button class="btn btn--primary" data-void>Void Invoice</button>' : ''}`
     });
+    decorateDetailModal(ov, i);
     document.querySelector('[data-print-view]').addEventListener('click', () => printInvoice(id));
     const editBtn = document.querySelector('[data-edit-notes]');
     if (editBtn) editBtn.addEventListener('click', () => { Modal.close(); openNotesModal(id); });
