@@ -1062,13 +1062,13 @@
 
   /* ---------- create / edit ---------- */
 
-  /* ---------- New Job Card layout (create only) ----------
-     Presentation only. formHtml() is shared with Edit Job Card and renders
-     the form as headings followed by grids. For a NEW job card those same
-     elements are regrouped into section cards before any listener is bound.
-     Nothing is re-created: every input keeps its element, id and name, so
-     readForm(), validate(), the live totals and the save are untouched.
-     Edit Job Card never comes here and renders exactly as before. */
+  /* ---------- New / Edit Job Card layout ----------
+     Presentation only. formHtml() renders the form as headings followed by
+     grids. Those same elements are regrouped into section cards before any
+     listener is bound. Nothing is re-created: every input keeps its element,
+     id and name, so readForm(), validate(), the live totals and the save are
+     untouched. New and Edit differ only in the first section (Edit has no
+     Source and uses the plain customer select) and in the header. */
   const JC_ICONS = {
     job: 'M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z',
     customer: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
@@ -1083,12 +1083,14 @@
     notes: 'M3 18h12v-2H3v2zM3 6v2h18V6H3zm0 7h18v-2H3v2z'
   };
 
-  function layoutCreateForm(ov) {
+  function layoutJobForm(ov, editId = '') {
     const modal = ov && ov.querySelector && ov.querySelector('.modal');
     const form = ov && ov.querySelector && ov.querySelector('#jobForm');
     // unit-test overlays hand back inert stand-ins; only a real DOM is regrouped
     if (!modal || !form || !form.children || typeof form.prepend !== 'function' || !modal.querySelector) return;
-    if (form.querySelectorAll(':scope > h3.detail-section-title').length !== 9) return;  // not the form this expects: leave it as rendered
+    const isEdit = !!editId;
+    // not the form this expects: leave it as rendered
+    if (form.querySelectorAll(':scope > h3.detail-section-title').length !== (isEdit ? 8 : 9)) return;
 
     const q = sel => form.querySelector(sel);
     const field = sel => { const el = q(sel); return el ? el.closest('.field') : null; };
@@ -1098,11 +1100,17 @@
       row.append(...els);
       return row;
     };
-    const plan = [
+    const first = isEdit ? [
+      { key: 'job', title: 'Job Information', desc: 'Customer, vehicle, assigned mechanic and dates',
+        grid: [field('#jf-customer'), field('#jf-vehicle'), field('#jf-mechanic'), field('#jf-priority'), field('#jf-date'), field('#jf-est')] }
+    ] : [
       { key: 'job', title: 'Job Information', desc: 'Where the job comes from, who is assigned and when it is due',
         cols: 3, grid: [field('#jf-source'), q('#jf-apt-wrap'), field('#jf-priority'), field('#jf-mechanic'), field('#jf-date'), field('#jf-est')] },
       { key: 'customer', title: 'Customer &amp; Vehicle', desc: 'The vehicle list follows the selected customer',
-        grid: [field('#jf-customer-search'), field('#jf-vehicle')] },
+        grid: [field('#jf-customer-search'), field('#jf-vehicle')] }
+    ];
+    const plan = [
+      ...first,
       { key: 'checkin', title: 'Vehicle Check-in', desc: 'Condition of the vehicle as it arrives',
         grid: [field('#jf-mileage'), field('#jf-mileage-out'), field('#jf-fuel'), field('#jf-condition')] },
       { key: 'complaint', title: 'Customer Complaint / Requested Work <span class="req">*</span>', desc: 'What the customer reports or asks for',
@@ -1170,6 +1178,9 @@
     });
     form.prepend(...sections);
     form.classList.add('jc-form');
+    // Edit: the linked-appointment line heads the Job Information grid
+    const aptNote = isEdit && form.querySelector(':scope > .muted-note');
+    if (aptNote) form.querySelector('.jc-sec--job .form-section__body').prepend(aptNote);
 
     // inspection rows show their status as a colour; the stored value is unchanged
     const insp = form.querySelector('.insp-grid');
@@ -1178,16 +1189,40 @@
     insp.addEventListener('change', e => { if (e.target.matches('.insp-state')) markState(e.target); });
 
     // header: icon + subtitle, the same treatment as the other redesigned forms
-    modal.classList.add('veh-add', 'jc-new');
+    modal.classList.add('veh-add', isEdit ? 'jc-edit' : 'jc-new');
     const title = modal.querySelector('.modal__head h2');
     if (title) {
       title.insertAdjacentHTML('beforebegin', `<span class="veh-add__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${JC_ICONS.job}"/></svg></span>`);
       const titles = document.createElement('div');
       titles.className = 'veh-add__titles';
       title.before(titles);
-      titles.append(title);
-      titles.insertAdjacentHTML('beforeend', '<p class="veh-add__sub" id="jc-new-sub">Create a new service &amp; repair job</p>');
-      modal.setAttribute('aria-describedby', 'jc-new-sub');
+      if (isEdit) {
+        // "Edit Job Card" with the number as a tag beside it; the dialog's own
+        // label stays "Edit Job Card — JOB-XXXX"
+        const line = document.createElement('div');
+        line.className = 'jc-edit__titleline';
+        title.textContent = 'Edit Job Card';
+        line.append(title);
+        line.insertAdjacentHTML('beforeend', `<span class="jc-edit__id">${esc(editId)}</span>`);
+        titles.append(line);
+        titles.insertAdjacentHTML('beforeend', '<p class="veh-add__sub" id="jc-edit-sub">Update job details, work performed and billing information</p>');
+        modal.setAttribute('aria-describedby', 'jc-edit-sub');
+        // The footer stays in view here, so a field reached with Tab can sit
+        // under it (or under the header) while counting as visible to the
+        // browser; scroll it clear.
+        modal.addEventListener('focusin', e => {
+          const head = modal.querySelector('.modal__head'), foot = modal.querySelector('.modal__foot');
+          if (!head || !foot || e.target.closest('.modal__head, .modal__foot')) return;
+          const r = e.target.getBoundingClientRect(), gap = 12;
+          const top = head.getBoundingClientRect().bottom, bottom = foot.getBoundingClientRect().top;
+          if (r.bottom > bottom - gap) modal.scrollTop += r.bottom - bottom + gap;
+          else if (r.top < top + gap) modal.scrollTop -= top + gap - r.top;
+        });
+      } else {
+        titles.append(title);
+        titles.insertAdjacentHTML('beforeend', '<p class="veh-add__sub" id="jc-new-sub">Create a new service &amp; repair job</p>');
+        modal.setAttribute('aria-describedby', 'jc-new-sub');
+      }
     }
 
     if (focused && form.contains(focused) && document.activeElement !== focused) focused.focus();
@@ -1227,7 +1262,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Open Job Card</button>`
     });
-    layoutCreateForm(ov);
+    layoutJobForm(ov);
     bindFormEvents(ov, false);
 
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
@@ -1287,6 +1322,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Save Changes</button>`
     });
+    layoutJobForm(ov, j.id);
     bindFormEvents(ov, true);
 
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {

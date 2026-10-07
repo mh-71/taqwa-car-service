@@ -531,14 +531,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 /* Status beside Notes on wide screens (Notes is span-2 in the shared field markup) */
 .form-section--status .span-2 { grid-column: auto; }
 
-/* ---------- New Job Card (create only) ----------
-   job-cards.js adds .jc-new to the modal and regroups the shared form into
-   .jc-sec cards. Everything here is scoped to .jc-new, so Edit Job Card,
-   which shares the form markup, is not affected. */
-.jc-new { max-width: 960px; }
+/* ---------- New / Edit Job Card ----------
+   job-cards.js adds .jc-new (New) or .jc-edit (Edit) to the modal and regroups
+   the shared form into .jc-sec cards. Everything here is scoped to those two
+   classes; :is() keeps each rule's specificity that of a single class. */
+:is(.jc-new, .jc-edit) { max-width: 960px; }
 .jc-form { display: grid; gap: 16px; }
 .jc-sec__body { padding: 16px; }
-.jc-new .textarea { min-height: 72px; }
+:is(.jc-new, .jc-edit) .textarea { min-height: 72px; }
 /* the section title already names these fields; keep their labels for screen readers */
 .jc-sec--complaint .field > label, .jc-sec--notes .field > label {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
@@ -548,53 +548,72 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .jc-sec .form-section__title .req { color: var(--bad); }
 
 /* line items: a quiet table header, rows of inputs, actions underneath */
-.jc-new .line-head {
+:is(.jc-new, .jc-edit) .line-head {
   margin-bottom: 8px; padding: 7px 10px; border-radius: var(--radius-sm);
   background: var(--paper); color: var(--text-2);
   font-size: .68rem; letter-spacing: .04em; text-transform: uppercase;
 }
-.jc-new .line-total { font-size: .88rem; color: var(--text); }
-.jc-new .line-row--custom .line-work { box-shadow: inset 3px 0 0 var(--amber); }
-.jc-new .line-row--custom .line-work:focus { box-shadow: inset 3px 0 0 var(--amber), 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent); }
+:is(.jc-new, .jc-edit) .line-total { font-size: .88rem; color: var(--text); }
+:is(.jc-new, .jc-edit) .line-row--custom .line-work { box-shadow: inset 3px 0 0 var(--amber); }
+:is(.jc-new, .jc-edit) .line-row--custom .line-work:focus { box-shadow: inset 3px 0 0 var(--amber), 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent); }
 .jc-sec__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.jc-new #addServiceLine, .jc-new #addPartLine, .jc-new #addCustomLine { margin: 0; }
-.jc-new #addCustomLine { border-style: dashed; }
+:is(.jc-new, .jc-edit) #addServiceLine, :is(.jc-new, .jc-edit) #addPartLine, :is(.jc-new, .jc-edit) #addCustomLine { margin: 0; }
+:is(.jc-new, .jc-edit) #addCustomLine { border-style: dashed; }
 .jc-sec--services .field__error:empty { display: none; }
 .jc-sec--services .field__error { margin-top: 8px; }
 
 /* inspection checklist: one row per area, the status shown as a colour */
-.jc-new .insp-grid { gap: 8px 14px; }
-.jc-new .insp-row {
+:is(.jc-new, .jc-edit) .insp-grid { gap: 8px 14px; }
+:is(.jc-new, .jc-edit) .insp-row {
   grid-template-columns: 92px 124px minmax(0, 1fr);
   padding: 6px 8px 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
   background: var(--surface); box-shadow: inset 3px 0 0 var(--line);
 }
-.jc-new .insp-row .input, .jc-new .insp-row .select { height: 36px; }
-.jc-new .insp-label { color: var(--text); font-size: .82rem; }
-.jc-new .insp-row[data-state="OK"] { box-shadow: inset 3px 0 0 var(--good); }
-.jc-new .insp-row[data-state="OK"] .insp-state { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); color: var(--good); font-weight: 600; }
-.jc-new .insp-row[data-state="Attention"] { box-shadow: inset 3px 0 0 var(--warn); }
-.jc-new .insp-row[data-state="Attention"] .insp-state { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); color: var(--warn); font-weight: 600; }
-.jc-new .insp-row[data-state="Critical"] { box-shadow: inset 3px 0 0 var(--bad); }
-.jc-new .insp-row[data-state="Critical"] .insp-state { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); color: var(--bad); font-weight: 600; }
-.jc-new .insp-row[data-state="N/A"] { box-shadow: inset 3px 0 0 var(--text-3); }
-.jc-new .insp-row[data-state="N/A"] .insp-state { color: var(--text-2); }
+:is(.jc-new, .jc-edit) .insp-row .input, :is(.jc-new, .jc-edit) .insp-row .select { height: 36px; }
+:is(.jc-new, .jc-edit) .insp-label { color: var(--text); font-size: .82rem; }
+:is(.jc-new, .jc-edit) .insp-row[data-state="OK"] { box-shadow: inset 3px 0 0 var(--good); }
+:is(.jc-new, .jc-edit) .insp-row[data-state="OK"] .insp-state { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); color: var(--good); font-weight: 600; }
+:is(.jc-new, .jc-edit) .insp-row[data-state="Attention"] { box-shadow: inset 3px 0 0 var(--warn); }
+:is(.jc-new, .jc-edit) .insp-row[data-state="Attention"] .insp-state { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); color: var(--warn); font-weight: 600; }
+:is(.jc-new, .jc-edit) .insp-row[data-state="Critical"] { box-shadow: inset 3px 0 0 var(--bad); }
+:is(.jc-new, .jc-edit) .insp-row[data-state="Critical"] .insp-state { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); color: var(--bad); font-weight: 600; }
+:is(.jc-new, .jc-edit) .insp-row[data-state="N/A"] { box-shadow: inset 3px 0 0 var(--text-3); }
+:is(.jc-new, .jc-edit) .insp-row[data-state="N/A"] .insp-state { color: var(--text-2); }
 
 /* billing: the inputs beside a summary with Grand Total and Due to the fore */
 .jc-billing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 18px; align-items: start; }
 .jc-billing .form-grid--3 { grid-template-columns: 1fr; }
-.jc-new #totalsPanel { margin-top: 0; padding: 12px 16px; background: var(--paper); }
-.jc-new #totalsPanel > div { padding: 4px 0; }
-.jc-new #totalsPanel > div:nth-child(4) { margin-top: 6px; padding-top: 9px; border-top: 1px dashed var(--line); font-weight: 600; }
-.jc-new #totalsPanel > div:nth-child(4) span { color: var(--text); }
-.jc-new #totalsPanel .totals-grand {
+:is(.jc-new, .jc-edit) #totalsPanel { margin-top: 0; padding: 12px 16px; background: var(--paper); }
+:is(.jc-new, .jc-edit) #totalsPanel > div { padding: 4px 0; }
+:is(.jc-new, .jc-edit) #totalsPanel > div:nth-child(4) { margin-top: 6px; padding-top: 9px; border-top: 1px dashed var(--line); font-weight: 600; }
+:is(.jc-new, .jc-edit) #totalsPanel > div:nth-child(4) span { color: var(--text); }
+:is(.jc-new, .jc-edit) #totalsPanel .totals-grand {
   margin: 8px -16px 0; padding: 11px 16px !important; border-top: 0;
   background: var(--amber-soft); font-size: 1.05rem !important; font-weight: 700;
 }
-.jc-new #totalsPanel .totals-grand span { color: var(--text); }
-.jc-new #totalsPanel > div:nth-child(8) { margin-top: 8px; }
-.jc-new #totalsPanel > div:nth-child(9) { margin-top: 4px; padding-top: 9px; border-top: 1px solid var(--line); font-size: .98rem; font-weight: 700; }
-.jc-new #totalsPanel > div:nth-child(9) span { color: var(--text); }
+:is(.jc-new, .jc-edit) #totalsPanel .totals-grand span { color: var(--text); }
+:is(.jc-new, .jc-edit) #totalsPanel > div:nth-child(8) { margin-top: 8px; }
+:is(.jc-new, .jc-edit) #totalsPanel > div:nth-child(9) { margin-top: 4px; padding-top: 9px; border-top: 1px solid var(--line); font-size: .98rem; font-weight: 700; }
+:is(.jc-new, .jc-edit) #totalsPanel > div:nth-child(9) span { color: var(--text); }
+
+/* Edit Job Card only: number tag in the header, linked appointment line,
+   complaint marked as the job's subject, Cancel and Save at opposite ends */
+.jc-edit__titleline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.jc-edit__id {
+  padding: 2px 9px; border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--line)); border-radius: 999px;
+  background: var(--amber-soft); color: var(--text); font-size: .78rem; font-weight: 700; letter-spacing: .02em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.jc-edit .jc-sec--job .muted-note {
+  grid-column: 1 / -1; justify-self: start; margin: 0 0 14px !important; padding: 5px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); color: var(--text-2);
+}
+.jc-edit .jc-sec--job .muted-note strong { white-space: nowrap; }
+.jc-edit .jc-sec--complaint { border-left: 3px solid var(--amber); }
+/* a wrapped "Labour Total (or direct amount)" label keeps the three inputs level */
+.jc-edit .jc-sec--labour .form-grid { align-items: end; }
+.jc-edit .jc-sec--complaint .textarea { min-height: 84px; }
+.jc-edit .modal__foot { justify-content: space-between; }
 
 /* ---------- Job Card Details (read-only view) ----------
    .jcv-modal sits on top of the .veh-view details shell (header, paper body,

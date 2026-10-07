@@ -91,6 +91,7 @@
   .vd-stats { grid-template-columns: 1fr; }
   /* Edit Vehicle title wraps as "Edit Vehicle" / "— VEH-0001", never inside the ID */
   .veh-add[aria-label^="Edit Vehicle"] .modal__head h2 { text-wrap: balance; }
+  .jc-edit .veh-add__icon { display: none; }
 }
 
 /* ---------- ≤340px : Customer Details summary tiles in one column ---------- */
@@ -126,13 +127,15 @@
     padding: 8px;
   }
   .line-row .line-service, .line-row .line-work-wrap, .line-row--part .line-name { grid-column: span 2; }
-  /* New Job Card: part name and part no. get the full row; billing stacks */
-  .jc-new .line-row--part .line-part, .jc-new .line-row--part .line-partno { grid-column: span 2; }
-  .jc-new .line-row { background: var(--surface); }
+  /* New / Edit Job Card: part name and part no. get the full row; billing stacks */
+  :is(.jc-new, .jc-edit) .line-row--part .line-part, :is(.jc-new, .jc-edit) .line-row--part .line-partno { grid-column: span 2; }
+  :is(.jc-new, .jc-edit) .line-row { background: var(--surface); }
   .jc-billing { grid-template-columns: 1fr; }
   .jc-sec__body { padding: 14px 12px; }
-  .jc-new .insp-row { grid-template-columns: 84px minmax(0, 1fr); }
-  .jc-new .insp-row .insp-note { grid-column: span 2; }
+  /* Edit Job Card header: title and number only on phones (the subtitle still describes the dialog) */
+  .jc-edit .veh-add__sub { display: none; }
+  :is(.jc-new, .jc-edit) .insp-row { grid-template-columns: 84px minmax(0, 1fr); }
+  :is(.jc-new, .jc-edit) .insp-row .insp-note { grid-column: span 2; }
   .insp-row { grid-template-columns: 80px 1fr; }
   .insp-row .insp-note { grid-column: span 2; }
   .bar-list__row { grid-template-columns: 90px 1fr 74px; }
