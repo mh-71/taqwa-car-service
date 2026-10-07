@@ -56,7 +56,7 @@
         <option value="total-desc">Total high–low</option>
         <option value="due-desc">Due high–low</option>
       </select>
-      <span class="toolbar__count" id="invcCount"></span>
+      <span class="toolbar__count" id="invcCount" aria-live="polite"></span>
       <span class="spacer"></span>
     </div>
 
@@ -65,8 +65,8 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Invoice #</th><th>Date</th><th>Customer</th><th>Vehicle</th><th>Job Card</th>
-              <th class="num">Total</th><th class="num">Paid</th><th class="num">Due</th><th>Status</th><th>Actions</th>
+              <th scope="col">Invoice #</th><th scope="col">Date</th><th scope="col">Customer</th><th scope="col">Vehicle</th><th scope="col">Job Card</th>
+              <th scope="col" class="num">Total</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Due</th><th scope="col">Status</th><th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody id="invcTableBody"></tbody>

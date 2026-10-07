@@ -8,6 +8,52 @@
   .dash-grid { grid-template-columns: 1fr; }
 }
 
+/* ---------- ≤1300px : Invoices summary as 3 + 2 cards filling the row ---------- */
+@media (max-width: 1300px) {
+  [data-page="invoices"] #invcStats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  [data-page="invoices"] #invcStats .stat { grid-column: span 2; }
+  [data-page="invoices"] #invcStats .stat:nth-child(n+4) { grid-column: span 3; }
+}
+
+/* ---------- ≤1280px : Invoices list rows become cards (no sideways scrolling) ---------- */
+@media (max-width: 1280px) {
+  [data-page="invoices"] #page-content > .card { background: none; border: 0; box-shadow: none; }
+  [data-page="invoices"] #page-content > .card .table-wrap { overflow: visible; }
+  [data-page="invoices"] #page-content > .card .table { display: block; }
+  [data-page="invoices"] #page-content > .card .table thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  [data-page="invoices"] #invcTableBody { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 12px; }
+  [data-page="invoices"] #invcTableBody tr {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px;
+    grid-template-areas: "id id status" "cust cust date" "veh veh job" "total paid due" "act act act";
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow);
+  }
+  [data-page="invoices"] #invcTableBody tr:has(td[colspan]) { display: block; grid-column: 1 / -1; }
+  [data-page="invoices"] #invcTableBody td { display: block; min-width: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
+  [data-page="invoices"] #invcTableBody .ivl-cust, [data-page="invoices"] #invcTableBody .ivl-veh { white-space: normal; }
+  [data-page="invoices"] #invcTableBody td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: 2px; font-size: .72rem; font-weight: 500; color: var(--text-2);
+  }
+  [data-page="invoices"] #invcTableBody .ivl-id { grid-area: id; align-self: center; font-size: 1rem; }
+  [data-page="invoices"] #invcTableBody .ivl-status { grid-area: status; justify-self: end; align-self: center; }
+  [data-page="invoices"] #invcTableBody .ivl-cust { grid-area: cust; align-self: end; }
+  [data-page="invoices"] #invcTableBody .ivl-date { grid-area: date; text-align: right; }
+  [data-page="invoices"] #invcTableBody .ivl-veh { grid-area: veh; }
+  [data-page="invoices"] #invcTableBody .ivl-job { grid-area: job; text-align: right; }
+  [data-page="invoices"] #invcTableBody .ivl-total { grid-area: total; }
+  [data-page="invoices"] #invcTableBody .ivl-paid { grid-area: paid; }
+  [data-page="invoices"] #invcTableBody .ivl-due { grid-area: due; }
+  [data-page="invoices"] #invcTableBody .ivl-total,
+  [data-page="invoices"] #invcTableBody .ivl-paid,
+  [data-page="invoices"] #invcTableBody .ivl-due { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--paper); text-align: left; font-weight: 600; }
+  [data-page="invoices"] #invcTableBody .ivl-due--open { background: var(--bad-soft); }
+  [data-page="invoices"] #invcTableBody td.num { white-space: normal; overflow-wrap: normal; }   /* an amount breaks only after its currency sign */
+  [data-page="invoices"] #invcTableBody .ivl-act { grid-area: act; padding-top: 10px; border-top: 1px solid var(--line); }
+  [data-page="invoices"] #invcTableBody .ivl-act .row-actions { justify-content: flex-end; gap: 8px; }
+  [data-page="invoices"] #invcTableBody .ivl-act .icon-btn--sm { width: 38px; height: 38px; }
+}
+
 /* ---------- ≤900px : sidebar becomes a drawer ---------- */
 @media (max-width: 900px) {
   .sidebar {
@@ -84,6 +130,9 @@
   .pay-view__fact--status { grid-column: 1 / -1; }
   .pay-view__item, .pay-view__item:nth-child(3n+1) { padding: 0; border-left: 0; }
   .pay-view .modal__foot { padding: 12px 16px; }
+  [data-page="invoices"] #invcStats { grid-template-columns: 1fr 1fr; }
+  [data-page="invoices"] #invcStats .stat, [data-page="invoices"] #invcStats .stat:nth-child(n+4) { grid-column: auto; }
+  [data-page="invoices"] #invcStats .stat:last-child { grid-column: 1 / -1; }
   .inv-view .modal__head { padding: 14px 16px; gap: 12px; row-gap: 10px; }
   .inv-view__icon { width: 40px; height: 40px; }
   .inv-view__icon::before { inset: 10px; }
@@ -427,4 +476,96 @@
   .rcp-notes p { padding: 8px 12px; border: 1px solid #e6e9ec; border-radius: 6px; white-space: pre-line; overflow-wrap: anywhere; }
   .rcp-foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid #d5d9de; text-align: center; font-size: 9pt; color: #555; break-inside: avoid; }
   .rcp-foot__thanks { font-size: 10pt; font-weight: 600; color: #1b1f24; }
+
+  /* ---------- Invoice (A4) ----------
+     Its own .ivp-* classes and named page, like the Job Card and Receipt, so
+     the expense and report prints that share .pr-* are untouched. */
+  @page invoice {
+    size: A4 portrait;
+    margin: 13mm 13mm 15mm;
+    @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 8pt sans-serif; color: #777; }
+  }
+  .ivp { page: invoice; color: #1b1f24; font-size: 9.5pt; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ivp h2, .ivp h3, .ivp p, .ivp dl, .ivp dd { margin: 0; }
+  .ivp h3 {
+    margin: 0 0 6px; font-size: 7.5pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #8a5a00;
+    break-after: avoid;
+  }
+
+  /* header: logo and workshop details left; title, status and numbers right */
+  .ivp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 12px; border-bottom: 2px solid #1b1f24; break-inside: avoid; }
+  .ivp-brand { min-width: 0; }
+  .ivp-logo { display: block; height: 48px; width: auto; margin-bottom: 9px; }
+  .ivp-org { max-width: 330px; font-size: 8.5pt; color: #444; line-height: 1.45; }
+  .ivp-org__name { font-size: 11.5pt; font-weight: 700; color: #1b1f24; }
+  .ivp-org strong { color: #1b1f24; font-size: 10pt; letter-spacing: .02em; }
+  .ivp-doc { flex: none; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+  .ivp-doc__title { font-size: 22pt; font-weight: 800; letter-spacing: .16em; line-height: 1.1; }
+  .ivp-status {
+    margin-top: 6px; padding: 2px 12px; border: 1px solid currentColor; border-radius: 999px;
+    font-size: 8.5pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .ivp-status--good { color: #1b6e43; background: #e5f4ec; }
+  .ivp-status--warn { color: #8a5a00; background: #fbf0dc; }
+  .ivp-status--bad { color: #b3261e; background: #fdecea; }
+  .ivp-status--neutral { color: #555; background: #eef0f2; }
+  .ivp-meta { margin-top: 8px; }
+  .ivp-meta .ivp-row { display: flex; justify-content: flex-end; gap: 12px; padding: 1px 0; }
+  .ivp-meta dt { color: #666; }
+  .ivp-meta dd { min-width: 92px; font-weight: 600; text-align: right; }
+
+  /* customer and vehicle cards */
+  .ivp-parties { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin: 14px 0 6px; break-inside: avoid; }
+  .ivp-party { min-width: 0; padding: 9px 12px; border: 1px solid #d5d9de; border-radius: 6px; }
+  .ivp-party .ivp-row { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; padding: 2px 0; }
+  .ivp-party dt { font-size: 8pt; color: #666; }
+  .ivp-party dd { font-weight: 600; overflow-wrap: anywhere; }
+
+  /* services, parts and labour tables */
+  .ivp-sec { margin-top: 12px; }
+  .ivp-table { width: 100%; border-collapse: collapse; }
+  .ivp-table thead { display: table-header-group; }
+  .ivp-table th {
+    padding: 5px 8px; border-top: 1.5px solid #1b1f24; border-bottom: 1px solid #1b1f24; background: #f4f5f7; text-align: left;
+    font-size: 7.5pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #333;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .ivp-table td { padding: 4px 8px; border-bottom: 1px solid #e6e9ec; vertical-align: top; overflow-wrap: anywhere; }
+  .ivp-table tbody tr:nth-child(even) td { background: #fafbfc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ivp-table tr { break-inside: avoid; }
+  .ivp-table .ivp-no { width: 30px; color: #777; white-space: nowrap; overflow-wrap: normal; }
+  .ivp-table td.pr-num, .ivp-table th.pr-num { width: 1%; white-space: nowrap; overflow-wrap: normal; }
+  .ivp-labour .ivp-table td { border-top: 1.5px solid #1b1f24; font-weight: 600; }
+  .ivp-partno { color: #555; }
+  .ivp-tag { margin-left: 4px; padding: 0 5px; border: 1px solid #c9ced4; border-radius: 3px; font-size: 7pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #555; }
+
+  /* payment state + notes beside the billing summary; the block is never split */
+  .ivp-end { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 20px; align-items: start; margin-top: 16px; break-inside: avoid; }
+  .ivp-end__left { display: grid; gap: 12px; align-content: start; min-width: 0; }
+  .ivp-state {
+    justify-self: start; padding: 6px 16px; border: 2px solid currentColor; border-radius: 6px;
+    font-size: 15pt; font-weight: 800; letter-spacing: .3em;
+  }
+  .ivp-state--paid { color: #1b6e43; }
+  .ivp-state--void { color: #b3261e; }
+  .ivp-state--due { display: grid; gap: 1px; padding: 7px 14px; border-width: 1.5px; color: #b3261e; letter-spacing: 0; background: #fdecea; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ivp-state--due span { font-size: 7.5pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .ivp-state--due strong { font-size: 15pt; }
+  .ivp-notes p { padding: 7px 10px; border: 1px solid #e6e9ec; border-radius: 6px; white-space: pre-line; overflow-wrap: anywhere; }
+  .ivp-sum { width: 100%; border-collapse: collapse; border: 1px solid #c9ced4; }
+  .ivp-sum td { padding: 4px 10px; }
+  .ivp-sum td.pr-num { white-space: nowrap; }
+  .ivp-sum__grand td {
+    padding: 7px 10px; border-top: 1.5px solid #1b1f24; border-bottom: 1.5px solid #1b1f24;
+    background: #fbf4e6; font-size: 12.5pt; font-weight: 800;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .ivp-sum__paid td { padding-top: 6px; font-weight: 600; }
+  .ivp-sum__due td { border-top: 1px solid #c9ced4; font-size: 11pt; font-weight: 800; }
+  .ivp-sum__due--open td { color: #b3261e; }
+
+  /* footer */
+  .ivp-foot { margin-top: 22px; padding-top: 8px; border-top: 1px solid #d5d9de; text-align: center; font-size: 8.5pt; color: #555; break-inside: avoid; }
+  .ivp-foot__thanks { font-size: 10pt; font-weight: 600; color: #1b1f24; }
 }

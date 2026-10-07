@@ -55,6 +55,8 @@
   const veh = id => Storage.getById('vehicles', id);
   const vehText = id => { const v = veh(id); return v ? `${v.brand} ${v.model}` : 'Unknown Vehicle'; };
   const vehReg = id => { const v = veh(id); return v ? v.regNo : 'N/A'; };
+  /** Custom work: a service line with no catalogue service behind it (the job-cards.js rule). */
+  const isCustomWork = l => !!l && l.serviceId === null;
 
   /* ---------- status derivation ---------- */
 
@@ -330,16 +332,16 @@
 
     tbody.innerHTML = rows.map(i => `
       <tr data-id="${esc(i.id)}">
-        <td class="cell-main">${esc(i.id)}</td>
-        <td>${fmtDate(i.date)}</td>
-        <td class="cell-main">${esc(custName(i.customerId))}</td>
-        <td>${esc(vehText(i.vehicleId))}<span class="cell-sub">${esc(vehReg(i.vehicleId))}</span></td>
-        <td>${i.jobCardId ? `<a href="job-cards.html?view=${encodeURIComponent(i.jobCardId)}">${esc(i.jobCardId)}</a>` : '—'}</td>
-        <td class="num">${money(i.total)}</td>
-        <td class="num">${money(i.paid)}</td>
-        <td class="num">${money(i.due)}</td>
-        <td>${badge(i.status)}</td>
-        <td>
+        <td class="cell-main ivl-id">${esc(i.id)}</td>
+        <td class="ivl-date" data-label="Date">${fmtDate(i.date)}</td>
+        <td class="cell-main ivl-cust">${esc(custName(i.customerId))}</td>
+        <td class="ivl-veh">${esc(vehText(i.vehicleId))}<span class="cell-sub">${esc(vehReg(i.vehicleId))}</span></td>
+        <td class="ivl-job" data-label="Job Card">${i.jobCardId ? `<a href="job-cards.html?view=${encodeURIComponent(i.jobCardId)}">${esc(i.jobCardId)}</a>` : '—'}</td>
+        <td class="num ivl-total" data-label="Total">${money(i.total)}</td>
+        <td class="num ivl-paid" data-label="Paid">${money(i.paid)}</td>
+        <td class="num ivl-due${i.status !== 'Void' && Number(i.due) > 0 ? ' ivl-due--open' : ''}" data-label="Due">${money(i.due)}</td>
+        <td class="ivl-status">${badge(i.status)}</td>
+        <td class="ivl-act">
           <div class="row-actions row-actions--wrap">
             <button class="icon-btn icon-btn--sm" data-action="view" title="View" aria-label="View ${esc(i.id)}">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5zm0-8c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3z"/></svg>
@@ -567,7 +569,7 @@
       </tr></thead>
       <tbody>${lines.map((l, n) => `<tr>
         <td class="inv-view__no">${n + 1}</td>
-        <td class="inv-view__name">${esc(l.name)}</td>${isService ? '' : `<td class="inv-view__partno" data-label="Part No.">${esc(l.partNo || '—')}</td>`}
+        <td class="inv-view__name">${esc(l.name)}${isService && isCustomWork(l) ? ' <span class="inv-view__tag">Custom</span>' : ''}</td>${isService ? '' : `<td class="inv-view__partno" data-label="Part No.">${esc(l.partNo || '—')}</td>`}
         <td class="num" data-label="Qty">${l.qty}</td><td class="num" data-label="Unit Price">${money(l.unitPrice)}</td><td class="num inv-view__total" data-label="Total">${money(l.total)}</td>
       </tr>`).join('')}</tbody></table></div>`;
   }
@@ -703,73 +705,119 @@
 
   /* ---------- print ---------- */
 
+  // The workshop's own number, as on the Job Card and Payment Receipt prints
+  // (the Settings phone is a placeholder).
+  const INVOICE_PHONE = '01854226757';
+
   function printInvoice(id) {
     const i = Storage.getById('invoices', id);
     if (!i) return;
     const settings = Storage.getSettings();
     const vehicle = veh(i.vehicleId);
     const customer = Storage.getById('customers', i.customerId);
+    const root = (document.body.dataset && document.body.dataset.root) || '../';
+    const isVoid = i.status === 'Void';
+    const row = (label, value) => `<div class="ivp-row"><dt>${label}</dt><dd>${value}</dd></div>`;
 
-    const printRows = (lines, isService) => (lines || []).map(l =>
-      `<tr><td>${esc(l.name)}${!isService && l.partNo ? ` (${esc(l.partNo)})` : ''}</td>
-       <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num">${money(l.total)}</td></tr>`).join('');
+    const lineTable = (lines, isService) => `
+      <table class="ivp-table">
+        <thead><tr><th class="ivp-no">#</th><th>${isService ? 'Service' : 'Part'}</th><th class="pr-num">Qty</th><th class="pr-num">Unit Price</th><th class="pr-num">Total</th></tr></thead>
+        <tbody>${lines.map((l, n) => `<tr>
+          <td class="ivp-no">${n + 1}</td>
+          <td>${esc(l.name)}${isService && isCustomWork(l) ? ' <span class="ivp-tag">Custom</span>' : ''}${!isService && l.partNo ? ` <span class="ivp-partno">(${esc(l.partNo)})</span>` : ''}</td>
+          <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num">${money(l.total)}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
 
-    document.getElementById('printArea').innerHTML = `
-      <div class="pr-head">
-        <div>
-          <h1>${esc(settings.businessName)}</h1>
-          <p>${esc(settings.address)} \u00b7 ${esc(settings.phone)}</p>
-          ${(settings.email || settings.website) ? `<p>${[settings.email, settings.website].filter(Boolean).map(x => esc(x)).join(' \u00b7 ')}</p>` : ''}
-          ${settings.taxId ? `<p>Tax/VAT: ${esc(settings.taxId)}</p>` : ''}
+    const area = document.getElementById('printArea');
+    area.innerHTML = `
+    <div class="ivp">
+      <header class="ivp-head">
+        <div class="ivp-brand">
+          <img class="ivp-logo" src="${root}assets/logo/logo-dark.png" alt="Taqwa Automobile">
+          <div class="ivp-org">
+            <div class="ivp-org__name">${esc(settings.businessName)}</div>
+            ${settings.address ? `<div>${esc(settings.address)}</div>` : ''}
+            <div>Phone: <strong>${INVOICE_PHONE}</strong>${settings.email ? ` · ${esc(settings.email)}` : ''}</div>
+            ${settings.website ? `<div>${esc(settings.website)}</div>` : ''}
+            ${settings.taxId ? `<div>Tax/VAT: ${esc(settings.taxId)}</div>` : ''}
+          </div>
         </div>
-        <div class="pr-meta">
-          <h2>INVOICE</h2>
-          <p><strong>${esc(i.id)}</strong></p>
-          <p>${fmtDate(i.date)}</p>
-          ${i.jobCardId ? `<p>Job Card: ${esc(i.jobCardId)}</p>` : ''}
+        <div class="ivp-doc">
+          <h2 class="ivp-doc__title">INVOICE</h2>
+          <span class="ivp-status ivp-status--${VIEW_TONE[i.status] || 'neutral'}">${esc(i.status)}</span>
+          <dl class="ivp-meta">
+            ${row('Invoice No', `<strong>${esc(i.id)}</strong>`)}
+            ${row('Invoice Date', fmtDate(i.date))}
+            ${row('Job Card', i.jobCardId ? esc(i.jobCardId) : '—')}
+          </dl>
         </div>
-      </div>
+      </header>
 
-      <div class="pr-cols">
-        <div>
+      <div class="ivp-parties">
+        <section class="ivp-party">
           <h3>Customer</h3>
-          <p>${customer ? esc(customer.name) : 'Unknown Customer'}<br>${customer ? esc(customer.phone) : ''}
-             ${customer && customer.address ? `<br>${esc(customer.address)}` : ''}</p>
-        </div>
-        <div>
+          <dl>
+            ${row('Name', customer ? esc(customer.name) : 'Unknown Customer')}
+            ${row('Phone', customer && customer.phone ? esc(customer.phone) : '—')}
+            ${customer && customer.address ? row('Address', esc(customer.address)) : ''}
+          </dl>
+        </section>
+        <section class="ivp-party">
           <h3>Vehicle</h3>
-          <p>${vehicle ? esc(`${vehicle.brand} ${vehicle.model}`) : 'Unknown Vehicle'}<br>
-             ${esc(vehReg(i.vehicleId))}
-             ${vehicle && vehicle.year ? `<br>Year: ${vehicle.year}` : ''}
-             ${vehicle && vehicle.vin ? `<br>VIN: ${esc(vehicle.vin)}` : ''}</p>
-        </div>
+          <dl>
+            ${row('Vehicle', vehicle ? esc(`${vehicle.brand} ${vehicle.model}`) : 'Unknown Vehicle')}
+            ${row('Registration', esc(vehReg(i.vehicleId)))}
+            ${row('Year', vehicle && vehicle.year ? vehicle.year : '—')}
+            ${row('VIN', vehicle && vehicle.vin ? esc(vehicle.vin) : '—')}
+          </dl>
+        </section>
       </div>
 
-      ${(i.services || []).length ? `<h3>Services</h3>
-      <table class="pr-table"><thead><tr><th>Service</th><th class="pr-num">Qty</th><th class="pr-num">Unit</th><th class="pr-num">Total</th></tr></thead>
-      <tbody>${printRows(i.services, true)}</tbody></table>` : ''}
+      ${(i.services || []).length ? `<section class="ivp-sec"><h3>Services</h3>${lineTable(i.services, true)}</section>` : ''}
+      ${(i.partsUsed || []).length ? `<section class="ivp-sec"><h3>Parts</h3>${lineTable(i.partsUsed, false)}</section>` : ''}
+      ${Number(i.labourCost) > 0 ? `<section class="ivp-sec ivp-labour"><h3>Labour</h3>
+        <table class="ivp-table"><tbody><tr><td>Labour charges</td><td class="pr-num">${money(i.labourCost)}</td></tr></tbody></table>
+      </section>` : ''}
 
-      ${(i.partsUsed || []).length ? `<h3>Parts</h3>
-      <table class="pr-table"><thead><tr><th>Part</th><th class="pr-num">Qty</th><th class="pr-num">Unit</th><th class="pr-num">Total</th></tr></thead>
-      <tbody>${printRows(i.partsUsed, false)}</tbody></table>` : ''}
+      <div class="ivp-end">
+        <div class="ivp-end__left">
+          ${isVoid
+            ? '<div class="ivp-state ivp-state--void">VOID</div>'
+            : Number(i.due) > 0
+              ? `<div class="ivp-state ivp-state--due"><span>Amount Due</span><strong>${money(i.due)}</strong></div>`
+              : '<div class="ivp-state ivp-state--paid">PAID</div>'}
+          ${i.notes ? `<section class="ivp-notes"><h3>Notes</h3><p>${esc(i.notes)}</p></section>` : ''}
+        </div>
+        <table class="ivp-sum">
+          <tr><td>Subtotal</td><td class="pr-num">${money(i.subtotal)}</td></tr>
+          <tr><td>Discount</td><td class="pr-num">− ${money(i.discount)}</td></tr>
+          <tr><td>Tax (${i.taxRate || 0}%)</td><td class="pr-num">+ ${money(i.tax)}</td></tr>
+          <tr class="ivp-sum__grand"><td>Grand Total</td><td class="pr-num">${money(i.total)}</td></tr>
+          <tr class="ivp-sum__paid"><td>Paid</td><td class="pr-num">${money(i.paid)}</td></tr>
+          <tr class="ivp-sum__due${Number(i.due) > 0 && !isVoid ? ' ivp-sum__due--open' : ''}"><td>Due</td><td class="pr-num">${money(i.due)}</td></tr>
+        </table>
+      </div>
 
-      <table class="pr-totals">
-        <tr><td>Subtotal (services + parts + labour ${money(i.labourCost || 0)})</td><td class="pr-num">${money(i.subtotal)}</td></tr>
-        <tr><td>Discount</td><td class="pr-num">\u2212 ${money(i.discount)}</td></tr>
-        <tr><td>Tax (${i.taxRate || 0}%)</td><td class="pr-num">+ ${money(i.tax)}</td></tr>
-        <tr class="pr-grand"><td>Grand Total</td><td class="pr-num">${money(i.total)}</td></tr>
-        <tr><td>Paid</td><td class="pr-num">${money(i.paid)}</td></tr>
-        <tr><td>Due</td><td class="pr-num">${money(i.due)}</td></tr>
-      </table>
+      <footer class="ivp-foot">
+        <p class="ivp-foot__thanks">${esc(settings.invoiceFooter)}</p>
+        <p>${esc(settings.businessName)} · Phone: ${INVOICE_PHONE}</p>
+      </footer>
+    </div>`;
 
-      ${i.notes ? `<h3>Notes</h3><p>${esc(i.notes)}</p>` : ''}
-      ${i.status === 'Void' ? `<p style="font-weight:700;letter-spacing:2px;margin-top:16px">VOID</p>` : ''}
-
-      <p class="pr-foot">${esc(settings.invoiceFooter)}</p>`;
-
+    // Print once the logo has loaded, so it is on the page that gets printed.
     document.body.classList.add('printing-invoice');
-    window.print();
-    setTimeout(() => document.body.classList.remove('printing-invoice'), 300);
+    const go = () => {
+      window.print();
+      setTimeout(() => document.body.classList.remove('printing-invoice'), 300);
+    };
+    const logo = area.querySelector ? area.querySelector('.ivp-logo') : null;
+    if (logo && !logo.complete) {
+      logo.addEventListener('load', go, { once: true });
+      logo.addEventListener('error', go, { once: true });
+    } else {
+      go();
+    }
   }
 
   /* ---------- events + init ---------- */
