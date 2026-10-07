@@ -278,7 +278,6 @@
   .jcp-table .jcp-no { width: 26px; color: #777; }
   .jcp-table td.pr-num, .jcp-table th.pr-num { white-space: nowrap; }
 
-  /* notes + billing summary, kept together */
   /* notes, signatures, billing summary and footer move as one block: they
      are never split, so a second page always opens with the billing and sign-off */
   .jcp-close { break-inside: avoid; margin-top: 4px; }
