@@ -124,6 +124,36 @@
 /* Two inputs that read as one value, e.g. Estimated Time's hours + minutes. */
 .field__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
+/* Searchable customer picker (New Job Card). The list is absolute inside the
+   field, so it takes the field's width and scrolls with the modal. */
+.cust-combo { position: relative; }
+.cust-combo__input { padding-right: 58px; text-overflow: ellipsis; }
+.cust-combo__caret {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-3); pointer-events: none;
+}
+.cust-combo__clear {
+  position: absolute; right: 32px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer;
+}
+.cust-combo__clear[hidden] { display: none; }
+.cust-combo__clear:hover, .cust-combo__clear:focus-visible { background: var(--paper); color: var(--text); outline: none; }
+.cust-combo__list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
+  max-height: min(280px, 45vh); overflow-y: auto; overscroll-behavior: contain; scroll-margin-bottom: 12px;
+  padding: 4px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-lift);
+}
+.cust-combo__opt {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  border-radius: 5px; cursor: pointer; min-width: 0;
+}
+.cust-combo__opt:hover, .cust-combo__opt.is-active { background: var(--amber-soft); }
+.cust-combo__name { font-size: .87rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.cust-combo__meta { font-size: .76rem; color: var(--text-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cust-combo__note { padding: 10px; font-size: .8rem; color: var(--text-2); text-align: center; }
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
