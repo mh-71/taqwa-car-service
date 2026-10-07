@@ -555,6 +555,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 }
 .jc-new .line-total { font-size: .88rem; color: var(--text); }
 .jc-new .line-row--custom .line-work { box-shadow: inset 3px 0 0 var(--amber); }
+.jc-new .line-row--custom .line-work:focus { box-shadow: inset 3px 0 0 var(--amber), 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent); }
 .jc-sec__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .jc-new #addServiceLine, .jc-new #addPartLine, .jc-new #addCustomLine { margin: 0; }
 .jc-new #addCustomLine { border-style: dashed; }
