@@ -545,3 +545,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 }
 .vd-empty p { margin: 4px 0 0; font-size: .88rem; font-weight: 600; color: var(--text-2); }
 .vd-empty span { font-size: .78rem; }
+
+/* ---------- Customer Details modal (reuses the Vehicle Details layout) ---------- */
+.cd-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.cd-id { white-space: nowrap; }
+.cd-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; }
+.cd-top .vd-stats { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.cd-span-2 { grid-column: 1 / -1; }
+.cd-top .vd-stat { padding: 14px 16px; gap: 12px; }
+.cd-top .vd-stat__icon { width: 42px; height: 42px; }
+.cd-top .vd-stat strong { font-size: 1.2rem; }
+.cd-top .vd-stat div > span { font-size: .78rem; }
+.vd-stat__icon--info { background: var(--info-soft); color: var(--info); }
+.vd-stat__icon--good { background: var(--good-soft); color: var(--good); }
+.vd-stat__icon--bad { background: var(--bad-soft); color: var(--bad); }

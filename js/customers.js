@@ -357,18 +357,49 @@
      Details view
      ============================================================ */
 
+  /* Details view presentation helpers (the layout and tile styles are the
+     Vehicle Details ones, reused). */
+  const svg = (d, size) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>`;
+  const ICONS = {
+    vehicle: 'M18.9 6c-.2-.6-.8-1-1.4-1H6.5c-.6 0-1.2.4-1.4 1L3 12v8c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-1h12v1c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-8l-2.1-6zM6.5 15c-.8 0-1.5-.7-1.5-1.5S5.7 12 6.5 12s1.5.7 1.5 1.5S7.3 15 6.5 15zm11 0c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5zM5 10l1.5-4.5h11L19 10H5z',
+    wrench: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z',
+    card: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z',
+    invoice: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+    calendar: 'M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z',
+    edit: 'M3 17.2V21h3.8l11-11.1-3.7-3.7L3 17.2zM20.7 7c.4-.4.4-1 0-1.4l-2.3-2.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.7 3.7L20.7 7z'
+  };
+  function detailSection(key, icon, title, desc, content, flush = false) {
+    return `
+          <section class="form-section vd-section cd-section--${key}" aria-labelledby="cd-${key}">
+            <div class="form-section__head">
+              <span class="form-section__icon" aria-hidden="true">${svg(icon, 18)}</span>
+              <div>
+                <h3 class="form-section__title" id="cd-${key}">${title}</h3>
+                <p class="form-section__desc">${desc}</p>
+              </div>
+            </div>
+            <div class="vd-section__body${flush ? ' vd-section__body--flush' : ''}">${content}</div>
+          </section>`;
+  }
+  const emptyState = (icon, title, hint) => `<div class="vd-empty">${svg(icon, 26)}<p>${title}</p><span>${hint}</span></div>`;
+
   function openDetailModal(id) {
     const c = Storage.getById('customers', id);
     if (!c) return;
     const st = customerStats(id);
 
+    const item = (label, value, cls = '') => `<div class="vd-item${cls}"><span class="vd-item__label">${label}</span><strong class="vd-item__value">${value}</strong></div>`;
+    const stat = (icon, iconTone, value, label, tone = '') =>
+      `<div class="vd-stat${tone ? ' vd-stat--' + tone : ''}"><span class="vd-stat__icon${iconTone ? ' vd-stat__icon--' + iconTone : ''}" aria-hidden="true">${svg(icon, 18)}</span>` +
+      `<div><strong>${value}</strong><span>${label}</span></div></div>`;
+
     const vehiclesHtml = st.vehicles.length
       ? `<div class="table-wrap"><table class="table table--compact">
-           <thead><tr><th>Registration</th><th>Brand</th><th>Model</th></tr></thead>
-           <tbody>${st.vehicles.map(v => `
-             <tr><td class="cell-main">${esc(v.regNo)}</td><td>${esc(v.brand)}</td><td>${esc(v.model)}</td></tr>`).join('')}
+           <thead><tr><th class="num">#</th><th>Registration</th><th>Brand</th><th>Model</th><th>Status</th></tr></thead>
+           <tbody>${st.vehicles.map((v, i) => `
+             <tr><td class="num">${i + 1}</td><td class="cell-main">${esc(v.regNo)}</td><td>${esc(v.brand)}</td><td>${esc(v.model)}</td><td>${badge(v.status || 'Active')}</td></tr>`).join('')}
            </tbody></table></div>`
-      : `<p class="muted-note">No vehicles registered for this customer.</p>`;
+      : emptyState(ICONS.vehicle, 'No vehicles registered for this customer.', 'Vehicles added for this customer will appear here.');
 
     const jobs = st.jobs.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const historyHtml = jobs.length
@@ -384,35 +415,57 @@
                <td>${badge(j.status)}</td>
              </tr>`).join('')}
            </tbody></table></div>`
-      : `<p class="muted-note">No service history yet.</p>`;
+      : emptyState(ICONS.calendar, 'No service history yet.', 'Service records will appear here after the first service.');
 
-    Modal.open({
+    const ov = Modal.open({
       title: `${c.name} — ${c.id}`,
       size: 'lg',
       body: `
-        <div class="detail-grid">
-          <div class="detail-item"><span>Phone</span><strong>${esc(c.phone)}${c.altPhone ? ` / ${esc(c.altPhone)}` : ''}</strong></div>
-          <div class="detail-item"><span>Email</span><strong>${c.email ? esc(c.email) : '—'}</strong></div>
-          <div class="detail-item span-2"><span>Address</span><strong>${c.address ? esc(c.address) : '—'}</strong></div>
-          ${c.notes ? `<div class="detail-item span-2"><span>Notes</span><strong>${esc(c.notes)}</strong></div>` : ''}
-        </div>
-
-        <div class="summary-row">
-          <div class="summary-tile"><strong>${st.vehicleCount}</strong><span>Vehicles</span></div>
-          <div class="summary-tile"><strong>${st.serviceCount}</strong><span>Services</span></div>
-          <div class="summary-tile summary-tile--good"><strong>${money(st.totalPaid)}</strong><span>Total Paid</span></div>
-          <div class="summary-tile ${st.totalDue > 0 ? 'summary-tile--bad' : ''}"><strong>${money(st.totalDue)}</strong><span>Total Due</span></div>
-        </div>
-
-        <h3 class="detail-section-title">Vehicles</h3>
-        ${vehiclesHtml}
-
-        <h3 class="detail-section-title">Service History</h3>
-        ${historyHtml}`,
+        <div class="vd">
+          <div class="cd-top">
+            ${detailSection('contact', ICON_PERSON, 'Contact Information', 'Basic details of this customer', `
+              <div class="vd-grid vd-grid--2">
+                ${item('Full Name', esc(c.name))}
+                ${item('Customer ID', esc(c.id))}
+                ${item('Phone', `${esc(c.phone)}${c.altPhone ? ` / ${esc(c.altPhone)}` : ''}`)}
+                ${item('Email', c.email ? esc(c.email) : '—')}
+                ${item('Address', c.address ? esc(c.address) : '—', ' cd-span-2')}
+                ${c.notes ? item('Notes', esc(c.notes), ' cd-span-2') : ''}
+              </div>`)}
+            <div class="vd-stats">
+              ${stat(ICONS.vehicle, 'info', st.vehicleCount, 'Vehicles')}
+              ${stat(ICONS.wrench, 'good', st.serviceCount, 'Services')}
+              ${stat(ICONS.card, '', money(st.totalPaid), 'Total Paid', 'good')}
+              ${stat(ICONS.invoice, 'bad', money(st.totalDue), 'Total Due', st.totalDue > 0 ? 'bad' : '')}
+            </div>
+          </div>
+          ${detailSection('vehicles', ICONS.vehicle, 'Vehicles', 'Vehicles registered under this customer', vehiclesHtml, st.vehicles.length > 0)}
+          ${detailSection('history', ICONS.wrench, 'Service History', 'Past and recent services for this customer', historyHtml, jobs.length > 0)}
+        </div>`,
       footer: `
         <button class="btn btn--ghost" data-modal-close>Close</button>
-        <button class="btn btn--primary" data-edit-from-view>Edit Customer</button>`
-    }).querySelector('[data-edit-from-view]').addEventListener('click', () => {
+        <button class="btn btn--primary" data-edit-from-view>${svg(ICONS.edit, 16)}Edit Customer</button>`
+    });
+    // Details-only presentation: icon, the name with the ID kept on one line,
+    // status and a one-line description. The dialog keeps its full aria-label.
+    // (Skipped when Modal.open hands back no real element, as in the unit tests' stub.)
+    const modal = ov.querySelector('.modal');
+    if (modal && modal.classList) {
+      modal.classList.add('veh-view');
+      const title = modal.querySelector('.modal__head h2');
+      title.innerHTML = `${esc(c.name)} — <span class="cd-id">${esc(c.id)}</span>`;
+      title.insertAdjacentHTML('beforebegin', `<span class="veh-view__icon" aria-hidden="true">${svg(ICON_PERSON, 26)}</span>`);
+      const titles = document.createElement('div');
+      titles.className = 'veh-view__titles';
+      title.replaceWith(titles);
+      const row = document.createElement('div');
+      row.className = 'cd-head-row';
+      row.append(title);
+      row.insertAdjacentHTML('beforeend', badge(c.status || 'Active'));
+      titles.append(row);
+      titles.insertAdjacentHTML('beforeend', `<p class="veh-add__sub">Customer details and activity overview</p>`);
+    }
+    ov.querySelector('[data-edit-from-view]').addEventListener('click', () => {
       Modal.close();
       openEditModal(id);
     });
