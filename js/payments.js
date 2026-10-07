@@ -768,6 +768,21 @@
 
   /* ---------- detail view ---------- */
 
+  /** Presentation only: the scope class for its styles, a header icon and a subtitle. */
+  function decorateDetailModal(ov) {
+    const modal = ov.querySelector('.modal');
+    const title = modal && modal.querySelector('.modal__head h2');
+    if (!title || typeof modal.setAttribute !== 'function') return;
+    modal.classList.add('pay-view');
+    title.insertAdjacentHTML('beforebegin', '<span class="pay-view__icon" aria-hidden="true"></span>');
+    const titles = document.createElement('div');
+    titles.className = 'pay-view__titles';
+    title.before(titles);
+    titles.append(title);
+    titles.insertAdjacentHTML('beforeend', '<p class="pay-view__sub" id="pay-view-sub">Payment details and related information</p>');
+    modal.setAttribute('aria-describedby', 'pay-view-sub');
+  }
+
   function openDetailModal(id) {
     const p = Storage.getById('payments', id);
     if (!p) return;
@@ -776,29 +791,33 @@
     const ov = Modal.open({
       title: `Payment ${p.id}`,
       body: `
-        <div class="detail-grid detail-grid--3">
-          <div class="detail-item"><span>Status</span><strong>${badge(p.status)}</strong></div>
-          <div class="detail-item"><span>Date</span><strong>${fmtDate(p.date)}</strong></div>
-          <div class="detail-item"><span>Method</span><strong>${esc(p.method)}</strong></div>
+        <div class="detail-grid detail-grid--3 pay-view__facts">
+          <div class="detail-item pay-view__fact pay-view__fact--status"><span>Status</span><strong>${badge(p.status)}</strong></div>
+          <div class="detail-item pay-view__fact pay-view__fact--date"><span>Date</span><strong>${fmtDate(p.date)}</strong></div>
+          <div class="detail-item pay-view__fact pay-view__fact--method"><span>Method</span><strong>${esc(p.method)}</strong></div>
         </div>
 
-        <h3 class="detail-section-title">Customer &amp; Reference</h3>
-        <div class="detail-grid detail-grid--3">
-          <div class="detail-item"><span>Customer</span><strong>${esc(custName(p.customerId))}</strong></div>
-          <div class="detail-item"><span>Phone</span><strong>${esc(custPhone(p.customerId))}</strong></div>
-          <div class="detail-item"><span>Invoice</span><strong>${p.invoiceId ? esc(p.invoiceId) : 'Advance — not yet linked'}</strong></div>
-          <div class="detail-item"><span>Job Card</span><strong>${p.jobCardId ? esc(p.jobCardId) : '—'}</strong></div>
-        </div>
+        <section class="pay-view__card pay-view__card--ref">
+          <h3 class="detail-section-title pay-view__title pay-view__title--ref">Customer &amp; Reference</h3>
+          <div class="detail-grid detail-grid--3 pay-view__grid">
+            <div class="detail-item pay-view__item pay-view__item--customer"><span>Customer</span><strong>${esc(custName(p.customerId))}</strong></div>
+            <div class="detail-item pay-view__item pay-view__item--phone"><span>Phone</span><strong>${esc(custPhone(p.customerId))}</strong></div>
+            <div class="detail-item pay-view__item pay-view__item--invoice"><span>Invoice</span><strong>${p.invoiceId ? esc(p.invoiceId) : 'Advance — not yet linked'}</strong></div>
+            <div class="detail-item pay-view__item pay-view__item--jobcard"><span>Job Card</span><strong>${p.jobCardId ? esc(p.jobCardId) : '—'}</strong></div>
+          </div>
+        </section>
 
-        <h3 class="detail-section-title">Amount</h3>
-        <div class="totals-panel totals-panel--view">
-          <div class="totals-grand"><span>Amount Paid</span><strong>${money(p.amount)}</strong></div>
-          ${invoice ? `<div><span>Invoice Total</span><strong>${money(invoice.total)}</strong></div>
-          <div><span>Invoice Paid (all payments)</span><strong>${money(invoice.paid)}</strong></div>
-          <div class="${Number(invoice.due) > 0 ? 'totals-due' : ''}"><span>Invoice Due</span><strong>${money(invoice.due)}</strong></div>` : ''}
-        </div>
+        <section class="pay-view__card pay-view__card--amount">
+          <h3 class="detail-section-title pay-view__title pay-view__title--amount">Amount</h3>
+          <div class="totals-panel totals-panel--view">
+            <div class="totals-grand"><span>Amount Paid</span><strong>${money(p.amount)}</strong></div>
+            ${invoice ? `<div><span>Invoice Total</span><strong>${money(invoice.total)}</strong></div>
+            <div><span>Invoice Paid (all payments)</span><strong>${money(invoice.paid)}</strong></div>
+            <div class="${Number(invoice.due) > 0 ? 'totals-due' : ''}"><span>Invoice Due</span><strong>${money(invoice.due)}</strong></div>` : ''}
+          </div>
+        </section>
 
-        ${p.notes ? `<h3 class="detail-section-title">Notes</h3><p class="detail-text">${esc(p.notes)}</p>` : ''}`,
+        ${p.notes ? `<section class="pay-view__card pay-view__card--notes"><h3 class="detail-section-title pay-view__title pay-view__title--notes">Notes</h3><p class="detail-text">${esc(p.notes)}</p></section>` : ''}`,
       footer: `
         <button class="btn btn--ghost" data-print-view>Print Receipt</button>
         <button class="btn btn--ghost" data-modal-close>Close</button>
@@ -808,6 +827,7 @@
         ${p.status !== 'Void' ? '<button class="btn btn--ghost" data-edit-notes>Edit Notes</button>' : ''}
         ${p.status !== 'Void' ? '<button class="btn btn--primary" data-void>Void Payment</button>' : ''}`
     });
+    decorateDetailModal(ov);
     document.querySelector('[data-print-view]').addEventListener('click', () => printPayment(id));
     const linkBtn = document.querySelector('[data-link-invoice]');
     if (linkBtn) linkBtn.addEventListener('click', () => { Modal.close(); openLinkModal(id); });
