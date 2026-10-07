@@ -839,56 +839,94 @@
 
   /* ---------- print (receipt) ---------- */
 
+  /* The phone printed on every receipt. The Settings phone is still the
+     placeholder "+880 1XXX-XXXXXX", so the receipt carries the workshop's real
+     number, as the Job Card print does. */
+  const RECEIPT_PHONE = '01854226757';
+
   function printPayment(id) {
     const p = Storage.getById('payments', id);
     if (!p) return;
     const settings = Storage.getSettings();
     const customer = Storage.getById('customers', p.customerId);
     const invoice = p.invoiceId ? Storage.getById('invoices', p.invoiceId) : null;
+    const root = (document.body.dataset && document.body.dataset.root) || '../';
+    const isVoid = p.status === 'Void';
+    const row = (label, value) => `<div class="rcp-row"><dt>${label}</dt><dd>${value}</dd></div>`;
 
-    document.getElementById('printArea').innerHTML = `
-      <div class="pr-head">
-        <div>
-          <h1>${esc(settings.businessName)}</h1>
-          <p>${esc(settings.address)} \u00b7 ${esc(settings.phone)}</p>
-          ${(settings.email || settings.website) ? `<p>${[settings.email, settings.website].filter(Boolean).map(x => esc(x)).join(' \u00b7 ')}</p>` : ''}
-          ${settings.taxId ? `<p>Tax/VAT: ${esc(settings.taxId)}</p>` : ''}
+    const area = document.getElementById('printArea');
+    area.innerHTML = `
+    <div class="rcp">
+      <header class="rcp-head">
+        <div class="rcp-brand">
+          <img class="rcp-logo" src="${root}assets/logo/logo-dark.png" alt="Taqwa Automobile">
+          <div class="rcp-org">
+            <div class="rcp-org__name">${esc(settings.businessName)}</div>
+            <div>Phone: <strong>${RECEIPT_PHONE}</strong></div>
+            ${settings.address ? `<div>${esc(settings.address)}</div>` : ''}
+            ${(settings.email || settings.website) ? `<div>${[settings.email, settings.website].filter(Boolean).map(x => esc(x)).join(' · ')}</div>` : ''}
+            ${settings.taxId ? `<div>Tax/VAT: ${esc(settings.taxId)}</div>` : ''}
+          </div>
         </div>
-        <div class="pr-meta">
-          <h2>PAYMENT RECEIPT</h2>
-          <p><strong>${esc(p.id)}</strong></p>
-          <p>${fmtDate(p.date)}</p>
+        <div class="rcp-doc">
+          <h2 class="rcp-doc__title">PAYMENT RECEIPT</h2>
+          ${isVoid ? '<div class="rcp-void">VOID</div>' : ''}
+          <dl class="rcp-meta">
+            ${row('Payment No', `<strong>${esc(p.id)}</strong>`)}
+            ${row('Date', fmtDate(p.date))}
+            ${row('Status', esc(p.status))}
+          </dl>
         </div>
-      </div>
+      </header>
 
-      <div class="pr-cols">
-        <div>
-          <h3>Customer</h3>
-          <p>${customer ? esc(customer.name) : 'Unknown Customer'}<br>${customer ? esc(customer.phone) : ''}</p>
-        </div>
-        <div>
-          <h3>Reference</h3>
-          <p>${p.invoiceId ? `Invoice: ${esc(p.invoiceId)}` : 'Advance payment (no invoice yet)'}
-             ${p.jobCardId ? `<br>Job Card: ${esc(p.jobCardId)}` : ''}</p>
-        </div>
-      </div>
+      <section class="rcp-sec">
+        <h3>Customer &amp; Reference</h3>
+        <dl class="rcp-grid">
+          ${row('Customer', customer ? esc(customer.name) : 'Unknown Customer')}
+          ${row('Phone', customer ? esc(customer.phone) : '—')}
+          ${row('Payment Type', p.invoiceId ? 'Against an Invoice' : 'Advance')}
+          ${row('Invoice', p.invoiceId ? esc(p.invoiceId) : 'Advance — not yet linked')}
+          ${row('Job Card', p.jobCardId ? esc(p.jobCardId) : '—')}
+          ${row('Payment Method', esc(p.method))}
+        </dl>
+      </section>
 
-      <table class="pr-totals">
-        <tr><td>Method</td><td class="pr-num">${esc(p.method)}</td></tr>
-        <tr class="pr-grand"><td>Amount Received</td><td class="pr-num">${money(p.amount)}</td></tr>
-        ${invoice ? `<tr><td>Invoice Total</td><td class="pr-num">${money(invoice.total)}</td></tr>
-        <tr><td>Invoice Paid to Date</td><td class="pr-num">${money(invoice.paid)}</td></tr>
-        <tr><td>Invoice Due</td><td class="pr-num">${money(invoice.due)}</td></tr>` : ''}
-      </table>
+      <section class="rcp-amount">
+        <div class="rcp-amount__label">Amount Received</div>
+        <div class="rcp-amount__value">${money(p.amount)}</div>
+      </section>
+      ${invoice ? `
+      <table class="rcp-inv">
+        <tr><td>Invoice Total</td><td>${money(invoice.total)}</td></tr>
+        <tr><td>Invoice Paid to Date</td><td>${money(invoice.paid)}</td></tr>
+        <tr class="rcp-inv__due"><td>Invoice Due</td><td>${money(invoice.due)}</td></tr>
+      </table>` : ''}
 
-      ${p.notes ? `<h3>Notes</h3><p>${esc(p.notes)}</p>` : ''}
-      ${p.status === 'Void' ? `<p style="font-weight:700;letter-spacing:2px;margin-top:16px">VOID</p>` : ''}
+      ${p.notes ? `
+      <section class="rcp-sec rcp-notes">
+        <h3>Notes</h3>
+        <p>${esc(p.notes)}</p>
+      </section>` : ''}
 
-      <p class="pr-foot">${esc(settings.invoiceFooter)}</p>`;
+      <footer class="rcp-foot">
+        <p class="rcp-foot__thanks">${esc(settings.invoiceFooter)}</p>
+        <p>${esc(settings.businessName)} · Phone: ${RECEIPT_PHONE}</p>
+      </footer>
+    </div>`;
 
+    // Print once the logo has loaded, so it is on the page that gets printed.
     document.body.classList.add('printing-payment');
-    window.print();
-    setTimeout(() => document.body.classList.remove('printing-payment'), 300);
+    const go = () => {
+      window.print();
+      setTimeout(() => document.body.classList.remove('printing-payment'), 300);
+    };
+    const logo = area.querySelector ? area.querySelector('.rcp-logo') : null;
+    if (logo && !logo.complete) {
+      logo.addEventListener('load', go, { once: true });
+      logo.addEventListener('error', go, { once: true });
+    } else {
+      go();
+    }
   }
 
   /* ---------- events + init ---------- */
