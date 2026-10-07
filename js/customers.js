@@ -123,12 +123,17 @@
       icon: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
       fields: ['notes'] }
   ];
+  const EDIT_SECTIONS = [
+    { key: 'info', title: 'Customer Information', desc: 'Update the basic details of this customer',
+      icon: ICON_PERSON, fields: ['name', 'phone', 'altPhone', 'email', 'address', 'notes'] }
+  ];
 
-  /* Edit uses the plain grid; Add (with `sections`) groups the same fields into
-     titled sections and adds placeholder and example hints. */
-  function formHtml(c = {}, { sections = null } = {}) {
-    const ph = text => sections ? ` placeholder="${text}"` : '';
-    const hint = text => sections ? `<p class="muted-note">${text}</p>` : '';
+  /* With `sections` the same fields are grouped into titled sections (Add and
+     Edit); without them the plain grid is used. `hints` adds Add's placeholder
+     and example text. */
+  function formHtml(c = {}, { sections = null, hints = false } = {}) {
+    const ph = text => hints ? ` placeholder="${text}"` : '';
+    const hint = text => hints ? `<p class="muted-note">${text}</p>` : '';
     const f = {
       name: `
           <div class="field span-2">
@@ -236,17 +241,10 @@
     });
   }
 
-  function openAddModal() {
-    const ov = Modal.open({
-      title: 'Add Customer',
-      body: formHtml({}, { sections: ADD_SECTIONS }),
-      footer: `
-        <button class="btn btn--ghost" data-modal-close>Cancel</button>
-        <button class="btn btn--primary" data-save>Save Customer</button>`
-    });
-    // Add-only presentation: an icon and a one-line description in the shared
-    // modal header. .veh-add is the sectioned form-modal styling the vehicle
-    // forms use; this modal reuses it unchanged.
+  /* Add and Edit Customer presentation: an icon and a one-line description in
+     the shared modal header. .veh-add is the sectioned form-modal styling the
+     vehicle forms use; these modals reuse it unchanged. */
+  function decorateFormHead(ov, subtitle) {
     const modal = ov.querySelector('.modal');
     modal.classList.add('veh-add');
     const title = modal.querySelector('.modal__head h2');
@@ -255,8 +253,20 @@
     titles.className = 'veh-add__titles';
     title.replaceWith(titles);
     titles.append(title);
-    titles.insertAdjacentHTML('beforeend', `<p class="veh-add__sub" id="cust-add-sub">Create a new customer profile</p>`);
+    titles.insertAdjacentHTML('beforeend', `<p class="veh-add__sub" id="cust-add-sub">${subtitle}</p>`);
     modal.setAttribute('aria-describedby', 'cust-add-sub');
+    return title;
+  }
+
+  function openAddModal() {
+    const ov = Modal.open({
+      title: 'Add Customer',
+      body: formHtml({}, { sections: ADD_SECTIONS, hints: true }),
+      footer: `
+        <button class="btn btn--ghost" data-modal-close>Cancel</button>
+        <button class="btn btn--primary" data-save>Save Customer</button>`
+    });
+    decorateFormHead(ov, 'Create a new customer profile');
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#custForm');
       const values = readForm(form);
@@ -287,11 +297,13 @@
     if (!c) return;
     const ov = Modal.open({
       title: `Edit Customer — ${c.id}`,
-      body: formHtml(c),
+      body: formHtml(c, { sections: EDIT_SECTIONS }),
       footer: `
         <button class="btn btn--ghost" data-modal-close>Cancel</button>
         <button class="btn btn--primary" data-save>Save Changes</button>`
     });
+    // keep the customer ID on one line in the title (the dialog's aria-label is unchanged)
+    decorateFormHead(ov, 'Update customer information').innerHTML = `Edit Customer — <span class="cd-id">${esc(c.id)}</span>`;
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
       const form = ov.querySelector('#custForm');
       const values = readForm(form);
