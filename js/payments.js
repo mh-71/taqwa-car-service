@@ -529,6 +529,21 @@
     return METHODS.map(m => `<option value="${esc(m)}"${m === selected ? ' selected' : ''}>${esc(m)}</option>`).join('');
   }
 
+  /** Presentation only: the scope class for its styles, a header icon and a subtitle. */
+  function decorateRecordModal(ov) {
+    const modal = ov.querySelector('.modal');
+    const title = modal && modal.querySelector('.modal__head h2');
+    if (!title || typeof modal.setAttribute !== 'function') return;
+    modal.classList.add('pay-rec');
+    title.insertAdjacentHTML('beforebegin', '<span class="pay-rec__icon" aria-hidden="true"></span>');
+    const titles = document.createElement('div');
+    titles.className = 'pay-rec__titles';
+    title.before(titles);
+    titles.append(title);
+    titles.insertAdjacentHTML('beforeend', '<p class="pay-rec__sub" id="pay-rec-sub">Add a new payment received from a customer</p>');
+    modal.setAttribute('aria-describedby', 'pay-rec-sub');
+  }
+
   function openRecordModal({ forInvoiceId = '' } = {}) {
     const presetInvoice = forInvoiceId ? Storage.getById('invoices', forInvoiceId) : null;
     const initialType = presetInvoice ? 'invoice' : 'advance';
@@ -555,13 +570,16 @@
             <div class="field__error" data-err="invoiceId"></div>
           </div>
           <div class="field" id="pf-jobcard-wrap" ${initialType === 'invoice' ? 'hidden' : ''}>
-            <label for="pf-jobcard">Job Card (optional)</label>
+            <label for="pf-jobcard">Job Card <span class="pay-rec__opt">(optional)</span></label>
             <select class="select" id="pf-jobcard" name="jobCardId">${jobCardOptions(initialCustomer, '')}</select>
           </div>
           <div class="field">
             <label for="pf-amount">Amount</label>
-            <input class="input" id="pf-amount" name="amount" type="number" min="0" step="50"
-                   value="${presetInvoice ? outstandingBalance(presetInvoice.id) : ''}">
+            <div class="pay-rec__money">
+              <span class="pay-rec__cur" aria-hidden="true">${esc(Storage.getSettings().currency || '৳')}</span>
+              <input class="input" id="pf-amount" name="amount" type="number" min="0" step="50" placeholder="Enter amount"
+                     value="${presetInvoice ? outstandingBalance(presetInvoice.id) : ''}">
+            </div>
             <div class="field__error" data-err="amount"></div>
           </div>
           <div class="field">
@@ -572,15 +590,16 @@
             <label for="pf-method">Method</label>
             <select class="select" id="pf-method" name="method">${methodOptions('Cash')}</select>
           </div>
-          <div class="field">
-            <label for="pf-notes">Notes (optional)</label>
-            <textarea class="input" id="pf-notes" name="notes" rows="2"></textarea>
+          <div class="field span-2">
+            <label for="pf-notes">Notes <span class="pay-rec__opt">(optional)</span></label>
+            <textarea class="input" id="pf-notes" name="notes" rows="2" placeholder="Add any notes about this payment..."></textarea>
           </div>
         </div>`,
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Record Payment</button>`
     });
 
+    decorateRecordModal(ov);
     bindCustomerPicker(ov);
     const typeSel = ov.querySelector('#pf-type');
     const custSel = ov.querySelector('#pf-customer');
