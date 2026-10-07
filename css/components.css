@@ -596,6 +596,104 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .jc-new #totalsPanel > div:nth-child(9) { margin-top: 4px; padding-top: 9px; border-top: 1px solid var(--line); font-size: .98rem; font-weight: 700; }
 .jc-new #totalsPanel > div:nth-child(9) span { color: var(--text); }
 
+/* ---------- Job Card Details (read-only view) ----------
+   .jcv-modal sits on top of the .veh-view details shell (header, paper body,
+   sticky footer). Everything else is scoped to .jcv-*. */
+.jcv-modal { max-width: 1080px; }
+.jcv-kicker { display: block; font-size: .78rem; font-weight: 600; color: var(--text-2); letter-spacing: .02em; }
+.jcv { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+
+/* status strip */
+.jcv-strip {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.jcv-strip__item { min-width: 0; padding: 12px 16px; border-left: 1px solid var(--line); }
+.jcv-strip__item:first-child { border-left: 0; }
+.jcv-strip__label { display: block; margin-bottom: 6px; font-size: .74rem; font-weight: 600; color: var(--text-2); }
+.jcv-strip__value { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: .88rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.jcv-strip__icon { flex: none; display: grid; color: var(--text-3); }
+.jcv-strip__item:nth-child(-n+2) .jcv-strip__icon { display: none; }   /* the badges carry their own colour */
+
+/* cards */
+.jcv-cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.jcv-cols--end { grid-template-columns: minmax(0, 1fr) minmax(0, 400px); }
+.jcv-stack { display: grid; gap: 16px; }
+.jcv-card {
+  min-width: 0; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.jcv-card__head {
+  display: flex; align-items: center; gap: 10px; padding: 11px 16px;
+  border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0;
+  background: color-mix(in srgb, var(--amber-soft) 45%, var(--surface));
+}
+.jcv-card__icon {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px;
+  border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--amber-deep);
+}
+.jcv-card__title { margin: 0; font-size: .92rem; font-weight: 700; color: var(--text); }
+.jcv-card__body { padding: 14px 16px; }
+.jcv-card--complaint .jcv-card__head { background: color-mix(in srgb, var(--bad-soft) 70%, var(--surface)); }
+.jcv-card--complaint .jcv-card__icon { background: var(--bad-soft); color: var(--bad); }
+.jcv-card--condition .jcv-card__head { background: color-mix(in srgb, var(--warn-soft) 70%, var(--surface)); }
+.jcv-card--condition .jcv-card__icon { background: var(--warn-soft); color: var(--warn); }
+.jcv-card--summary .jcv-card__head { background: color-mix(in srgb, var(--info-soft) 70%, var(--surface)); }
+.jcv-card--summary .jcv-card__icon { background: var(--info-soft); color: var(--info); }
+.jcv .detail-text { line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.jcv-empty { margin: 0; padding: 14px; border-radius: var(--radius-sm); background: var(--paper); color: var(--text-2); text-align: center; }
+
+/* customer & vehicle facts */
+.jcv-dl { margin: 0; display: grid; gap: 0; }
+.jcv-dl__row { display: grid; grid-template-columns: minmax(110px, 38%) minmax(0, 1fr); gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.jcv-dl__row:last-child { border-bottom: 0; }
+.jcv-dl dt { font-size: .82rem; color: var(--text-2); }
+.jcv-dl dd { margin: 0; font-size: .86rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+
+/* work details: tabs + panels */
+.jcv-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 0; border-bottom: 1px solid var(--line); }
+.jcv-tab {
+  display: inline-flex; align-items: center; gap: 7px; margin-bottom: -1px; padding: 9px 14px;
+  border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent; color: var(--text-2); font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer;
+}
+.jcv-tab:hover { color: var(--text); background: var(--paper); }
+.jcv-tab[aria-selected="true"] {
+  border-color: var(--line); background: var(--surface); color: var(--amber-deep);
+  box-shadow: inset 0 2px 0 var(--amber);
+}
+.jcv-tab:focus-visible, .jcv-panel:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.jcv-panel { padding: 14px 16px; }
+.jcv-table th { background: var(--paper); }
+.jcv-table__no { width: 40px; color: var(--text-3); }
+
+/* inspection rows: the badge carries the state; a coloured edge echoes it */
+.jcv-insp .insp-view__row { padding-left: 10px; box-shadow: inset 3px 0 0 var(--line); }
+.jcv-insp .insp-view__row[data-state="OK"] { box-shadow: inset 3px 0 0 var(--good); }
+.jcv-insp .insp-view__row[data-state="Attention"] { box-shadow: inset 3px 0 0 var(--warn); }
+.jcv-insp .insp-view__row[data-state="Critical"] { box-shadow: inset 3px 0 0 var(--bad); }
+.jcv-insp .insp-view__row[data-state="N/A"] { box-shadow: inset 3px 0 0 var(--text-3); }
+.jcv-insp .insp-label { color: var(--text); min-width: 96px; }
+
+/* workshop notes */
+.jcv-note + .jcv-note { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.jcv-note__title { margin: 0 0 4px; font-size: .78rem; font-weight: 700; color: var(--text-2); }
+
+/* summary: Grand Total and Due to the fore */
+.jcv .totals-panel--view { margin-top: 0; padding: 4px 2px; border: 0; background: none; }
+.jcv .totals-panel--view > div { padding: 4px 0; }
+.jcv .totals-panel--view > div:nth-child(4) { margin-top: 6px; padding-top: 9px; border-top: 1px dashed var(--line); font-weight: 600; }
+.jcv .totals-panel--view > div:nth-child(4) span { color: var(--text); }
+.jcv .totals-panel--view .totals-grand {
+  margin: 8px -16px 0; padding: 11px 16px !important; border-top: 0;
+  background: var(--amber-soft); font-size: 1.05rem !important; font-weight: 700;
+}
+.jcv .totals-panel--view .totals-grand span { color: var(--text); }
+.jcv .totals-panel--view > div:nth-child(8) { margin-top: 8px; }
+.jcv .totals-panel--view > div:nth-child(9) { margin: 4px -16px -14px; padding: 11px 16px; border-top: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); font-size: .98rem; font-weight: 700; }
+.jcv .totals-panel--view > div.totals-due:nth-child(9) { background: var(--bad-soft); }
+.jcv .totals-panel--view > div:nth-child(9) span { color: var(--text); }
+
 /* ---------- Vehicle Details modal ---------- */
 .veh-view { max-width: 1000px; }
 .veh-view .modal__head { gap: 14px; padding: 16px 22px; z-index: 3; }

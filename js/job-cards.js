@@ -1538,30 +1538,48 @@
 
   /* ---------- details view ---------- */
 
+  /* ---------- details view ----------
+     Read-only. Every value below is the same expression the details view
+     has always shown (computeTotals() for the services / parts / labour
+     amounts, the stored j.* figures for subtotal through due); only the
+     layout around them is new. Print, Close, View / Create Invoice and Edit
+     keep their markup and bindings in the footer. */
+  const JCV_ICONS = {
+    status: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
+    priority: 'M14.4 6 14 4H5v17h2v-7h5.6l.4 2h7V6z',
+    date: 'M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z',
+    appointment: 'M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z',
+    delivery: 'M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9 1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z',
+    completed: 'M16.59 7.58 10 14.17l-3.59-3.58L5 12l5 5 8-8zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z'
+  };
+  const jcvIcon = (d, size = 18) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>`;
+
   function linesTable(lines, isService) {
-    if (!lines || !lines.length) return `<p class="muted-note">${isService ? 'No services added.' : 'No parts recorded.'}</p>`;
-    return `<div class="table-wrap"><table class="table table--compact">
+    if (!lines || !lines.length) return `<p class="muted-note jcv-empty">${isService ? 'No services added.' : 'No parts recorded.'}</p>`;
+    return `<div class="table-wrap"><table class="table table--compact jcv-table${isService ? '' : ' jcv-table--parts'}">
       <thead><tr>
-        <th>${isService ? 'Service' : 'Part'}</th>${isService ? '' : '<th>Part No.</th>'}
-        <th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th>
+        <th class="jcv-table__no" scope="col">#</th>
+        <th scope="col">${isService ? 'Service / Description' : 'Part'}</th>${isService ? '' : '<th scope="col">Part No.</th>'}
+        <th class="num" scope="col">Qty</th><th class="num" scope="col">Unit Price</th><th class="num" scope="col">Total</th>
       </tr></thead>
-      <tbody>${lines.map(l => {
+      <tbody>${lines.map((l, i) => {
         const inactive = isService && l.serviceId && (() => { const s = svc(l.serviceId); return s && (s.status || 'Active') !== 'Active'; })();
         return `<tr>
+          <td class="jcv-table__no">${i + 1}</td>
           <td class="cell-main">${esc(l.name)}${isService && isCustomWork(l) ? ' (Custom)' : ''}${inactive ? ' <span class="badge badge--neutral">Inactive</span>' : ''}</td>
-          ${isService ? '' : `<td>${esc(l.partNo || '—')}</td>`}
-          <td class="num">${l.qty}</td>
-          <td class="num">${money(l.unitPrice)}</td>
-          <td class="num">${money(l.total)}</td>
+          ${isService ? '' : `<td data-label="Part No.">${esc(l.partNo || '—')}</td>`}
+          <td class="num" data-label="Qty">${l.qty}</td>
+          <td class="num" data-label="Unit Price">${money(l.unitPrice)}</td>
+          <td class="num" data-label="Total">${money(l.total)}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
   }
 
   function inspectionTable(checklist) {
     const entries = Object.entries(checklist || {}).filter(([, v]) => v.state || v.note);
-    if (!entries.length) return `<p class="muted-note">No inspection information recorded.</p>`;
-    return `<div class="insp-view">${entries.map(([item, v]) => `
-      <div class="insp-view__row">
+    if (!entries.length) return `<p class="muted-note jcv-empty">No inspection information recorded.</p>`;
+    return `<div class="insp-view jcv-insp">${entries.map(([item, v]) => `
+      <div class="insp-view__row" data-state="${esc(v.state || '')}">
         <span class="insp-label">${esc(item)}</span>
         ${v.state ? `<span class="badge badge--${{ OK: 'good', Attention: 'warn', Critical: 'bad' }[v.state] || 'neutral'}">${esc(v.state)}</span>` : ''}
         ${v.note ? `<span class="insp-note-text">${esc(v.note)}</span>` : ''}
@@ -1569,7 +1587,19 @@
   }
 
   function textBlock(title, value) {
-    return value ? `<h3 class="detail-section-title">${title}</h3><p class="detail-text">${esc(value)}</p>` : '';
+    return value ? `<div class="jcv-note"><h4 class="jcv-note__title">${title}</h4><p class="detail-text">${esc(value)}</p></div>` : '';
+  }
+
+  /** A details card: icon + title head, then its body. */
+  function jcvCard(key, icon, title, body, extra = '') {
+    return `
+      <section class="jcv-card jcv-card--${key}" aria-labelledby="jcv-${key}"${extra}>
+        <div class="jcv-card__head">
+          <span class="jcv-card__icon" aria-hidden="true">${jcvIcon(icon)}</span>
+          <h3 class="jcv-card__title" id="jcv-${key}">${title}</h3>
+        </div>
+        <div class="jcv-card__body">${body}</div>
+      </section>`;
   }
 
   function openDetailModal(id) {
@@ -1583,61 +1613,102 @@
     // lookup used elsewhere).
     const linkedInvoice = j.invoiceId ? Storage.getById('invoices', j.invoiceId) : null;
 
-    Modal.open({
+    const strip = [
+      ['Status', JCV_ICONS.status, badge(j.status)],
+      ['Priority', JCV_ICONS.priority, priorityBadge(j.priority)],
+      ['Date', JCV_ICONS.date, fmtDate(j.date)],
+      ['Appointment', JCV_ICONS.appointment, j.appointmentId ? esc(j.appointmentId) : '—'],
+      ['Est. Delivery', JCV_ICONS.delivery, j.estDelivery ? fmtDate(j.estDelivery) : '—'],
+      ['Completed', JCV_ICONS.completed, j.completedAt ? fmtDate(j.completedAt) : '—']
+    ];
+    const facts = [
+      ['Customer', esc(custName(j.customerId))],
+      ['Phone', esc(custPhone(j.customerId))],
+      ['Registration', esc(vehReg(j.vehicleId))],
+      ['Vehicle', esc(vehText(j.vehicleId))],
+      ['VIN', vehicle && vehicle.vin ? esc(vehicle.vin) : 'N/A'],
+      ['Mileage In / Out', `${j.mileage ? Number(j.mileage).toLocaleString('en-IN') : '—'} / ${j.mileageOut ? Number(j.mileageOut).toLocaleString('en-IN') : '—'} km`],
+      ['Fuel Level', j.fuelLevel ? FUEL_LABELS[j.fuelLevel] || esc(j.fuelLevel) : '—'],
+      ['Mechanic', `${esc(mecName(j.mechanicId))}${mechanic && (mechanic.status || 'Active') !== 'Active' ? ' (inactive)' : ''}`],
+      ['Specialization', mechanic ? esc(mechanic.specialization || 'General') : 'N/A']
+    ];
+    const inspCount = Object.values(j.inspectionChecklist || {}).filter(v => v.state || v.note).length;
+    const labourBody = t.labourCost > 0
+      ? `<div class="table-wrap"><table class="table table--compact jcv-table jcv-table--labour">
+          <thead><tr><th scope="col">Hours</th><th scope="col">Rate (BDT/hr)</th><th class="num" scope="col">Labour Total</th></tr></thead>
+          <tbody><tr>
+            <td data-label="Hours">${j.labourHours ? esc(j.labourHours) : '—'}</td>
+            <td data-label="Rate (BDT/hr)">${j.labourRate ? money(j.labourRate) : '—'}</td>
+            <td class="num" data-label="Labour Total">${money(t.labourCost)}</td>
+          </tr></tbody></table></div>`
+      : `<p class="muted-note jcv-empty">No labour recorded.</p>`;
+    const tabs = [
+      ['services', JC_ICONS.services, 'Services', (j.services || []).length, linesTable(j.services, true)],
+      ['parts', JC_ICONS.parts, 'Parts', (j.partsUsed || []).length, linesTable(j.partsUsed, false)],
+      ['labour', JC_ICONS.labour, 'Labour', t.labourCost > 0 ? 1 : 0, labourBody],
+      ['insp', JC_ICONS.insp, 'Inspection', inspCount, inspectionTable(j.inspectionChecklist)]
+    ];
+    const notes = [
+      textBlock('Initial Inspection', j.inspection),
+      textBlock('Diagnosis', j.diagnosis),
+      textBlock('Technician Notes', j.technicianNotes),
+      textBlock('Recommendations', j.recommendations),
+      textBlock('General Notes', j.notes)
+    ].join('');
+
+    const ov = Modal.open({
       title: `Job Card ${j.id}`, size: 'lg',
       body: `
-        <div class="detail-grid detail-grid--3">
-          <div class="detail-item"><span>Status</span><strong>${badge(j.status)}</strong></div>
-          <div class="detail-item"><span>Priority</span><strong>${priorityBadge(j.priority)}</strong></div>
-          <div class="detail-item"><span>Date</span><strong>${fmtDate(j.date)}</strong></div>
-          <div class="detail-item"><span>Appointment</span><strong>${j.appointmentId ? esc(j.appointmentId) : '—'}</strong></div>
-          <div class="detail-item"><span>Est. Delivery</span><strong>${j.estDelivery ? fmtDate(j.estDelivery) : '—'}</strong></div>
-          <div class="detail-item"><span>Completed</span><strong>${j.completedAt ? fmtDate(j.completedAt) : '—'}</strong></div>
+      <div class="jcv">
+        <div class="jcv-strip">
+          ${strip.map(([label, icon, value]) => `
+          <div class="jcv-strip__item">
+            <span class="jcv-strip__label">${label}</span>
+            <span class="jcv-strip__value"><span class="jcv-strip__icon" aria-hidden="true">${jcvIcon(icon, 16)}</span>${value}</span>
+          </div>`).join('')}
         </div>
 
-        <h3 class="detail-section-title">Customer &amp; Vehicle</h3>
-        <div class="detail-grid detail-grid--3">
-          <div class="detail-item"><span>Customer</span><strong>${esc(custName(j.customerId))}</strong></div>
-          <div class="detail-item"><span>Phone</span><strong>${esc(custPhone(j.customerId))}</strong></div>
-          <div class="detail-item"><span>Registration</span><strong>${esc(vehReg(j.vehicleId))}</strong></div>
-          <div class="detail-item"><span>Vehicle</span><strong>${esc(vehText(j.vehicleId))}</strong></div>
-          <div class="detail-item"><span>VIN</span><strong>${vehicle && vehicle.vin ? esc(vehicle.vin) : 'N/A'}</strong></div>
-          <div class="detail-item"><span>Mileage In / Out</span><strong>${j.mileage ? Number(j.mileage).toLocaleString('en-IN') : '—'} / ${j.mileageOut ? Number(j.mileageOut).toLocaleString('en-IN') : '—'} km</strong></div>
-          <div class="detail-item"><span>Fuel Level</span><strong>${j.fuelLevel ? FUEL_LABELS[j.fuelLevel] || esc(j.fuelLevel) : '—'}</strong></div>
-          <div class="detail-item"><span>Mechanic</span><strong>${esc(mecName(j.mechanicId))}${mechanic && (mechanic.status || 'Active') !== 'Active' ? ' (inactive)' : ''}</strong></div>
-          <div class="detail-item"><span>Specialization</span><strong>${mechanic ? esc(mechanic.specialization || 'General') : 'N/A'}</strong></div>
+        <div class="jcv-cols">
+          ${jcvCard('cv', JC_ICONS.customer, 'Customer &amp; Vehicle', `
+            <dl class="jcv-dl">
+              ${facts.map(([label, value]) => `<div class="jcv-dl__row"><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
+            </dl>`)}
+          <div class="jcv-stack">
+            ${jcvCard('complaint', JC_ICONS.services, 'Customer Complaint',
+              j.complaint ? `<p class="detail-text">${esc(j.complaint)}</p>` : '<p class="muted-note jcv-empty">No complaint recorded.</p>')}
+            ${jcvCard('condition', JC_ICONS.checkin, 'Vehicle Condition / Belongings',
+              j.conditionNotes ? `<p class="detail-text">${esc(j.conditionNotes)}</p>` : '<p class="muted-note jcv-empty">Nothing recorded.</p>')}
+          </div>
         </div>
 
-        ${textBlock('Customer Complaint', j.complaint)}
-        ${textBlock('Initial Inspection', j.inspection)}
-        ${textBlock('Diagnosis', j.diagnosis)}
-        ${textBlock('Technician Notes', j.technicianNotes)}
-        ${textBlock('Recommendations', j.recommendations)}
-        ${textBlock('Vehicle Condition / Belongings', j.conditionNotes)}
+        <section class="jcv-card jcv-work" aria-label="Work details">
+          <div class="jcv-tabs" role="tablist" aria-label="Work details">
+            ${tabs.map(([key, icon, label, count], i) => `
+            <button type="button" class="jcv-tab" role="tab" id="jcv-tab-${key}" aria-controls="jcv-panel-${key}"
+                    aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">
+              ${jcvIcon(icon, 16)}<span>${label} (${count})</span>
+            </button>`).join('')}
+          </div>
+          ${tabs.map(([key, , , , body], i) => `
+          <div class="jcv-panel" role="tabpanel" id="jcv-panel-${key}" aria-labelledby="jcv-tab-${key}" tabindex="0"${i === 0 ? '' : ' hidden'}>${body}</div>`).join('')}
+        </section>
 
-        <h3 class="detail-section-title">Services</h3>
-        ${linesTable(j.services, true)}
-
-        <h3 class="detail-section-title">Parts Used</h3>
-        ${linesTable(j.partsUsed, false)}
-
-        <h3 class="detail-section-title">Inspection Checklist</h3>
-        ${inspectionTable(j.inspectionChecklist)}
-
-        <h3 class="detail-section-title">Totals</h3>
-        <div class="totals-panel totals-panel--view">
-          <div><span>Services</span><strong>${money(t.serviceTotal)}</strong></div>
-          <div><span>Parts</span><strong>${money(t.partsTotal)}</strong></div>
-          <div><span>Labour${j.labourHours && j.labourRate ? ` (${j.labourHours} hr × ${money(j.labourRate)})` : ''}</span><strong>${money(t.labourCost)}</strong></div>
-          <div><span>Subtotal</span><strong>${money(j.subtotal)}</strong></div>
-          <div><span>Discount</span><strong>− ${money(j.discount)}</strong></div>
-          <div><span>Tax (${j.taxRate || 0}%)</span><strong>+ ${money(j.tax)}</strong></div>
-          <div class="totals-grand"><span>Grand Total</span><strong>${money(j.total)}</strong></div>
-          <div><span>Paid</span><strong>${money(j.paid)}</strong></div>
-          <div class="${Number(j.due) > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(j.due)}</strong></div>
+        <div class="jcv-cols jcv-cols--end">
+          ${jcvCard('notes', JC_ICONS.notes, 'Workshop Notes', notes || '<p class="muted-note jcv-empty">No notes recorded.</p>')}
+          ${jcvCard('summary', JC_ICONS.billing, 'Summary', `
+          <div class="totals-panel totals-panel--view">
+            <div><span>Services</span><strong>${money(t.serviceTotal)}</strong></div>
+            <div><span>Parts</span><strong>${money(t.partsTotal)}</strong></div>
+            <div><span>Labour${j.labourHours && j.labourRate ? ` (${j.labourHours} hr × ${money(j.labourRate)})` : ''}</span><strong>${money(t.labourCost)}</strong></div>
+            <div><span>Subtotal</span><strong>${money(j.subtotal)}</strong></div>
+            <div><span>Discount</span><strong>− ${money(j.discount)}</strong></div>
+            <div><span>Tax (${j.taxRate || 0}%)</span><strong>+ ${money(j.tax)}</strong></div>
+            <div class="totals-grand"><span>Grand Total</span><strong>${money(j.total)}</strong></div>
+            <div><span>Paid</span><strong>${money(j.paid)}</strong></div>
+            <div class="${Number(j.due) > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(j.due)}</strong></div>
+          </div>`)}
         </div>
-
-        ${textBlock('General Notes', j.notes)}`,
+      </div>`,
       footer: `
         <button class="btn btn--ghost" data-print-view>Print</button>
         <button class="btn btn--ghost" data-modal-close>Close</button>
@@ -1648,6 +1719,48 @@
     const editBtn = document.querySelector('[data-edit-from-view]');
     if (editBtn) editBtn.addEventListener('click', () => { Modal.close(); openEditModal(id); });
     document.querySelector('[data-print-view]').addEventListener('click', () => printJobCard(id));
+
+    // Header: icon, a "Job Card" label and the job id; the dialog keeps its
+    // full aria-label. Tabs switch the work-details panels. (Skipped when
+    // Modal.open hands back no real element, as in the unit tests' stub.)
+    const modal = ov && ov.querySelector ? ov.querySelector('.modal') : null;
+    if (!modal || typeof modal.querySelector !== 'function') return;
+    modal.classList.add('veh-view', 'jcv-modal');
+    const title = modal.querySelector('.modal__head h2');
+    if (title) {
+      title.textContent = j.id;
+      title.insertAdjacentHTML('beforebegin', `<span class="veh-view__icon" aria-hidden="true">${jcvIcon(JC_ICONS.job, 26)}</span>`);
+      const titles = document.createElement('div');
+      titles.className = 'veh-view__titles';
+      title.replaceWith(titles);
+      titles.insertAdjacentHTML('beforeend', '<span class="jcv-kicker">Job Card</span>');
+      titles.append(title);
+    }
+    const tabButtons = [...modal.querySelectorAll('.jcv-tab')];
+    // Modal.open() focused the first button, which is now a tab; focus stays where it always was, on Print
+    if (tabButtons.includes(document.activeElement)) {
+      const print = modal.querySelector('[data-print-view]');
+      if (print) print.focus();
+    }
+    const select = tab => {
+      tabButtons.forEach(b => {
+        const on = b === tab;
+        b.setAttribute('aria-selected', String(on));
+        b.tabIndex = on ? 0 : -1;
+        modal.querySelector(`#${b.getAttribute('aria-controls')}`).hidden = !on;
+      });
+    };
+    tabButtons.forEach((b, i) => {
+      b.addEventListener('click', () => select(b));
+      b.addEventListener('keydown', e => {
+        const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabButtons.length - 1 }[e.key];
+        if (to === undefined) return;
+        e.preventDefault();
+        const next = tabButtons[(to + tabButtons.length) % tabButtons.length];
+        select(next);
+        next.focus();
+      });
+    });
   }
 
   /* ---------- print ---------- */
