@@ -598,8 +598,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 
 /* ---------- Job Card Details (read-only view) ----------
    .jcv-modal sits on top of the .veh-view details shell (header, paper body,
-   sticky footer). Everything else is scoped to .jcv-*. */
-.jcv-modal { max-width: 1080px; }
+   sticky footer, 1000px width). Everything else is scoped to .jcv-*. */
 .jcv-kicker { display: block; font-size: .78rem; font-weight: 600; color: var(--text-2); letter-spacing: .02em; }
 .jcv { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 

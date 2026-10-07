@@ -1536,8 +1536,6 @@
     });
   }
 
-  /* ---------- details view ---------- */
-
   /* ---------- details view ----------
      Read-only. Every value below is the same expression the details view
      has always shown (computeTotals() for the services / parts / labour
@@ -1591,9 +1589,9 @@
   }
 
   /** A details card: icon + title head, then its body. */
-  function jcvCard(key, icon, title, body, extra = '') {
+  function jcvCard(key, icon, title, body) {
     return `
-      <section class="jcv-card jcv-card--${key}" aria-labelledby="jcv-${key}"${extra}>
+      <section class="jcv-card jcv-card--${key}" aria-labelledby="jcv-${key}">
         <div class="jcv-card__head">
           <span class="jcv-card__icon" aria-hidden="true">${jcvIcon(icon)}</span>
           <h3 class="jcv-card__title" id="jcv-${key}">${title}</h3>
