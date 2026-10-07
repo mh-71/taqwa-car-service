@@ -1195,3 +1195,21 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
   color: color-mix(in srgb, var(--bad) 70%, var(--text));
 }
 .inv-view .modal__foot [data-void]:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
+.inv-view__tag {
+  margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper);
+  font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-2); white-space: nowrap;
+}
+
+/* ---------- Invoices list page ----------
+   Scoped to this page; the table's columns, rows, links and actions are the
+   existing ones (invoices.js only adds .ivl-* hooks and data-labels). */
+[data-page="invoices"] #invcStats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+[data-page="invoices"] #invcTableBody .num { white-space: nowrap; }
+[data-page="invoices"] #invcTableBody .ivl-due--open { color: color-mix(in srgb, var(--bad) 75%, var(--text)); font-weight: 700; }
+[data-page="invoices"] #page-content > .card .table th,
+[data-page="invoices"] #invcTableBody td { padding-left: 12px; padding-right: 12px; }
+[data-page="invoices"] #invcTableBody .ivl-id,
+[data-page="invoices"] #invcTableBody .ivl-date,
+[data-page="invoices"] #invcTableBody .ivl-job,
+[data-page="invoices"] #invcTableBody .ivl-status { white-space: nowrap; }
+[data-page="invoices"] #invcTableBody .ivl-act .row-actions { flex-wrap: nowrap; }
