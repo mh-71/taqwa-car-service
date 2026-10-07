@@ -24,6 +24,12 @@
   .content { padding: 16px; }
 }
 
+/* ---------- ≤900px : Customer Details stacks contact above the summary ---------- */
+@media (max-width: 900px) {
+  .cd-top { grid-template-columns: 1fr; }
+  .cd-top .vd-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none; }
+}
+
 /* ---------- ≤640px : phone ---------- */
 @media (max-width: 640px) {
   .stats-grid { gap: 10px; }
@@ -72,6 +78,10 @@
   .vd-item__label { margin: 0; flex: none; }
   .vd-item__value { text-align: right; }
   .vd-stats { grid-template-columns: 1fr 1fr; }
+  .cd-top .vd-stats { grid-template-columns: 1fr 1fr; }
+  .cd-top .vd-stat { flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; }
+  .cd-top .vd-stat__icon { width: 34px; height: 34px; }
+  .cd-top .vd-stat strong { font-size: 1.05rem; }
 }
 
 /* ---------- ≤400px ---------- */
@@ -81,6 +91,12 @@
   .vd-stats { grid-template-columns: 1fr; }
   /* Edit Vehicle title wraps as "Edit Vehicle" / "— VEH-0001", never inside the ID */
   .veh-add[aria-label^="Edit Vehicle"] .modal__head h2 { text-wrap: balance; }
+}
+
+/* ---------- ≤340px : Customer Details summary tiles in one column ---------- */
+@media (max-width: 340px) {
+  .cd-top .vd-stats { grid-template-columns: 1fr; }
+  .cd-top .vd-stat { flex-direction: row; align-items: center; }
 }
 
 /* ---------- print: hide app chrome ---------- */
