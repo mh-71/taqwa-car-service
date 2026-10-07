@@ -241,6 +241,20 @@ console.log('\n-- 3. Snapshots are never refreshed from the catalogue --');
   ok_('nothing is joined', !/\bJOIN\b/i.test(sql), sql);
 }
 
+/* ---------- 3b. custom work ---------- */
+console.log('\n-- 3b. Custom work lines (service_id NULL) --');
+{
+  const custom = { job_card_id: 'JOB-0001', service_id: null, name: 'Leather work', qty: 1, unit_price: 3000, total: 3000 };
+  const db = stubDB({ jobs: [JOBS[0]], services: [...SERVICES, custom], parts: PARTS });
+  const res = await call('/api/job-cards/JOB-0001', { DB: db });
+  const body = await res.json();
+  const line = body.data.services[2];
+  check('a custom work line reads back with serviceId null and its own figures',
+    line, { serviceId: null, name: 'Leather work', qty: 1, unitPrice: 3000, total: 3000 });
+  check('   ...after the catalogue lines, in stored order', body.data.services.map(s => s.serviceId), ['SRV-0001', 'SRV-0004', null]);
+  ok_('   ...and its name is never marked "(Custom)" by the API', !/Custom/.test(line.name), line.name);
+}
+
 /* ---------- 4. manual parts ---------- */
 console.log('\n-- 4. Manual part lines --');
 {

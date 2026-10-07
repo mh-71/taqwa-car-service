@@ -125,7 +125,7 @@
     border-radius: var(--radius-sm);
     padding: 8px;
   }
-  .line-row .line-service, .line-row--part .line-name { grid-column: span 2; }
+  .line-row .line-service, .line-row .line-work-wrap, .line-row--part .line-name { grid-column: span 2; }
   .insp-row { grid-template-columns: 80px 1fr; }
   .insp-row .insp-note { grid-column: span 2; }
   .bar-list__row { grid-template-columns: 90px 1fr 74px; }

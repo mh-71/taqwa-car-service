@@ -297,6 +297,20 @@ console.log('\n-- 4. The line snapshots are copied verbatim --');
   await post({ jobCardId: 'JOB-0001' }, db);
   check('a manual part line keeps its null partId', db.find('INSERT INTO invoice_parts').binds[1], null);
 }
+{
+  // Custom work on a job card is a service line with service_id NULL.
+  const db = stubDB({ jobServices: [
+    { service_id: 'SRV-0001', name: 'Brake pad change', qty: 1, unit_price: 1500, total: 1500 },
+    { service_id: null, name: 'Leather work', qty: 1, unit_price: 3000, total: 3000 },
+  ] });
+  const res = await post({ jobCardId: 'JOB-0001' }, db);
+  ok_('a job card with custom work invoices -> 201', res.status === 201, `got ${res.status}`);
+  const svc = db.all('INSERT INTO invoice_services');
+  check('   ...the custom work line is copied with its null serviceId, name and figures',
+    svc[1].binds.slice(0, 7), ['INV-0001', null, 'Leather work', 1, 3000, 3000, 2]);
+  check('   ...beside the catalogue line, unchanged', svc[0].binds.slice(0, 7),
+    ['INV-0001', 'SRV-0001', 'Brake pad change', 1, 1500, 1500, 1]);
+}
 
 console.log('\n-- 5. An invoice never touches inventory --');
 {

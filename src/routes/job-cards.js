@@ -504,6 +504,13 @@ const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArr
  *   blank. That is the "Add Line" button's leftover empty row, and the form
  *   has always discarded it silently.
  *
+ *   CUSTOM WORK is the one service line kept without a serviceId: serviceId
+ *   null or absent AND a non-blank name. It is stored with service_id NULL,
+ *   the same convention a manual part line uses, and never touches the
+ *   catalogue. A serviceId of '' is a catalogue row nobody picked, so it is
+ *   still dropped whatever name it carries -- a blank catalogue row must not
+ *   turn into custom work.
+ *
  *   qty IS `Number(x) || 0`, NOT `|| 1`. readLines() (:545-566) reads the
  *   boxes that way and validate() (:760) then rejects anything at or below
  *   zero, so normalizeLines()'s `|| 1` fallback is unreachable in the client
@@ -537,7 +544,8 @@ function readLines(raw, { isService, field }) {
     const name = typeof l.name === 'string' ? l.name.trim() : '';
 
     // The form's leftover empty row.
-    if (isService ? !ref : (!name && !ref)) continue;
+    const customWork = isService && (refRaw === undefined || refRaw === null) && name !== '';
+    if (isService ? (!ref && !customWork) : (!name && !ref)) continue;
     if (!isService && ref && !name) {
       return { error: `\`${at}.name\` is required for an inventory part line.` };
     }
@@ -558,7 +566,7 @@ function readLines(raw, { isService, field }) {
     }
 
     if (isService) {
-      lines.push({ serviceId: ref, name, qty, unitPrice, total: qty * unitPrice });
+      lines.push({ serviceId: ref || null, name, qty, unitPrice, total: qty * unitPrice });
     } else {
       const partNo = typeof l.partNo === 'string' ? l.partNo.trim() : '';
       if (partNo.length > 100) {

@@ -357,7 +357,17 @@
 }
 .line-row { margin-bottom: 8px; }
 .line-total { font-size: .84rem; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
-#addServiceLine, #addPartLine { margin: 4px 0 6px; }
+#addServiceLine, #addPartLine, #addCustomLine { margin: 4px 0 6px; }
+/* Custom work row: a name box carrying a small "Custom" tag where the
+   catalogue select would be. */
+.line-work-wrap { position: relative; min-width: 0; }
+.line-work { padding-right: 72px; }
+.line-work-tag {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  padding: 2px 8px; border-radius: 999px; pointer-events: none;
+  background: var(--amber-soft); color: var(--amber-deep);
+  font-size: .68rem; font-weight: 600; line-height: 1.4;
+}
 .muted-note-inline { font-weight: 400; font-size: .72rem; color: var(--text-3); }
 
 /* ---------- totals panel ---------- */
