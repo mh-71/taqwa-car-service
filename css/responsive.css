@@ -126,6 +126,13 @@
     padding: 8px;
   }
   .line-row .line-service, .line-row .line-work-wrap, .line-row--part .line-name { grid-column: span 2; }
+  /* New Job Card: part name and part no. get the full row; billing stacks */
+  .jc-new .line-row--part .line-part, .jc-new .line-row--part .line-partno { grid-column: span 2; }
+  .jc-new .line-row { background: var(--surface); }
+  .jc-billing { grid-template-columns: 1fr; }
+  .jc-sec__body { padding: 14px 12px; }
+  .jc-new .insp-row { grid-template-columns: 84px minmax(0, 1fr); }
+  .jc-new .insp-row .insp-note { grid-column: span 2; }
   .insp-row { grid-template-columns: 80px 1fr; }
   .insp-row .insp-note { grid-column: span 2; }
   .bar-list__row { grid-template-columns: 90px 1fr 74px; }

@@ -1062,6 +1062,137 @@
 
   /* ---------- create / edit ---------- */
 
+  /* ---------- New Job Card layout (create only) ----------
+     Presentation only. formHtml() is shared with Edit Job Card and renders
+     the form as headings followed by grids. For a NEW job card those same
+     elements are regrouped into section cards before any listener is bound.
+     Nothing is re-created: every input keeps its element, id and name, so
+     readForm(), validate(), the live totals and the save are untouched.
+     Edit Job Card never comes here and renders exactly as before. */
+  const JC_ICONS = {
+    job: 'M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z',
+    customer: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+    checkin: 'M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z',
+    complaint: 'M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z',
+    findings: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
+    services: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z',
+    parts: 'M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z',
+    labour: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z',
+    insp: 'M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm19.5-4.5L23 13l-6.99 7-4.51-4.5L13 14l3.01 3 5.49-5.5z',
+    billing: 'M18 17H6v-2h12v2zm0-4H6v-2h12v2zm0-4H6V7h12v2zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2v20z',
+    notes: 'M3 18h12v-2H3v2zM3 6v2h18V6H3zm0 7h18v-2H3v2z'
+  };
+
+  function layoutCreateForm(ov) {
+    const modal = ov && ov.querySelector && ov.querySelector('.modal');
+    const form = ov && ov.querySelector && ov.querySelector('#jobForm');
+    // unit-test overlays hand back inert stand-ins; only a real DOM is regrouped
+    if (!modal || !form || !form.children || typeof form.prepend !== 'function' || !modal.querySelector) return;
+    if (form.querySelectorAll(':scope > h3.detail-section-title').length !== 9) return;  // not the form this expects: leave it as rendered
+
+    const q = sel => form.querySelector(sel);
+    const field = sel => { const el = q(sel); return el ? el.closest('.field') : null; };
+    const buttons = (...els) => {
+      const row = document.createElement('div');
+      row.className = 'jc-sec__actions';
+      row.append(...els);
+      return row;
+    };
+    const plan = [
+      { key: 'job', title: 'Job Information', desc: 'Where the job comes from, who is assigned and when it is due',
+        cols: 3, grid: [field('#jf-source'), q('#jf-apt-wrap'), field('#jf-priority'), field('#jf-mechanic'), field('#jf-date'), field('#jf-est')] },
+      { key: 'customer', title: 'Customer &amp; Vehicle', desc: 'The vehicle list follows the selected customer',
+        grid: [field('#jf-customer-search'), field('#jf-vehicle')] },
+      { key: 'checkin', title: 'Vehicle Check-in', desc: 'Condition of the vehicle as it arrives',
+        grid: [field('#jf-mileage'), field('#jf-mileage-out'), field('#jf-fuel'), field('#jf-condition')] },
+      { key: 'complaint', title: 'Customer Complaint / Requested Work <span class="req">*</span>', desc: 'What the customer reports or asks for',
+        body: [field('#jf-complaint')] },
+      { key: 'findings', title: 'Workshop Findings', desc: 'Inspection, diagnosis and advice from the workshop',
+        body: [q('#jf-inspection') && q('#jf-inspection').closest('.form-grid')] },
+      { key: 'services', title: 'Services &amp; Custom Work', desc: 'Catalogue services, or one-off custom work that is not in the catalogue',
+        body: [q('.line-head:not(.line-head--part)'), q('#serviceLines'), q('#addServiceLine'), q('#addCustomLine'), q('[data-err="services"]')] },
+      { key: 'parts', title: 'Parts Used', desc: 'Manual entry until Inventory module',
+        body: [q('.line-head--part'), q('#partLines'), q('#addPartLine')] },
+      { key: 'labour', title: 'Labour', desc: 'Hours × rate fills the labour total, or enter a direct amount',
+        body: [q('#jf-lhours') && q('#jf-lhours').closest('.form-grid')] },
+      { key: 'insp', title: 'Inspection Checklist', desc: 'Condition of each area; notes are optional',
+        body: [q('.insp-grid')] },
+      { key: 'billing', title: 'Billing', desc: 'Discount, tax and advance; totals update as you type',
+        body: [q('#jf-discount') && q('#jf-discount').closest('.form-grid'), q('#totalsPanel')] },
+      { key: 'notes', title: 'General Notes', desc: 'Anything else worth recording on this job',
+        body: [field('#jf-notes')] }
+    ];
+    if (plan.some(s => (s.grid || s.body).some(el => !el))) return;   // a part is missing: change nothing
+
+    // moving the focused control would drop focus; put it back afterwards
+    const focused = document.activeElement;
+
+    const sections = plan.map(s => {
+      const sec = document.createElement('section');
+      sec.className = `form-section jc-sec jc-sec--${s.key}`;
+      sec.setAttribute('aria-labelledby', `jcs-${s.key}`);
+      sec.innerHTML = `
+        <div class="form-section__head">
+          <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="${JC_ICONS[s.key]}"/></svg></span>
+          <div>
+            <h3 class="form-section__title" id="jcs-${s.key}">${s.title}</h3>
+            <p class="form-section__desc">${s.desc}</p>
+          </div>
+        </div>`;
+      const body = document.createElement('div');
+      if (s.grid) {
+        body.className = `form-grid${s.cols === 3 ? ' form-grid--3' : ''} form-section__body`;
+        body.append(...s.grid);
+      } else {
+        body.className = 'jc-sec__body';
+        if (s.key === 'services') {
+          const [head, lines, addService, addCustom, err] = s.body;
+          body.append(head, lines, buttons(addService, addCustom), err);
+        } else if (s.key === 'parts') {
+          const [head, lines, addPart] = s.body;
+          body.append(head, lines, buttons(addPart));
+        } else if (s.key === 'billing') {
+          const wrap = document.createElement('div');
+          wrap.className = 'jc-billing';
+          wrap.append(...s.body);
+          body.append(wrap);
+        } else {
+          body.append(...s.body);
+        }
+      }
+      sec.append(body);
+      return sec;
+    });
+
+    // What is left is the old headings and the grids that are now empty.
+    [...form.children].forEach(ch => {
+      if (ch.matches('h3.detail-section-title') || (ch.matches('.form-grid') && !ch.children.length)) ch.remove();
+    });
+    form.prepend(...sections);
+    form.classList.add('jc-form');
+
+    // inspection rows show their status as a colour; the stored value is unchanged
+    const insp = form.querySelector('.insp-grid');
+    const markState = sel => { sel.closest('.insp-row').dataset.state = sel.value; };
+    insp.querySelectorAll('.insp-state').forEach(markState);
+    insp.addEventListener('change', e => { if (e.target.matches('.insp-state')) markState(e.target); });
+
+    // header: icon + subtitle, the same treatment as the other redesigned forms
+    modal.classList.add('veh-add', 'jc-new');
+    const title = modal.querySelector('.modal__head h2');
+    if (title) {
+      title.insertAdjacentHTML('beforebegin', `<span class="veh-add__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${JC_ICONS.job}"/></svg></span>`);
+      const titles = document.createElement('div');
+      titles.className = 'veh-add__titles';
+      title.before(titles);
+      titles.append(title);
+      titles.insertAdjacentHTML('beforeend', '<p class="veh-add__sub" id="jc-new-sub">Create a new service &amp; repair job</p>');
+      modal.setAttribute('aria-describedby', 'jc-new-sub');
+    }
+
+    if (focused && form.contains(focused) && document.activeElement !== focused) focused.focus();
+  }
+
   function openCreateModal(fromAppointmentId = '') {
     if (!Storage.getData('customers').length) {
       Modal.open({
@@ -1096,6 +1227,7 @@
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Open Job Card</button>`
     });
+    layoutCreateForm(ov);
     bindFormEvents(ov, false);
 
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
