@@ -201,4 +201,102 @@
   .pr-sign div { flex: 1; text-align: center; font-size: 11px; }
   .pr-sign span { display: block; border-top: 1px solid #111; margin-bottom: 4px; padding-top: 4px; }
   .pr-foot { margin-top: 20px; text-align: center; font-size: 10px; color: #666; }
+
+  /* ---------- Job Card document (A4) ----------
+     Its own .jcp-* classes and a named page, so the invoice, payment,
+     expense and report prints that share .pr-* are untouched. */
+  @page jobcard {
+    size: A4 portrait;
+    margin: 12mm 12mm 14mm;
+    @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 8pt sans-serif; color: #777; }
+  }
+  /* an open Job Card dialog must not print on top of the document */
+  body.printing-job .modal-overlay { display: none !important; }
+  .jcp { page: jobcard; color: #1b1f24; font-size: 9.5pt; line-height: 1.35; }
+  .jcp h3 {
+    margin: 0 0 4px; font-size: 7.5pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #8a5a00;
+    break-after: avoid;
+  }
+  .jcp dl, .jcp dd { margin: 0; }
+
+  /* header: the logo on its brand plate, workshop details on the right */
+  .jcp-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 10px; border-bottom: 2px solid #1b1f24; }
+  .jcp-logo {
+    flex: none; display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 5px; background: #16202c;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .jcp-logo img { display: block; height: 40px; width: auto; }
+  .jcp-org { text-align: right; }
+  .jcp-org__name { font-size: 15pt; font-weight: 800; letter-spacing: .06em; line-height: 1.15; }
+  .jcp-org__tag { font-size: 9pt; color: #555; }
+  .jcp-org__phone { margin-top: 3px; font-size: 10.5pt; }
+  .jcp-org__phone strong { font-size: 12pt; letter-spacing: .03em; }
+  .jcp-org__addr { margin-top: 2px; max-width: 460px; margin-left: auto; font-size: 8.5pt; color: #555; }
+
+  /* job card title + meta */
+  .jcp-title { display: flex; align-items: stretch; gap: 12px; margin: 8px 0 8px; break-inside: avoid; }
+  .jcp-doc { flex: none; display: flex; flex-direction: column; justify-content: center; padding: 6px 14px; border-left: 4px solid #c47f06; background: #fbf4e6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .jcp-doc__label { font-size: 8pt; font-weight: 700; letter-spacing: .2em; color: #8a5a00; }
+  .jcp-doc__id { font-size: 15pt; font-weight: 800; letter-spacing: .02em; }
+  .jcp-meta { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid #c9ced4; border-radius: 4px; }
+  .jcp-meta > div { padding: 4px 10px; border-left: 1px solid #e1e4e8; border-top: 1px solid #e1e4e8; }
+  .jcp-meta > div:nth-child(3n+1) { border-left: 0; }
+  .jcp-meta > div:nth-child(-n+3) { border-top: 0; }
+  .jcp-meta dt, .jcp-party dt { font-size: 7.5pt; color: #666; text-transform: uppercase; letter-spacing: .06em; }
+  .jcp-meta dd { font-weight: 700; }
+
+  /* customer / vehicle / mechanic */
+  .jcp-parties { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr); border: 1px solid #c9ced4; border-radius: 4px; margin-bottom: 8px; break-inside: avoid; }
+  .jcp-party { padding: 6px 10px; border-left: 1px solid #e1e4e8; min-width: 0; }
+  .jcp-party:first-child { border-left: 0; }
+  .jcp-party dl > div { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; padding: 1px 0; }
+  .jcp-party dt { padding-top: 1px; white-space: nowrap; text-transform: none; letter-spacing: 0; font-size: 8pt; }
+  .jcp-party dd { font-weight: 600; overflow-wrap: anywhere; }
+
+  /* sections, text and tables */
+  .jcp-sec { margin-bottom: 7px; }
+  .jcp-insp-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; align-items: start; }
+  /* labour on one line: hours, rate, total */
+  .jcp-labour { display: flex; align-items: baseline; gap: 22px; padding: 5px 9px; border: 1px solid #e1e4e8; border-radius: 4px; break-inside: avoid; }
+  .jcp-labour h3 { margin: 0; }
+  .jcp-labour em { margin-right: 4px; font-style: normal; font-size: 7.5pt; color: #666; text-transform: uppercase; letter-spacing: .06em; }
+  .jcp-labour__total { margin-left: auto; font-weight: 700; }
+  /* complaint / condition / diagnosis side by side, one column each */
+  .jcp-texts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 0 12px; }
+  /* a heading that wraps keeps the boxes beside it aligned */
+  .jcp-texts > .jcp-sec { display: grid; grid-row: span 2; grid-template-rows: subgrid; }
+  .jcp .jcp-text { margin: 0; padding: 5px 9px; border: 1px solid #e1e4e8; border-radius: 4px; white-space: pre-line; overflow-wrap: anywhere; break-inside: avoid; }
+  .jcp .jcp-empty { color: #777; font-style: italic; }
+  .jcp-table { width: 100%; border-collapse: collapse; }
+  .jcp-table thead { display: table-header-group; }
+  .jcp-table th {
+    padding: 4px 8px; border-top: 1.5px solid #1b1f24; border-bottom: 1px solid #1b1f24; text-align: left;
+    font-size: 7.5pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #333;
+  }
+  .jcp-table td { padding: 3px 8px; border-bottom: 1px solid #e1e4e8; vertical-align: top; }
+  .jcp-table tr { break-inside: avoid; }
+  .jcp-table .jcp-no { width: 26px; color: #777; }
+  .jcp-table td.pr-num, .jcp-table th.pr-num { white-space: nowrap; }
+
+  /* notes + billing summary, kept together */
+  /* notes, signatures, billing summary and footer move as one block: they
+     are never split, so a second page always opens with the billing and sign-off */
+  .jcp-close { break-inside: avoid; margin-top: 4px; }
+  .jcp-end { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; align-items: stretch; }
+  .jcp-end__left { display: flex; flex-direction: column; justify-content: space-between; gap: 28px; }
+  .jcp-sum { width: 100%; border-collapse: collapse; border: 1px solid #c9ced4; }
+  .jcp-sum td { padding: 3px 10px; }
+  .jcp-sum__sub td { border-top: 1px solid #c9ced4; font-weight: 700; }
+  .jcp-sum__grand td {
+    padding: 6px 10px; border-top: 1.5px solid #1b1f24; border-bottom: 1.5px solid #1b1f24;
+    background: #fbf4e6; font-size: 11.5pt; font-weight: 800; letter-spacing: .02em;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .jcp-sum__due td { padding: 5px 10px; border-top: 1px solid #c9ced4; font-size: 11pt; font-weight: 800; }
+
+  /* signatures + footer */
+  .jcp-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding-top: 30px; text-align: center; font-size: 9pt; color: #333; }
+  .jcp-sign__line { display: block; height: 0; margin-bottom: 5px; border-top: 1px solid #1b1f24; }
+  .jcp-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 14px; margin-top: 10px; padding-top: 6px; border-top: 1px solid #e1e4e8; font-size: 8.5pt; color: #666; }
+  .jcp-foot p { margin: 0; }
 }

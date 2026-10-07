@@ -1763,87 +1763,185 @@
 
   /* ---------- print ---------- */
 
+  /* The phone printed on every Job Card. The Settings phone is still the
+     placeholder "+880 1XXX-XXXXXX", so the print carries the workshop's real
+     number rather than reading it from there. */
+  const WORKSHOP_PHONE = '01854226757';
+
+  // Page margin marks naming this job card: every page's footer, and a
+  // "continued" line at the top of every page after the first.
+  function jobPageMarks(jobId) {
+    const id = String(jobId).replace(/[^\w\- ]/g, '');
+    return `@page jobcard {
+        @bottom-center { content: "${id} · Page " counter(page) " of " counter(pages); }
+        @top-right { content: "Taqwa Automobile · ${id} (continued)"; font: 8pt sans-serif; color: #777; }
+      }
+      @page jobcard:first { @top-right { content: none; } }`;
+  }
+
   function printJobCard(id) {
     const j = Storage.getById('jobCards', id);
     if (!j) return;
     const settings = Storage.getSettings();
     const vehicle = veh(j.vehicleId);
     const customer = Storage.getById('customers', j.customerId);
+    const mechanic = mec(j.mechanicId);
+    const t = computeTotals(j);
+    const root = (document.body.dataset && document.body.dataset.root) || '../';
 
-    const lineRows = (lines, isService) => (lines || []).map(l =>
-      `<tr><td>${esc(l.name)}${isService && isCustomWork(l) ? ' (Custom)' : ''}${!isService && l.partNo ? ` (${esc(l.partNo)})` : ''}</td>
+    const lineRows = (lines, isService) => (lines || []).map((l, i) =>
+      `<tr><td class="jcp-no">${i + 1}</td><td>${esc(l.name)}${isService && isCustomWork(l) ? ' (Custom)' : ''}${!isService && l.partNo ? ` (${esc(l.partNo)})` : ''}</td>
        <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num">${money(l.total)}</td></tr>`).join('');
+    const lineTable = (lines, isService) => `
+      <table class="jcp-table">
+        <thead><tr><th class="jcp-no">#</th><th>${isService ? 'Service / Work' : 'Part'}</th><th class="pr-num">Qty</th><th class="pr-num">Unit Price</th><th class="pr-num">Total</th></tr></thead>
+        <tbody>${lineRows(lines, isService)}</tbody>
+      </table>`;
 
-    const inspRows = Object.entries(j.inspectionChecklist || {})
-      .filter(([, v]) => v.state || v.note)
-      .map(([item, v]) => `<tr><td>${esc(item)}</td><td>${esc(v.state || '—')}</td><td>${esc(v.note || '')}</td></tr>`).join('');
+    const inspEntries = Object.entries(j.inspectionChecklist || {}).filter(([, v]) => v.state || v.note);
+    const inspTable = entries => `
+        <table class="jcp-table">
+          <thead><tr><th>Item</th><th>Condition</th><th>Note</th></tr></thead>
+          <tbody>${entries.map(([item, v]) => `<tr><td>${esc(item)}</td><td>${esc(v.state || '—')}</td><td>${esc(v.note || '')}</td></tr>`).join('')}</tbody>
+        </table>`;
+    // more than three items: two tables side by side, so a full checklist takes half the height
+    const half = Math.ceil(inspEntries.length / 2);
+    const inspBody = inspEntries.length > 3
+      ? `<div class="jcp-insp-cols">${inspTable(inspEntries.slice(0, half))}${inspTable(inspEntries.slice(half))}</div>`
+      : inspTable(inspEntries);
 
-    document.getElementById('printArea').innerHTML = `
-      <div class="pr-head">
-        <div>
-          <h1>${esc(settings.businessName)}</h1>
-          <p>${esc(settings.address)} · ${esc(settings.phone)}</p>
+    const meta = [
+      ['Date', fmtDate(j.date)],
+      ['Status', esc(j.status)],
+      ['Priority', PRIORITIES[j.priority || 'normal']],
+      j.appointmentId ? ['Appointment', esc(j.appointmentId)] : null,
+      j.estDelivery ? ['Est. Delivery', fmtDate(j.estDelivery)] : null,
+      j.completedAt ? ['Completed', fmtDate(j.completedAt)] : null
+    ].filter(Boolean);
+    const party = (title, rows) => `
+      <div class="jcp-party">
+        <h3>${title}</h3>
+        <dl>${rows.filter(Boolean).map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+      </div>`;
+    const textSection = (title, value, empty = '') => (value || empty) ? `
+      <section class="jcp-sec">
+        <h3>${title}</h3>
+        <p class="jcp-text${value ? '' : ' jcp-empty'}">${value ? esc(value) : empty}</p>
+      </section>` : '';
+
+    const area = document.getElementById('printArea');
+    area.innerHTML = `
+    <div class="jcp">
+      <header class="jcp-head">
+        <span class="jcp-logo"><img src="${root}assets/logo/logo-white.png" alt="Taqwa Automobile"></span>
+        <div class="jcp-org">
+          <div class="jcp-org__name">TAQWA AUTOMOBILE</div>
+          <div class="jcp-org__tag">Service Center / Workshop</div>
+          <div class="jcp-org__phone">Phone: <strong>${WORKSHOP_PHONE}</strong></div>
+          ${settings.address ? `<div class="jcp-org__addr">${esc(settings.address)}</div>` : ''}
         </div>
-        <div class="pr-meta">
-          <h2>JOB CARD</h2>
-          <p><strong>${esc(j.id)}</strong></p>
-          <p>${fmtDate(j.date)}</p>
-        </div>
+      </header>
+
+      <section class="jcp-title">
+        <div class="jcp-doc"><span class="jcp-doc__label">JOB CARD</span><span class="jcp-doc__id">${esc(j.id)}</span></div>
+        <dl class="jcp-meta">${meta.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+      </section>
+
+      <section class="jcp-parties">
+        ${party('Customer', [
+          ['Name', customer ? esc(customer.name) : 'Unknown Customer'],
+          ['Phone', customer ? esc(customer.phone) : '—']
+        ])}
+        ${party('Vehicle', [
+          ['Vehicle', vehicle ? esc(`${vehicle.brand} ${vehicle.model}`) : 'Unknown Vehicle'],
+          ['Registration', esc(vehReg(j.vehicleId))],
+          vehicle && vehicle.vin ? ['VIN', esc(vehicle.vin)] : null,
+          ['Mileage In / Out', `${j.mileage ? Number(j.mileage).toLocaleString('en-IN') : '—'} / ${j.mileageOut ? Number(j.mileageOut).toLocaleString('en-IN') : '—'} km`],
+          j.fuelLevel ? ['Fuel Level', FUEL_LABELS[j.fuelLevel] || esc(j.fuelLevel)] : null
+        ])}
+        ${party('Mechanic', [
+          ['Mechanic', esc(mecName(j.mechanicId))],
+          mechanic && mechanic.specialization ? ['Specialization', esc(mechanic.specialization)] : null,
+          ['Status', esc(j.status)],
+          ['Priority', PRIORITIES[j.priority || 'normal']]
+        ])}
+      </section>
+
+      <div class="jcp-texts">
+        ${textSection('Customer Complaint', j.complaint, 'No complaint recorded.')}
+        ${textSection('Vehicle Condition / Belongings', j.conditionNotes)}
+        ${textSection('Diagnosis', j.diagnosis)}
       </div>
 
-      <div class="pr-cols">
-        <div>
-          <h3>Customer</h3>
-          <p>${customer ? esc(customer.name) : 'Unknown Customer'}<br>${customer ? esc(customer.phone) : ''}</p>
+      <section class="jcp-sec">
+        <h3>Services</h3>
+        ${(j.services || []).length ? lineTable(j.services, true) : '<p class="jcp-text jcp-empty">No services recorded.</p>'}
+      </section>
+
+      <section class="jcp-sec">
+        <h3>Parts Used</h3>
+        ${(j.partsUsed || []).length ? lineTable(j.partsUsed, false) : '<p class="jcp-text jcp-empty">No parts recorded.</p>'}
+      </section>
+
+      ${Number(j.labourCost) > 0 ? `
+      <section class="jcp-sec jcp-labour">
+        <h3>Labour</h3>
+        <span><em>Hours</em> ${j.labourHours ? esc(j.labourHours) : '—'}</span>
+        <span><em>Rate (BDT/hr)</em> ${j.labourRate ? money(j.labourRate) : '—'}</span>
+        <span class="jcp-labour__total"><em>Labour Total</em> ${money(j.labourCost || 0)}</span>
+      </section>` : ''}
+
+      ${inspEntries.length ? `
+      <section class="jcp-sec">
+        <h3>Inspection</h3>
+        ${inspBody}
+      </section>` : ''}
+
+      <div class="jcp-close">
+      <section class="jcp-end">
+        <div class="jcp-end__left">
+          <div class="jcp-end__notes">
+            ${j.notes ? `<h3>Notes</h3><p class="jcp-text">${esc(j.notes)}</p>` : ''}
+          </div>
+          <div class="jcp-sign">
+            <div><span class="jcp-sign__line"></span>Customer Signature</div>
+            <div><span class="jcp-sign__line"></span>Service Advisor</div>
+          </div>
         </div>
-        <div>
-          <h3>Vehicle</h3>
-          <p>${vehicle ? esc(`${vehicle.brand} ${vehicle.model}`) : 'Unknown Vehicle'}<br>
-             ${esc(vehReg(j.vehicleId))}<br>
-             Mileage In: ${j.mileage ? Number(j.mileage).toLocaleString('en-IN') + ' km' : '—'}
-             ${j.mileageOut ? `· Out: ${Number(j.mileageOut).toLocaleString('en-IN')} km` : ''}</p>
-        </div>
-        <div>
-          <h3>Mechanic</h3>
-          <p>${esc(mecName(j.mechanicId))}<br>Status: ${esc(j.status)} · Priority: ${PRIORITIES[j.priority || 'normal']}</p>
-        </div>
+        <table class="jcp-sum">
+          <tr><td>Services</td><td class="pr-num">${money(t.serviceTotal)}</td></tr>
+          <tr><td>Parts</td><td class="pr-num">${money(t.partsTotal)}</td></tr>
+          <tr><td>Labour</td><td class="pr-num">${money(j.labourCost || 0)}</td></tr>
+          <tr class="jcp-sum__sub"><td>Subtotal</td><td class="pr-num">${money(j.subtotal)}</td></tr>
+          <tr><td>Discount</td><td class="pr-num">− ${money(j.discount)}</td></tr>
+          <tr><td>Tax (${j.taxRate || 0}%)</td><td class="pr-num">+ ${money(j.tax)}</td></tr>
+          <tr class="jcp-sum__grand"><td>GRAND TOTAL</td><td class="pr-num">${money(j.total)}</td></tr>
+          <tr><td>Paid</td><td class="pr-num">${money(j.paid)}</td></tr>
+          <tr class="jcp-sum__due"><td>DUE</td><td class="pr-num">${money(j.due)}</td></tr>
+        </table>
+      </section>
+
+      <footer class="jcp-foot">
+        <p>${esc(settings.invoiceFooter)}</p>
+        <p>Taqwa Automobile · Phone: ${WORKSHOP_PHONE}</p>
+      </footer>
       </div>
+      <style>${jobPageMarks(j.id)}</style>
+    </div>`;
 
-      ${j.complaint ? `<h3>Customer Complaint</h3><p>${esc(j.complaint)}</p>` : ''}
-      ${j.diagnosis ? `<h3>Diagnosis</h3><p>${esc(j.diagnosis)}</p>` : ''}
-
-      ${(j.services || []).length ? `<h3>Services</h3>
-      <table class="pr-table"><thead><tr><th>Service</th><th class="pr-num">Qty</th><th class="pr-num">Unit</th><th class="pr-num">Total</th></tr></thead>
-      <tbody>${lineRows(j.services, true)}</tbody></table>` : ''}
-
-      ${(j.partsUsed || []).length ? `<h3>Parts</h3>
-      <table class="pr-table"><thead><tr><th>Part</th><th class="pr-num">Qty</th><th class="pr-num">Unit</th><th class="pr-num">Total</th></tr></thead>
-      <tbody>${lineRows(j.partsUsed, false)}</tbody></table>` : ''}
-
-      ${inspRows ? `<h3>Inspection</h3>
-      <table class="pr-table"><thead><tr><th>Item</th><th>Condition</th><th>Note</th></tr></thead>
-      <tbody>${inspRows}</tbody></table>` : ''}
-
-      <table class="pr-totals">
-        <tr><td>Subtotal (services + parts + labour ${money(j.labourCost || 0)})</td><td class="pr-num">${money(j.subtotal)}</td></tr>
-        <tr><td>Discount</td><td class="pr-num">− ${money(j.discount)}</td></tr>
-        <tr><td>Tax (${j.taxRate || 0}%)</td><td class="pr-num">+ ${money(j.tax)}</td></tr>
-        <tr class="pr-grand"><td>Grand Total</td><td class="pr-num">${money(j.total)}</td></tr>
-        <tr><td>Paid</td><td class="pr-num">${money(j.paid)}</td></tr>
-        <tr><td>Due</td><td class="pr-num">${money(j.due)}</td></tr>
-      </table>
-
-      ${j.notes ? `<h3>Notes</h3><p>${esc(j.notes)}</p>` : ''}
-
-      <div class="pr-sign">
-        <div><span></span>Customer Signature</div>
-        <div><span></span>Service Advisor</div>
-      </div>
-      <p class="pr-foot">${esc(settings.invoiceFooter)}</p>`;
-
+    // Print once the logo has loaded, so it is on the page that gets printed.
     document.body.classList.add('printing-job');
-    window.print();
-    setTimeout(() => document.body.classList.remove('printing-job'), 300);
+    const go = () => {
+      window.print();
+      setTimeout(() => document.body.classList.remove('printing-job'), 300);
+    };
+    const logo = area.querySelector ? area.querySelector('.jcp-logo img') : null;
+    if (logo && !logo.complete) {
+      logo.addEventListener('load', go, { once: true });
+      logo.addEventListener('error', go, { once: true });
+    } else {
+      go();
+    }
   }
 
   /* ---------- events + init ---------- */
