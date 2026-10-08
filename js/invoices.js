@@ -887,7 +887,7 @@
           <thead><tr><th class="ivp-no">#</th><th>Service / Work</th><th class="pr-num">Qty</th><th class="pr-num">Unit Price</th><th class="pr-num">Total</th></tr></thead>
           <tbody>${i.services.map((l, n) => `<tr>
             <td class="ivp-no">${n + 1}</td>
-            <td>${esc(l.name)}${isCustomWork(l) ? ' <span class="ivp-tag">Custom</span>' : ''}</td>
+            <td>${esc(l.name)}</td>
             <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num ivp-strong">${money(l.total)}</td>
           </tr>`).join('')}</tbody>
         </table>
