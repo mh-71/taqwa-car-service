@@ -24,6 +24,9 @@
 -- run.sh refuses to start unless all of these tables are empty, so anything
 -- present here was created by this run and is safe to remove. Order follows
 -- the foreign keys.
+-- 0002: write-offs hold RESTRICT references to invoices and customers, so
+-- they go before either.
+DELETE FROM invoice_adjustments;
 DELETE FROM payments;
 DELETE FROM invoice_services;
 DELETE FROM invoice_parts;

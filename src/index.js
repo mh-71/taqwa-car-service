@@ -56,6 +56,14 @@ import {
   listPayments, getPayment,
   createPayment, updatePayment, deletePayment, voidPayment, linkPayment,
 } from './routes/payments.js';
+// Write-offs (0002) waive part of an invoice's due without being payments.
+// Like payments, every write recomputes the invoice in the same batch, and a
+// reversal is an action rather than a field change. There is no update or
+// remove: a write-off is never edited or deleted, only voided.
+import {
+  listInvoiceAdjustments, getInvoiceAdjustment,
+  createInvoiceAdjustment, voidInvoiceAdjustment,
+} from './routes/invoice-adjustments.js';
 import {
   listExpenses, getExpense, createExpense, updateExpense, deleteExpense,
 } from './routes/expenses.js';
@@ -131,6 +139,11 @@ const COLLECTIONS = {
     list: listPayments, detail: getPayment,
     create: createPayment, update: updatePayment, remove: deletePayment,
     actions: { void: voidPayment, link: linkPayment },
+  },
+  'invoice-adjustments': {
+    list: listInvoiceAdjustments, detail: getInvoiceAdjustment,
+    create: createInvoiceAdjustment,
+    actions: { void: voidInvoiceAdjustment },
   },
   expenses: {
     list: listExpenses, detail: getExpense,

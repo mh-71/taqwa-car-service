@@ -172,17 +172,29 @@
   function computeInvoiceReport(range) {
     const invoices = Storage.getData('invoices').filter(i => inRange(i.date, range));
     const allPayments = Storage.getData('payments');
+    const allAdjustments = Storage.getData('invoiceAdjustments');
     const rows = invoices.map(inv => {
       const total = Number(inv.total) || 0;
       const paid = Math.min(total, allPayments
         .filter(p => p.invoiceId === inv.id && p.status !== 'Void')
         .reduce((s, p) => s + (Number(p.amount) || 0), 0));
-      return { ...inv, livePaid: paid, liveDue: inv.status === 'Void' ? 0 : Math.max(total - paid, 0) };
+      // Write-offs (0002) are not cash: they never touch livePaid, Collected
+      // or Revenue. They only reduce what is still owed, capped at what cash
+      // left unpaid -- the server's recompute exactly. A Void invoice is never
+      // owed, so its write-offs are not counted either.
+      const writtenOff = inv.status === 'Void' ? 0 : Math.min(total - paid, allAdjustments
+        .filter(a => a.invoiceId === inv.id && a.status !== 'Void')
+        .reduce((s, a) => s + (Number(a.amount) || 0), 0));
+      return {
+        ...inv, livePaid: paid, liveWrittenOff: writtenOff,
+        liveDue: inv.status === 'Void' ? 0 : Math.max(total - paid - writtenOff, 0)
+      };
     });
     return {
       rows,
       totalBilled: rows.reduce((s, r) => s + (Number(r.total) || 0), 0),
       totalCollected: rows.reduce((s, r) => s + (Number(r.livePaid) || 0), 0),
+      totalWrittenOff: rows.reduce((s, r) => s + (Number(r.liveWrittenOff) || 0), 0),
       totalDue: rows.reduce((s, r) => s + (Number(r.liveDue) || 0), 0)
     };
   }
@@ -469,6 +481,7 @@
     const stats = statCardsHtml([
       { label: 'Total Billed', value: money(r.totalBilled), tone: 'info', icon: ICONS.doc },
       { label: 'Collected (live)', value: money(r.totalCollected), tone: 'good', icon: ICONS.money },
+      { label: 'Written Off', value: money(r.totalWrittenOff), tone: 'info', icon: ICONS.doc },
       { label: 'Outstanding Due', value: money(r.totalDue), tone: 'bad', icon: ICONS.warn }
     ]);
     const custName = id => (Storage.getById('customers', id) || {}).name || 'Unknown Customer';
@@ -481,15 +494,16 @@
         <td>${i.jobCardId ? esc(i.jobCardId) : '—'}</td>
         <td class="num">${money(i.total)}</td>
         <td class="num">${money(i.livePaid)}</td>
+        <td class="num">${money(i.liveWrittenOff)}</td>
         <td class="num">${money(i.liveDue)}</td>
-        <td>${badge(i.status)}</td>
+        <td>${badge(Utils.invoiceStatusLabel(i))}</td>
       </tr>`).join('');
     return `${stats}
       <section class="card"><div class="card__body">
         <h3 class="detail-section-title">Invoices in Range</h3>
-        ${tableHtml([{ label: 'Invoice #' }, { label: 'Date' }, { label: 'Customer' }, { label: 'Job Card' }, { label: 'Total', num: true }, { label: 'Paid', num: true }, { label: 'Due', num: true }, { label: 'Status' }], rows, 'No invoices in this range.')}
+        ${tableHtml([{ label: 'Invoice #' }, { label: 'Date' }, { label: 'Customer' }, { label: 'Job Card' }, { label: 'Total', num: true }, { label: 'Paid', num: true }, { label: 'Written Off', num: true }, { label: 'Due', num: true }, { label: 'Status' }], rows, 'No invoices in this range.')}
       </div></section>
-      <p class="muted-note">Paid/Due are recomputed live from non-Void Payments for active invoices; a Void invoice shows its frozen historical figures instead.</p>`;
+      <p class="muted-note">Paid is recomputed live from non-Void Payments and Written Off from non-Void write-offs; Due is what remains. A write-off is not cash and is never counted as collected or as revenue. A Void invoice is never owed.</p>`;
   }
 
   function renderJobCardReport(range) {

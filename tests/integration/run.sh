@@ -82,6 +82,7 @@ cleanup() {
                     + (SELECT count(*) FROM payments WHERE id LIKE 'PAY-9%')
                     + (SELECT count(*) FROM expenses WHERE id LIKE 'EXP-9%')
                     + (SELECT count(*) FROM inventory_transactions WHERE id LIKE 'STK-9%')
+                    + (SELECT count(*) FROM invoice_adjustments)
                     + (SELECT count(*) FROM settings WHERE id = 1) AS n" \
            | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
     # Counters matter as much as rows from C-2 onward: a write test that
@@ -186,6 +187,7 @@ COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM cust
                     + (SELECT count(*) FROM invoice_services) + (SELECT count(*) FROM invoice_parts)
                     + (SELECT count(*) FROM payments) + (SELECT count(*) FROM expenses)
                     + (SELECT count(*) FROM inventory_transactions)
+                    + (SELECT count(*) FROM invoice_adjustments)
                     + (SELECT count(*) FROM settings)
                     + (SELECT sum(last_value) FROM id_counters) AS n" \
          | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')

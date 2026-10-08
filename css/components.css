@@ -1142,6 +1142,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .inv-view .totals-panel--view .inv-view__due strong { color: var(--good); }
 .inv-view .totals-panel--view .inv-view__due.totals-due { background: var(--bad-soft); box-shadow: inset 4px 0 0 var(--bad); }
 .inv-view .totals-panel--view .inv-view__due.totals-due strong { color: var(--bad); }
+/* a write-off: named beside the cash, never part of it (0002) */
+.inv-view .totals-panel--view .inv-view__wo { margin-top: 8px; padding: 9px 16px; border: 0; border-radius: 10px; background: var(--paper); }
+.inv-view .totals-panel--view .inv-view__wo span { color: var(--text-2); font-weight: 600; }
+.inv-view .totals-panel--view .inv-view__wo strong { color: var(--text); font-weight: 700; }
+/* write-off history; "N write-offs" is the longest card count, so its head may wrap on a phone */
+.inv-view__card--adj { --ico: var(--inv-ico-calc); }
+.inv-view__card--adj .inv-view__card-head { flex-wrap: wrap; row-gap: 6px; }
+.inv-view .inv-view__adj td { vertical-align: top; }
+.inv-view .inv-view__adj-reason { overflow-wrap: anywhere; color: var(--text); }
+.inv-view .inv-view__adj-amt { font-weight: 700; white-space: nowrap; }
+.inv-view .inv-view__adj--void .inv-view__adj-amt { text-decoration: line-through; color: var(--text-2); }
+.inv-view .inv-view__adj--void .inv-view__adj-reason { color: var(--text-2); }
 /* a Void invoice's frozen figures read neutral */
 .inv-view--void .totals-panel--view .totals-grand,
 .inv-view--void .totals-panel--view .inv-view__paid,
@@ -1183,6 +1195,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .inv-view .modal__foot [data-modal-close] { --ico: var(--inv-ico-close); }
 .inv-view .modal__foot a[href^="job-cards.html"] { --ico: var(--inv-ico-case); }
 .inv-view .modal__foot [data-edit-notes] { --ico: var(--inv-ico-pencil); }
+.inv-view .modal__foot [data-write-off] { --ico: var(--inv-ico-calc); }
 .inv-view .modal__foot a[href^="payments.html"] {
   --ico: var(--inv-ico-card);
   background: var(--amber); border-color: var(--amber); color: #241a05;
@@ -1218,3 +1231,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 [data-page="invoices"] #invcTableBody .ivl-job,
 [data-page="invoices"] #invcTableBody .ivl-status { white-space: nowrap; }
 [data-page="invoices"] #invcTableBody .ivl-act .row-actions { flex-wrap: nowrap; }
+
+/* ---------- Invoices: create notice + write-off dialog (0002) ---------- */
+.invc-create__warn {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 8px;
+  background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--warn);
+  color: var(--text); font-size: .86rem;
+}
+.wo-hint { display: block; margin-top: 4px; font-size: .78rem; color: var(--text-2); }
+.wo-summary { margin: 4px 0 0; font-size: .9rem; font-weight: 600; color: var(--text); }
+.wo-form-err:empty { display: none; }
+.wo-form-err { margin: 8px 0 0; }

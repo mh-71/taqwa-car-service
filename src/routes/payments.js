@@ -125,8 +125,10 @@ export const getPayment = routes.detail;
       Reading the balance, subtracting in JS and inserting is a
       lost update: two concurrent payments both see the same room
       and both take it. So the guard is part of the write --
-      `SUM(live payments) + amount <= total` inside the INSERT's
-      own WHERE -- and meta.changes says whether it applied.
+      `SUM(live payments) + SUM(live write-offs) + amount <= total`
+      inside the INSERT's own WHERE -- and meta.changes says whether
+      it applied. A write-off (0002) is not cash, but the room it
+      took is no longer there to pay into.
 
    2. THE RECOMPUTE IS ARITHMETIC IN SQL. paid, due and status are
       derived from SUM(amount) over the invoice's non-Void payments
@@ -193,33 +195,53 @@ const settled = (param) =>
                        WHERE invoice_id = ${param} AND status <> '${VOID}')))`;
 
 /**
- * Rewrite one invoice's paid/due/status from its live payments.
+ * The sum of an invoice's Active write-offs (invoice_adjustments, 0002).
  *
- * The whole of recomputeInvoiceBalance(), in one statement:
+ * A write-off is NOT a payment: it never enters `settled` and never counts as
+ * cash. It only reduces what is still owed. Exported so the payment checks
+ * here and the adjustment route read the same expression.
+ */
+export const adjusted = (param) =>
+  `(SELECT COALESCE(SUM(amount), 0)
+      FROM invoice_adjustments
+     WHERE invoice_id = ${param} AND status <> '${VOID}')`;
+
+/**
+ * Rewrite one invoice's paid/written_off/due/status from its live payments
+ * and its live write-offs.
  *
- *   paid    the settled figure above
- *   due     total - paid, floored at zero
- *   status  deriveInvoiceStatus(): Paid when the total is positive and
- *           covered, Partial when anything is paid, else Unpaid (:51-57)
+ * recomputeInvoiceBalance(), in one statement, extended by the write-off:
+ *
+ *   paid         the settled figure above -- cash only, unchanged
+ *   written_off  the Active write-offs, capped at what cash left unpaid
+ *   due          total - paid - written_off, floored at zero
+ *   status       Paid when the total is positive and paid + written_off
+ *                cover it; Partial when any cash is paid; else Unpaid
+ *
+ * With no Active write-off, written_off is MIN(total - paid, 0) = 0 (paid is
+ * capped at total), so paid, due and status are exactly what this statement
+ * produced before 0002.
  *
  * A VOID INVOICE IS NEVER TOUCHED (:86). Its figures are frozen at what it
  * had collected before it was cancelled -- audit Finding 7's other half --
- * and a payment change must not reactivate them.
+ * and a payment or adjustment change must not reactivate them.
  *
- * `guard` is what makes this conditional on the payment mutation in the same
- * batch having actually happened. Statements in a batch share one
- * transaction, so it can read the row the previous statement wrote.
+ * `guard` is what makes this conditional on the mutation in the same batch
+ * having actually happened. Statements in a batch share one transaction, so
+ * it can read the row the previous statement wrote.
  */
-function recomputeInvoice(env, { invoiceId, at, guard, guardBinds = [] }) {
+export function recomputeInvoice(env, { invoiceId, at, guard, guardBinds = [] }) {
   const paid = settled('?1');
+  const writtenOff = `MIN(total - ${paid}, MAX(0, ${adjusted('?1')}))`;
   return env.DB.prepare(
     `UPDATE invoices
-        SET paid       = ${paid},
-            due        = MAX(total - ${paid}, 0),
-            status     = CASE WHEN total > 0 AND ${paid} >= total THEN 'Paid'
-                              WHEN ${paid} > 0                    THEN 'Partial'
-                              ELSE 'Unpaid' END,
-            updated_at = ?2
+        SET paid        = ${paid},
+            written_off = ${writtenOff},
+            due         = MAX(total - ${paid} - ${writtenOff}, 0),
+            status      = CASE WHEN total > 0 AND ${paid} + ${writtenOff} >= total THEN 'Paid'
+                               WHEN ${paid} > 0                                   THEN 'Partial'
+                               ELSE 'Unpaid' END,
+            updated_at  = ?2
       WHERE id = ?1
         AND status <> '${VOID}'
         AND ${guard}`
@@ -237,7 +259,8 @@ async function explainInvoiceRefusal(env, invoiceId, customerId, amount) {
   const row = await env.DB.prepare(
     `SELECT i.status, i.customer_id, i.total,
             (SELECT COALESCE(SUM(amount), 0) FROM payments
-              WHERE invoice_id = ?1 AND status <> '${VOID}') AS settled
+              WHERE invoice_id = ?1 AND status <> '${VOID}') AS settled,
+            ${adjusted('?1')} AS adjusted
        FROM invoices i WHERE i.id = ?1`
   ).bind(invoiceId).first();
 
@@ -252,8 +275,10 @@ async function explainInvoiceRefusal(env, invoiceId, customerId, amount) {
     return conflict('This invoice belongs to a different customer.',
       { reason: 'customer_mismatch', invoiceId });
   }
-  // :121-123 — the overpayment refusal, reporting the live outstanding due.
-  const liveDue = Math.max((Number(row.total) || 0) - (Number(row.settled) || 0), 0);
+  // :121-123 — the overpayment refusal, reporting the live outstanding due:
+  // what is left once the payments and the Active write-offs are counted.
+  const liveDue = Math.max(
+    (Number(row.total) || 0) - (Number(row.settled) || 0) - (Number(row.adjusted) || 0), 0);
   return conflict(
     `This would overpay the invoice. Outstanding due is ${liveDue}.`,
     { reason: 'overpayment', invoiceId, outstandingDue: liveDue, amount }
@@ -383,7 +408,8 @@ export async function createPayment(request, env) {
              AND i.status     <> '${VOID}'
              AND i.customer_id = ?3
              AND (SELECT COALESCE(SUM(amount), 0) FROM payments
-                   WHERE invoice_id = ?2 AND status <> '${VOID}') + ?6 <= i.total)`
+                   WHERE invoice_id = ?2 AND status <> '${VOID}')
+                 + ${adjusted('?2')} + ?6 <= i.total)`
     ).bind(...values));
     statements.push(recomputeInvoice(env, {
       invoiceId: invoiceId.value, at,
@@ -558,7 +584,7 @@ export async function linkPayment(request, env, rawId) {
                  AND i.customer_id = payments.customer_id
                  AND (SELECT COALESCE(SUM(amount), 0) FROM payments p2
                        WHERE p2.invoice_id = ?2 AND p2.status <> '${VOID}')
-                     + payments.amount <= i.total)`
+                     + ${adjusted('?2')} + payments.amount <= i.total)`
       ).bind(id.value, invoiceId.value, at),
       recomputeInvoice(env, {
         invoiceId: invoiceId.value, at,

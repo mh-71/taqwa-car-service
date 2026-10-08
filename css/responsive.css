@@ -171,6 +171,14 @@
   .inv-view .inv-view__lines td.num { white-space: normal; }   /* an amount may only break after its currency sign */
   .inv-view .inv-view__lines td.num::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: .74rem; font-weight: 500; color: var(--text-2); }
   .inv-view .inv-view__lines td.inv-view__total { text-align: right; font-weight: 700; }
+  /* write-offs: one stacked row each -- id and amount, then the reason, then Reverse (0002) */
+  .inv-view .inv-view__adj thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .inv-view .inv-view__adj, .inv-view .inv-view__adj tbody { display: block; width: 100%; }
+  .inv-view .inv-view__adj tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .inv-view .inv-view__adj td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; }
+  .inv-view .inv-view__adj td.inv-view__adj-sum { grid-column: 2; grid-row: 1; text-align: right; }
+  .inv-view .inv-view__adj td.inv-view__adj-reason, .inv-view .inv-view__adj td.inv-view__adj-act { grid-column: 1 / -1; }
+  .inv-view .inv-view__adj td.inv-view__adj-act:empty { display: none; }
   .inv-view .totals-panel--view .totals-grand strong { font-size: 1.35rem; }
   .inv-view .modal__foot { padding: 12px 16px; }
   .form-section__head { padding: 10px 12px; }
@@ -536,6 +544,7 @@
   .ivp-stamp strong { display: block; font-size: 18pt; font-weight: 900; line-height: 1; letter-spacing: .04em; text-transform: uppercase; }
   .ivp-stamp span { display: block; margin-top: .9mm; font-size: 7.5pt; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
   .ivp-stamp--paid { color: #157a43; background: #eaf7ef; }
+  .ivp-stamp--settled { color: #157a43; background: #eaf7ef; }
   .ivp-stamp--partial { color: #9a5500; background: #fff4e2; }
   .ivp-stamp--unpaid { color: var(--ivp-red); background: var(--ivp-red-soft); }
   .ivp-stamp--void { color: #4b5563; background: #f1f3f5; }
@@ -612,6 +621,8 @@
   }
   .ivp-sum__grand td.pr-num { color: var(--ivp-red); font-weight: 900; }
   .ivp-sum__paid td { background: #fff; font-weight: 800; }
+  /* a write-off, shown as an adjustment beside the cash -- never as part of Paid */
+  .ivp-sum__adj td { background: #fff; color: var(--ivp-grey); font-weight: 700; }
   .ivp-sum__due td { border-bottom: 0; background: #e7f6ec; color: #157a43; font-size: 12.5pt; font-weight: 900; }
   .ivp-sum__due td.pr-num { font-weight: 900; }
   .ivp-sum__due--open td { background: var(--ivp-red-soft); color: var(--ivp-red); }

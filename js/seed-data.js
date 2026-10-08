@@ -228,6 +228,8 @@ const SeedData = (() => {
     db.saveData('payments', payments);
     db.saveData('expenses', expenses);
     db.saveData('inventoryTransactions', inventoryTransactions);
+    // Write-offs are an API-mode feature; offline there are none.
+    db.saveData('invoiceAdjustments', []);
 
     // sync id counters so new records continue the sequence
     const counters = {

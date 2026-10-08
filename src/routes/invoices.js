@@ -84,7 +84,7 @@ const ID_CHUNK = 500;
 const PARENT_COLUMNS = `
   id, job_card_id, customer_id, vehicle_id, date,
   labour_cost, discount, tax_rate, subtotal, tax, total, paid, due,
-  status, notes, created_at, updated_at
+  written_off, status, notes, created_at, updated_at
 `;
 
 // Child rows carry invoice_id so a batched result can be grouped by parent.
@@ -155,6 +155,8 @@ function toRecord(row, services, partsUsed) {
     tax: row.tax,
     total: row.total,
     paid: row.paid,                 // stored, never derived from payments
+    // 0002: the Active write-offs' total, cached like paid. Not cash.
+    writtenOff: row.written_off ?? 0,
     due: row.due,                   // stored, never derived from payments
     status: row.status,             // stored, never re-derived from paid/total
 
@@ -349,9 +351,9 @@ const VOID = 'Void';
  *
  * Everything financial is here, because createInvoiceFromJobCard() takes all
  * of it from the job card (:188-199) and the module's own header calls the
- * result "already-correct, already-frozen numbers". `paid` and `due` included:
- * they are the job card's figures at the moment of invoicing, and afterwards
- * payments are what move them (C-8).
+ * result "already-correct, already-frozen numbers". `paid`, `writtenOff` and
+ * `due` are refused too: a new invoice starts unpaid, and afterwards its
+ * payments (C-8) and its write-offs (0002) are what move them.
  */
 const SERVER_OWNED = {
   id: '`id` is allocated by the server.',
@@ -367,8 +369,9 @@ const SERVER_OWNED = {
   subtotal: '`subtotal` is copied from the job card.',
   tax: '`tax` is copied from the job card.',
   total: '`total` is copied from the job card.',
-  paid: '`paid` is copied from the job card, and afterwards follows its payments.',
-  due: '`due` is copied from the job card, and afterwards follows its payments.',
+  paid: '`paid` starts at 0 and afterwards follows the invoice\u2019s payments.',
+  writtenOff: '`writtenOff` follows the invoice\u2019s write-offs. Use /api/invoice-adjustments.',
+  due: '`due` is calculated from the total, the payments and the write-offs.',
   status: '`status` is derived from the amount paid. Use the void operation to cancel an invoice.',
 };
 
@@ -510,13 +513,18 @@ export async function createInvoice(request, env) {
 
   const lines = await readJobCardLines(env, job.id);
 
-  // :181-186 — defensive floors and one ceiling. job-cards.js validates all of
-  // this at the source, so these never change a legitimately created invoice's
-  // numbers; they only stop the financial record itself from ever storing an
-  // impossible combination, which the columns' own CHECKs would refuse anyway.
+  // :181-186 — the defensive floor on the total. job-cards.js validates it at
+  // the source, so this never changes a legitimately created invoice.
+  //
+  // A NEW INVOICE STARTS UNPAID. The job card's typed "Paid / Advance" is not
+  // a record of cash -- no payment row stands behind it -- so it is no longer
+  // copied: the first payment recompute used to discard it anyway, and until
+  // then it showed money the payments did not hold. Cash reaches an invoice
+  // only as a payment (recorded or linked), which is what `paid` follows from
+  // here on. The job card's own paid/due are left exactly as they are.
   const total = Math.max(0, Number(job.total) || 0);
-  const paid = Math.min(total, Math.max(0, Number(job.paid) || 0));
-  const due = Math.max(total - paid, 0);
+  const paid = 0;
+  const due = total;
 
   // :192 — the supplied date, else the day it was handed over, else the day it
   // was completed, else today. completed_at is an instant, and slicing its
@@ -813,6 +821,17 @@ export async function deleteInvoice(request, env, rawId) {
     return conflict(
       'This invoice has recorded payments against it and must be kept for the audit trail.',
       { reason: 'invoice_has_payments', paid: inv.paid }
+    );
+  }
+  // 0002 — a write-off, Active or reversed, is part of the audit trail too.
+  // The RESTRICT foreign key would refuse the delete anyway; this says why.
+  const adjustment = await env.DB.prepare(
+    'SELECT id FROM invoice_adjustments WHERE invoice_id = ?1 LIMIT 1'
+  ).bind(id.value).first();
+  if (adjustment) {
+    return conflict(
+      'This invoice has write-offs recorded against it and must be kept for the audit trail.',
+      { reason: 'invoice_has_adjustments' }
     );
   }
 

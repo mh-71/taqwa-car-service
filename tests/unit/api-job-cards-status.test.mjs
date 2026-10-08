@@ -774,14 +774,15 @@ console.log('\n-- 10. The money and the links are left alone --');
 {
   const routes = (await (await call('/api/health', { DB: stubDB() }, 'GET')).json()).data.routes;
   check('health advertises the status route', routes.includes('POST /api/job-cards/:id/status'), true);
-  check('   ...and the registry is 60 routes', routes.length, 63);
+  check('   ...and the registry is 67 routes', routes.length, 67);
   // C-7 added voiding an invoice and C-8 voiding and linking a payment.
   // Every action route is a POST under a record, and no collection has more
   // than the ones it declares.
   check('   ...alongside the other action routes',
     routes.filter((r) => /\/:id\/[a-z-]+$/.test(r)),
     ['POST /api/job-cards/:id/status', 'POST /api/invoices/:id/void',
-      'POST /api/payments/:id/void', 'POST /api/payments/:id/link']);
+      'POST /api/payments/:id/void', 'POST /api/payments/:id/link',
+      'POST /api/invoice-adjustments/:id/void']);
   ok_('   ...and no PUT or DELETE on it',
     !routes.includes('PUT /api/job-cards/:id/status')
       && !routes.includes('DELETE /api/job-cards/:id/status'), routes);

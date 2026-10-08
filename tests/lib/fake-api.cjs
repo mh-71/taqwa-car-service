@@ -15,7 +15,8 @@ function fakeApi({ rows = {}, settings = null, fail = null, health = true,
   const seq = {};
   const PREFIX = { customers: 'CUS', 'job-cards': 'JOB', payments: 'PAY', invoices: 'INV',
                    parts: 'PRT', vehicles: 'VEH', appointments: 'APT', services: 'SRV',
-                   mechanics: 'MEC', expenses: 'EXP', 'inventory-transactions': 'STK' };
+                   mechanics: 'MEC', expenses: 'EXP', 'inventory-transactions': 'STK',
+                   'invoice-adjustments': 'ADJ' };
   let stored = settings ? { ...settings } : null;
   let signedIn = authenticated;
 
