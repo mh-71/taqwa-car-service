@@ -777,6 +777,44 @@
   // (the Settings phone is a placeholder).
   const INVOICE_PHONE = '01854226757';
 
+  /* Print-only glyphs (inline, so the document needs no external files). */
+  const IVP_ICON = {
+    pin: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z',
+    phone: 'M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z',
+    mail: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z',
+    web: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z',
+    person: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+    car: 'M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z',
+    gear: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
+    box: 'M20 2H4c-1 0-2 .9-2 2v3.01c0 .72.43 1.34 1 1.69V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.57-.35 1-.97 1-1.69V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z',
+    wrench: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z',
+    notes: 'M3 10h11v2H3v-2zm0-2h11V6H3v2zm0 8h7v-2H3v2zm15.01-3.13.71-.71a.996.996 0 0 1 1.41 0l.71.71c.39.39.39 1.02 0 1.41l-.71.71-2.12-2.12zm-.71.71-5.3 5.3V21h2.12l5.3-5.3-2.12-2.12z',
+    check: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
+    clock: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z',
+    alert: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z',
+    block: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.902 7.902 0 0 1 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1A7.902 7.902 0 0 1 20 12c0 4.42-3.58 8-8 8z',
+    shield: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z',
+    people: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
+    money: 'M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z',
+    handshake: 'M12.22 19.85c-.18.18-.5.21-.71 0a.504.504 0 0 1 0-.71l3.39-3.39-1.41-1.41-3.39 3.39c-.19.2-.51.19-.71 0a.504.504 0 0 1 0-.71l3.39-3.39-1.41-1.41-3.39 3.39c-.18.18-.5.21-.71 0a.513.513 0 0 1 0-.71l3.39-3.39-1.42-1.41-3.39 3.39c-.18.18-.5.21-.71 0a.513.513 0 0 1 0-.71L9.52 8.4l1.87 1.86c.95.95 2.59.94 3.54 0 .98-.98.98-2.56 0-3.54l-1.86-1.86.28-.28c.78-.78 2.05-.78 2.83 0l4.24 4.24c.78.78.78 2.05 0 2.83l-8.2 8.2zm9.61-6.78a4.008 4.008 0 0 0 0-5.66l-4.24-4.24a4.008 4.008 0 0 0-5.66 0l-.28.28-.28-.28a4.008 4.008 0 0 0-5.66 0L2.17 6.71a3.992 3.992 0 0 0-.4 5.19l1.45-1.45a2 2 0 0 1 .37-2.33l3.54-3.54c.78-.78 2.05-.78 2.83 0l3.56 3.56c.18.18.21.5 0 .71-.21.21-.53.18-.71 0L9.52 5.57l-5.8 5.79c-.98.97-.98 2.56 0 3.54.39.39.89.63 1.42.7a2.458 2.458 0 0 0 2.12 2.12 2.458 2.458 0 0 0 2.12 2.12c.07.54.31 1.03.7 1.42.47.47 1.1.73 1.77.73.67 0 1.3-.26 1.77-.73l8.21-8.19z'
+  };
+  const ivpIcon = name => `<svg class="ivp-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${IVP_ICON[name]}"/></svg>`;
+  /* A side-on car, drawn in line, for the header panel and the closing watermark. */
+  const IVP_CAR = `<svg class="ivp-car" viewBox="0 0 240 96" aria-hidden="true" focusable="false">
+      <path class="ivp-car__body" d="M12 66c0-9 7-13 19-15l40-7c13-15 32-24 61-24 27 0 45 8 61 23l25 4c11 2 14 8 14 15v6c0 3-2 4-5 4h-17a21 21 0 0 0-42 0H80a21 21 0 0 0-42 0H17c-3 0-5-2-5-4z"/>
+      <path class="ivp-car__glass" d="M86 44c10-12 24-17 42-17l2 17zm52-17c18 0 32 6 44 17h-42z"/>
+      <path class="ivp-car__line" d="M26 58h200"/>
+      <circle class="ivp-car__tyre" cx="59" cy="72" r="16"/><circle class="ivp-car__rim" cx="59" cy="72" r="7"/>
+      <circle class="ivp-car__tyre" cx="193" cy="72" r="16"/><circle class="ivp-car__rim" cx="193" cy="72" r="7"/>
+    </svg>`;
+  /* How each stored status reads on the printed document (the status itself is the stored one). */
+  const IVP_STATUS = {
+    Paid: ['paid', 'check', 'Fully Settled'],
+    Partial: ['partial', 'clock', 'Payment Due'],
+    Unpaid: ['unpaid', 'alert', 'Payment Required'],
+    Void: ['void', 'block', 'Void Invoice']
+  };
+
   function printInvoice(id) {
     const i = Storage.getById('invoices', id);
     if (!i) return;
@@ -785,17 +823,9 @@
     const customer = Storage.getById('customers', i.customerId);
     const root = (document.body.dataset && document.body.dataset.root) || '../';
     const isVoid = i.status === 'Void';
+    const [statusKey, statusIcon, statusNote] = IVP_STATUS[i.status] || ['void', 'block', ''];
     const row = (label, value) => `<div class="ivp-row"><dt>${label}</dt><dd>${value}</dd></div>`;
-
-    const lineTable = (lines, isService) => `
-      <table class="ivp-table">
-        <thead><tr><th class="ivp-no">#</th><th>${isService ? 'Service' : 'Part'}</th><th class="pr-num">Qty</th><th class="pr-num">Unit Price</th><th class="pr-num">Total</th></tr></thead>
-        <tbody>${lines.map((l, n) => `<tr>
-          <td class="ivp-no">${n + 1}</td>
-          <td>${esc(l.name)}${isService && isCustomWork(l) ? ' <span class="ivp-tag">Custom</span>' : ''}${!isService && l.partNo ? ` <span class="ivp-partno">(${esc(l.partNo)})</span>` : ''}</td>
-          <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num">${money(l.total)}</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
+    const secHead = (icon, title) => `<h3 class="ivp-sec__title"><span class="ivp-sec__icon">${ivpIcon(icon)}</span>${title}</h3>`;
 
     const area = document.getElementById('printArea');
     area.innerHTML = `
@@ -803,36 +833,45 @@
       <header class="ivp-head">
         <div class="ivp-brand">
           <img class="ivp-logo" src="${root}assets/logo/logo-dark.png" alt="Taqwa Automobile">
-          <div class="ivp-org">
-            <div class="ivp-org__name">${esc(settings.businessName)}</div>
-            ${settings.address ? `<div>${esc(settings.address)}</div>` : ''}
-            <div>Phone: <strong>${INVOICE_PHONE}</strong>${settings.email ? ` · ${esc(settings.email)}` : ''}</div>
-            ${settings.website ? `<div>${esc(settings.website)}</div>` : ''}
-            ${settings.taxId ? `<div>Tax/VAT: ${esc(settings.taxId)}</div>` : ''}
-          </div>
+          <div class="ivp-org__name">${esc(settings.businessName)}</div>
+          <ul class="ivp-contact">
+            ${settings.address ? `<li>${ivpIcon('pin')}<span>${esc(settings.address)}</span></li>` : ''}
+            <li class="ivp-contact__phone">${ivpIcon('phone')}<span>${INVOICE_PHONE}</span></li>
+            ${settings.email ? `<li>${ivpIcon('mail')}<span>${esc(settings.email)}</span></li>` : ''}
+            ${settings.website ? `<li>${ivpIcon('web')}<span>${esc(settings.website)}</span></li>` : ''}
+            ${settings.taxId ? `<li class="ivp-contact__tax"><span>Tax/VAT: ${esc(settings.taxId)}</span></li>` : ''}
+          </ul>
         </div>
-        <div class="ivp-doc">
-          <h2 class="ivp-doc__title">INVOICE</h2>
-          <span class="ivp-status ivp-status--${VIEW_TONE[i.status] || 'neutral'}">${esc(i.status)}</span>
-          <dl class="ivp-meta">
-            ${row('Invoice No', `<strong>${esc(i.id)}</strong>`)}
-            ${row('Invoice Date', fmtDate(i.date))}
-            ${row('Job Card', i.jobCardId ? esc(i.jobCardId) : '—')}
-          </dl>
-        </div>
+        <div class="ivp-panel" aria-hidden="true">${IVP_CAR}</div>
       </header>
 
+      <div class="ivp-titlebar">
+        <div class="ivp-title">
+          <h2 class="ivp-title__main">INVOICE</h2>
+          <p class="ivp-title__sub">${i.jobCardId ? 'Service invoice for a completed job card' : 'Service invoice'}</p>
+        </div>
+        <div class="ivp-stamp ivp-stamp--${statusKey}">
+          ${ivpIcon(statusIcon)}
+          <div><strong>${esc(i.status)}</strong>${statusNote ? `<span>${statusNote}</span>` : ''}</div>
+        </div>
+        <dl class="ivp-meta">
+          ${row('Invoice No', `<strong>${esc(i.id)}</strong>`)}
+          ${row('Invoice Date', fmtDate(i.date))}
+          ${row('Job Card', i.jobCardId ? esc(i.jobCardId) : '—')}
+        </dl>
+      </div>
+
       <div class="ivp-parties">
-        <section class="ivp-party">
-          <h3>Customer</h3>
+        <section class="ivp-party ivp-party--customer">
+          <h3 class="ivp-party__head">${ivpIcon('person')}Customer Information</h3>
           <dl>
             ${row('Name', customer ? esc(customer.name) : 'Unknown Customer')}
             ${row('Phone', customer && customer.phone ? esc(customer.phone) : '—')}
             ${customer && customer.address ? row('Address', esc(customer.address)) : ''}
           </dl>
         </section>
-        <section class="ivp-party">
-          <h3>Vehicle</h3>
+        <section class="ivp-party ivp-party--vehicle">
+          <h3 class="ivp-party__head">${ivpIcon('car')}Vehicle Information</h3>
           <dl>
             ${row('Vehicle', vehicle ? esc(`${vehicle.brand} ${vehicle.model}`) : 'Unknown Vehicle')}
             ${row('Registration', esc(vehReg(i.vehicleId)))}
@@ -842,22 +881,40 @@
         </section>
       </div>
 
-      ${(i.services || []).length ? `<section class="ivp-sec"><h3>Services</h3>${lineTable(i.services, true)}</section>` : ''}
-      ${(i.partsUsed || []).length ? `<section class="ivp-sec"><h3>Parts</h3>${lineTable(i.partsUsed, false)}</section>` : ''}
-      ${Number(i.labourCost) > 0 ? `<section class="ivp-sec ivp-labour"><h3>Labour</h3>
-        <table class="ivp-table"><tbody><tr><td>Labour charges</td><td class="pr-num">${money(i.labourCost)}</td></tr></tbody></table>
+      ${(i.services || []).length ? `<section class="ivp-sec">
+        ${secHead('gear', 'Services / Work')}
+        <table class="ivp-table">
+          <thead><tr><th class="ivp-no">#</th><th>Service / Work</th><th class="pr-num">Qty</th><th class="pr-num">Unit Price</th><th class="pr-num">Total</th></tr></thead>
+          <tbody>${i.services.map((l, n) => `<tr>
+            <td class="ivp-no">${n + 1}</td>
+            <td>${esc(l.name)}${isCustomWork(l) ? ' <span class="ivp-tag">Custom</span>' : ''}</td>
+            <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num ivp-strong">${money(l.total)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </section>` : ''}
+
+      ${(i.partsUsed || []).length ? `<section class="ivp-sec">
+        ${secHead('box', 'Parts')}
+        <table class="ivp-table">
+          <thead><tr><th class="ivp-no">#</th><th>Part</th><th>Part No.</th><th class="pr-num">Qty</th><th class="pr-num">Unit Price</th><th class="pr-num">Total</th></tr></thead>
+          <tbody>${i.partsUsed.map((l, n) => `<tr>
+            <td class="ivp-no">${n + 1}</td>
+            <td>${esc(l.name)}</td><td class="ivp-partno">${l.partNo ? esc(l.partNo) : '—'}</td>
+            <td class="pr-num">${l.qty}</td><td class="pr-num">${money(l.unitPrice)}</td><td class="pr-num ivp-strong">${money(l.total)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </section>` : ''}
+
+      ${Number(i.labourCost) > 0 ? `<section class="ivp-sec ivp-labour">
+        ${secHead('wrench', 'Labour')}
+        <div class="ivp-labour__row"><span>Labour charges</span><strong>${money(i.labourCost)}</strong></div>
       </section>` : ''}
 
       <div class="ivp-end">
         <div class="ivp-end__left">
-          ${isVoid
-            ? '<div class="ivp-state ivp-state--void">VOID</div>'
-            : Number(i.due) > 0
-              ? `<div class="ivp-state ivp-state--due"><span>Amount Due</span><strong>${money(i.due)}</strong></div>`
-              : '<div class="ivp-state ivp-state--paid">PAID</div>'}
-          ${i.notes ? `<section class="ivp-notes"><h3>Notes</h3><p>${esc(i.notes)}</p></section>` : ''}
+          ${i.notes ? `<section class="ivp-notes">${secHead('notes', 'Notes')}<p>${esc(i.notes)}</p></section>` : ''}
         </div>
-        <table class="ivp-sum">
+        <table class="ivp-sum${isVoid ? ' ivp-sum--void' : ''}">
           <tr><td>Subtotal</td><td class="pr-num">${money(i.subtotal)}</td></tr>
           <tr><td>Discount</td><td class="pr-num">− ${money(i.discount)}</td></tr>
           <tr><td>Tax (${i.taxRate || 0}%)</td><td class="pr-num">+ ${money(i.tax)}</td></tr>
@@ -867,10 +924,27 @@
         </table>
       </div>
 
-      <footer class="ivp-foot">
-        <p class="ivp-foot__thanks">${esc(settings.invoiceFooter)}</p>
-        <p>${esc(settings.businessName)} · Phone: ${INVOICE_PHONE}</p>
-      </footer>
+      <div class="ivp-close">
+        <div class="ivp-thanks">
+          <span class="ivp-thanks__icon">${ivpIcon('handshake')}</span>
+          <p class="ivp-thanks__text">${esc(settings.invoiceFooter)}</p>
+          <p class="ivp-thanks__tag"><span>Your trust keeps us moving</span></p>
+        </div>
+        <ul class="ivp-trust">
+          <li>${ivpIcon('shield')}<span>Quality<br>Service</span></li>
+          <li>${ivpIcon('people')}<span>Skilled<br>Technicians</span></li>
+          <li>${ivpIcon('gear')}<span>Genuine<br>Parts</span></li>
+          <li>${ivpIcon('money')}<span>Fair<br>Pricing</span></li>
+          <li>${ivpIcon('car')}<span>Customer<br>Satisfaction</span></li>
+        </ul>
+        <footer class="ivp-foot">
+          <strong>${esc(settings.businessName)}</strong>
+          <span>Phone: ${INVOICE_PHONE}</span>
+          ${settings.email ? `<span>${esc(settings.email)}</span>` : ''}
+          ${settings.website ? `<span>${esc(settings.website)}</span>` : ''}
+          ${settings.address ? `<span class="ivp-foot__addr">${esc(settings.address)}</span>` : ''}
+        </footer>
+      </div>
     </div>`;
 
     // Print once the logo has loaded, so it is on the page that gets printed.
