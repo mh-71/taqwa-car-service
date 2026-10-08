@@ -827,9 +827,36 @@
     const row = (label, value) => `<div class="ivp-row"><dt>${label}</dt><dd>${value}</dd></div>`;
     const secHead = (icon, title) => `<h3 class="ivp-sec__title"><span class="ivp-sec__icon">${ivpIcon(icon)}</span>${title}</h3>`;
 
+    // Thank-you, highlights and contact bar: printed on every page as a fixed
+    // footer, and repeated invisibly in the frame's <tfoot> so each page keeps
+    // exactly its height free of content.
+    const closing = `
+        <div class="ivp-thanks">
+          <span class="ivp-thanks__icon">${ivpIcon('handshake')}</span>
+          <p class="ivp-thanks__text">${esc(settings.invoiceFooter)}</p>
+          <p class="ivp-thanks__tag"><span>Your trust keeps us moving</span></p>
+        </div>
+        <ul class="ivp-trust">
+          <li>${ivpIcon('shield')}<span>Quality<br>Service</span></li>
+          <li>${ivpIcon('people')}<span>Skilled<br>Technicians</span></li>
+          <li>${ivpIcon('gear')}<span>Genuine<br>Parts</span></li>
+          <li>${ivpIcon('money')}<span>Fair<br>Pricing</span></li>
+          <li>${ivpIcon('car')}<span>Customer<br>Satisfaction</span></li>
+        </ul>
+        <footer class="ivp-foot">
+          <strong>${esc(settings.businessName)}</strong>
+          <span>Phone: ${INVOICE_PHONE}</span>
+          ${settings.email ? `<span>${esc(settings.email)}</span>` : ''}
+          ${settings.website ? `<span>${esc(settings.website)}</span>` : ''}
+          ${settings.address ? `<span class="ivp-foot__addr">${esc(settings.address)}</span>` : ''}
+        </footer>`;
+
     const area = document.getElementById('printArea');
+    // The frame table's <thead> repeats the header at the top of every printed page.
     area.innerHTML = `
     <div class="ivp">
+      <table class="ivp-frame">
+      <thead><tr><td>
       <header class="ivp-head">
         <div class="ivp-brand">
           <img class="ivp-logo" src="${root}assets/logo/logo-dark.png" alt="Taqwa Automobile">
@@ -844,6 +871,9 @@
         </div>
         <div class="ivp-panel" aria-hidden="true">${IVP_CAR}</div>
       </header>
+      </td></tr></thead>
+      <tfoot aria-hidden="true"><tr><td><div class="ivp-close ivp-close--spacer">${closing}</div></td></tr></tfoot>
+      <tbody><tr><td>
 
       <div class="ivp-titlebar">
         <div class="ivp-title">
@@ -924,34 +954,24 @@
         </table>
       </div>
 
-      <div class="ivp-close">
-        <div class="ivp-thanks">
-          <span class="ivp-thanks__icon">${ivpIcon('handshake')}</span>
-          <p class="ivp-thanks__text">${esc(settings.invoiceFooter)}</p>
-          <p class="ivp-thanks__tag"><span>Your trust keeps us moving</span></p>
-        </div>
-        <ul class="ivp-trust">
-          <li>${ivpIcon('shield')}<span>Quality<br>Service</span></li>
-          <li>${ivpIcon('people')}<span>Skilled<br>Technicians</span></li>
-          <li>${ivpIcon('gear')}<span>Genuine<br>Parts</span></li>
-          <li>${ivpIcon('money')}<span>Fair<br>Pricing</span></li>
-          <li>${ivpIcon('car')}<span>Customer<br>Satisfaction</span></li>
-        </ul>
-        <footer class="ivp-foot">
-          <strong>${esc(settings.businessName)}</strong>
-          <span>Phone: ${INVOICE_PHONE}</span>
-          ${settings.email ? `<span>${esc(settings.email)}</span>` : ''}
-          ${settings.website ? `<span>${esc(settings.website)}</span>` : ''}
-          ${settings.address ? `<span class="ivp-foot__addr">${esc(settings.address)}</span>` : ''}
-        </footer>
-      </div>
+      </td></tr></tbody>
+      </table>
+      <div class="ivp-close ivp-close--fixed">${closing}</div>
     </div>`;
+
+    // The A4 page box, only while this invoice prints. It is an unnamed @page
+    // because Chrome adds a blank last page when a table with a <tfoot> sits on
+    // a named page; nothing else on this page prints, and it is removed after.
+    const pageBox = document.createElement('style');
+    pageBox.textContent = '@page { size: A4 portrait; margin: 8mm 10mm 11mm; '
+      + '@bottom-center { content: "Page " counter(page) " of " counter(pages); font: 8pt sans-serif; color: #777; } }';
+    document.head.appendChild(pageBox);
 
     // Print once the logo has loaded, so it is on the page that gets printed.
     document.body.classList.add('printing-invoice');
     const go = () => {
       window.print();
-      setTimeout(() => document.body.classList.remove('printing-invoice'), 300);
+      setTimeout(() => { document.body.classList.remove('printing-invoice'); pageBox.remove(); }, 300);
     };
     const logo = area.querySelector ? area.querySelector('.ivp-logo') : null;
     if (logo && !logo.complete) {

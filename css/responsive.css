@@ -478,22 +478,27 @@
   .rcp-foot__thanks { font-size: 10pt; font-weight: 600; color: #1b1f24; }
 
   /* ---------- Invoice (A4) ----------
-     The customer-facing invoice. Its own .ivp-* classes and named page, like
-     the Job Card and Receipt, so the expense and report prints that share
-     .pr-* are untouched. Brand red + navy on white; always printed light. */
-  @page invoice {
-    size: A4 portrait;
-    margin: 8mm 10mm 11mm;
-    @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 8pt sans-serif; color: #777; }
-  }
+     The customer-facing invoice. Its own .ivp-* classes, like the Job Card
+     and Receipt, so the expense and report prints that share .pr-* are
+     untouched. Brand red + navy on white; always printed light.
+     Its A4 page box (8mm 10mm 11mm, "Page X of Y") is added by printInvoice()
+     for the print only: a named page here would make Chrome add a blank last page. */
   .ivp {
     --ivp-red: #c8102e; --ivp-red-soft: #fdecee; --ivp-navy: #16202c; --ivp-ink: #1b1f24; --ivp-grey: #555f6b;
     --ivp-line: #dde2e8; --ivp-line-soft: #edf0f3; --ivp-soft: #f5f7f9;
-    page: invoice; color: var(--ivp-ink); font-size: 9.5pt; line-height: 1.4;
+    color: var(--ivp-ink); font-size: 9.5pt; line-height: 1.4;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .ivp h2, .ivp h3, .ivp p, .ivp dl, .ivp dd, .ivp ul { margin: 0; }
   .ivp .ivp-ico { display: block; width: 1em; height: 1em; fill: currentColor; flex: none; }
+
+  /* every page: the frame's <thead> repeats the header, the fixed closing block is
+     the footer, and its invisible copy in <tfoot> keeps that height free of content */
+  .ivp-frame { width: 100%; border-collapse: collapse; border-spacing: 0; }
+  .ivp-frame > thead { display: table-header-group; }
+  .ivp-frame > tfoot { display: table-footer-group; }
+  .ivp-frame > * > tr > td { padding: 0; vertical-align: top; }
+  .ivp-frame > thead > tr > td { padding-bottom: 4mm; }
 
   /* header: logo + workshop contact on white; an automotive navy panel with the red stripe */
   .ivp-head { display: grid; grid-template-columns: minmax(0, 1fr) 66mm; min-height: 32mm; break-inside: avoid; }
@@ -520,7 +525,7 @@
   .ivp-car__rim { fill: var(--ivp-red); }
 
   /* title, status stamp and invoice numbers */
-  .ivp-titlebar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6mm; align-items: center; margin: 4mm 0 3.5mm; break-inside: avoid; }
+  .ivp-titlebar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6mm; align-items: center; margin: 0 0 3.5mm; break-inside: avoid; }
   .ivp .ivp-title__main { font-size: 30pt; font-weight: 900; line-height: 1; letter-spacing: .02em; color: var(--ivp-navy); text-transform: none; margin: 0; }
   .ivp .ivp-title__sub { margin-top: 1.5mm; font-size: 8.5pt; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ivp-grey); }
   .ivp-stamp {
@@ -613,8 +618,10 @@
   .ivp-sum--void .ivp-sum__grand td, .ivp-sum--void .ivp-sum__grand td.pr-num,
   .ivp-sum--void .ivp-sum__due td { border-color: #c9ced4; background: #f1f3f5; color: #4b5563; }
 
-  /* thank-you, highlights and footer move as one block */
+  /* thank-you, highlights and footer move as one block, pinned to the foot of every page */
   .ivp-close { margin-top: 3.5mm; break-inside: avoid; }
+  .ivp-close--fixed { position: fixed; left: 0; right: 0; bottom: 0; margin-top: 0; }
+  .ivp-close--spacer { visibility: hidden; }
   .ivp-thanks { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .8mm 3mm; padding-top: 2.2mm; border-top: 1px solid #e5e8ec; text-align: center; }
   .ivp-thanks__icon { color: var(--ivp-red); }
   .ivp-thanks__icon .ivp-ico { width: 7.5mm; height: 7.5mm; }
