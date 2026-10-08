@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 63 routes', routes.length === 63, routes);
+  t('advertises 67 routes', routes.length === 67, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('25 GET, 16 POST, 11 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 25, POST: 16, PUT: 11, DELETE: 11 }), byMethod);
+    t('27 GET, 18 POST, 11 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 27, POST: 18, PUT: 11, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -84,7 +84,8 @@ sec('1. Health');
   t('advertises every action route, and only as POSTs',
     JSON.stringify(routes.filter((r2) => /\/:id\/[a-z-]+$/.test(r2)))
       === JSON.stringify(['POST /api/job-cards/:id/status', 'POST /api/invoices/:id/void',
-        'POST /api/payments/:id/void', 'POST /api/payments/:id/link']), routes);
+        'POST /api/payments/:id/void', 'POST /api/payments/:id/link',
+        'POST /api/invoice-adjustments/:id/void']), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -1028,7 +1029,7 @@ sec('10f. GET /api/invoices — stored money, billed snapshots, no payment looku
   t('full invoice record shape', JSON.stringify({ ...full, services: undefined, partsUsed: undefined }) ===
     JSON.stringify({ id:'INV-9001', jobCardId:'JOB-9001', customerId:'CUS-9002', vehicleId:'VEH-9002',
       date:'2026-09-24', labourCost:600, discount:100, taxRate:5, subtotal:8000, tax:395,
-      total:8295, paid:8295, due:0, status:'Paid', notes:'Settled on collection',
+      total:8295, paid:8295, writtenOff:0, due:0, status:'Paid', notes:'Settled on collection',
       services: undefined, partsUsed: undefined,
       createdAt:'2026-09-24T12:00:00', updatedAt:'2026-09-25T09:00:00' }),
     { ...full, services: undefined, partsUsed: undefined });
@@ -3544,10 +3545,15 @@ sec('18. Invoice writes: copied from a job card, voided into advances, against r
         && inv.body?.data?.labourCost === job.labourCost && inv.body?.data?.tax === job.tax
         && inv.body?.data?.discount === job.discount && inv.body?.data?.taxRate === job.taxRate,
       { invoice: inv.body?.data, job });
-    t('   ...including what the job card had already collected',
-      inv.body?.data?.paid === 300, inv.body?.data);
-    t('   ...and due follows from it', inv.body?.data?.due === job.total - 300, inv.body?.data);
-    t('   ...the status is derived from that', inv.body?.data?.status === 'Partial', inv.body?.data);
+    // 0002, decision (a): the job card's typed paid (300 here) is not a
+    // recorded payment, so it is NOT copied. A new invoice starts unpaid.
+    t('   ...except the job card\'s typed paid: the invoice starts at paid 0',
+      inv.body?.data?.paid === 0, inv.body?.data);
+    t('   ...so due is the whole total', inv.body?.data?.due === job.total, inv.body?.data);
+    t('   ...and it starts Unpaid', inv.body?.data?.status === 'Unpaid', inv.body?.data);
+    t('   ...with nothing written off', inv.body?.data?.writtenOff === 0, inv.body?.data);
+    t('   ...while the job card keeps its own typed paid',
+      (await get(`/api/job-cards/${J}`)).body?.data?.paid === 300);
 
     t('the line snapshots came across',
       inv.body?.data?.services?.length === 1 && inv.body?.data?.partsUsed?.length === 1,
@@ -3633,8 +3639,8 @@ sec('18. Invoice writes: copied from a job card, voided into advances, against r
     const voided = await send('POST', `/api/invoices/${I}/void`);
     t('POST /api/invoices/:id/void -> 200', voided.status === 200, voided.body);
     t('   ...the invoice is Void', voided.body?.data?.status === 'Void', voided.body?.data);
-    t('   ...its paid stays frozen at what it had collected',
-      voided.body?.data?.paid === 300, voided.body?.data);
+    t('   ...its paid stays frozen at what it had collected (nothing)',
+      voided.body?.data?.paid === 0, voided.body?.data);
     t('   ...and its due with it', voided.body?.data?.due === after.due, voided.body?.data);
     t('   ...its line snapshots are kept',
       voided.body?.data?.services?.length === 1 && voided.body?.data?.partsUsed?.length === 1,
@@ -3651,7 +3657,7 @@ sec('18. Invoice writes: copied from a job card, voided into advances, against r
     t('voiding a second time -> 409', again.status === 409, again.body);
     t('   ...reason', again.body?.error?.reason === 'invoice_void', again.body?.error);
     t('   ...and its figures are still frozen',
-      (await get(`/api/invoices/${I}`)).body?.data?.paid === 300);
+      (await get(`/api/invoices/${I}`)).body?.data?.paid === 0);
 
     const reInvoice = await send('POST', '/api/invoices', { jobCardId: J });
     t('the job card can be invoiced again -> 201', reInvoice.status === 201, reInvoice.body);
@@ -3661,11 +3667,20 @@ sec('18. Invoice writes: copied from a job card, voided into advances, against r
       (await get(`/api/job-cards/${J}`)).body?.data?.invoiceId === I2);
     const old = (await get(`/api/invoices/${I}`)).body?.data;
     t('   ...while the voided one is unchanged',
-      old.status === 'Void' && old.paid === 300 && old.services.length === 1, old);
+      old.status === 'Void' && old.paid === 0 && old.services.length === 1, old);
 
     /* ---- 18g. delete a void invoice ---- */
     await send('POST', `/api/invoices/${I2}/void`);
-    const paidVoid = await send('DELETE', `/api/invoices/${I}`);
+    // An invoice only collects money through a payment now, so record one,
+    // then void the invoice: it keeps the frozen figure and cannot be deleted.
+    const cashJob = await completedJob({ paid: 0, complaint: 'C-7: collected, then voided' });
+    const cashInv = (await send('POST', '/api/invoices', { jobCardId: cashJob })).body?.data?.id;
+    const cashPay = await send('POST', '/api/payments', { customerId: C, invoiceId: cashInv, amount: 300 });
+    t('a real payment of 300 is recorded against it', cashPay.status === 201, cashPay.body);
+    await send('POST', `/api/invoices/${cashInv}/void`);
+    t('   ...voided, it keeps 300 as its frozen paid',
+      (await get(`/api/invoices/${cashInv}`)).body?.data?.paid === 300);
+    const paidVoid = await send('DELETE', `/api/invoices/${cashInv}`);
     t('deleting a Void invoice that collected money -> 409', paidVoid.status === 409, paidVoid.body);
     t('   ...reason', paidVoid.body?.error?.reason === 'invoice_has_payments', paidVoid.body?.error);
 
@@ -4905,6 +4920,168 @@ sec('23. Security headers: every response, over real HTTP');
   t('a whitespace-padded cookie value is refused', padded.status === 401, padded.status);
   const plain = await raw('GET', '/api/customers', { cookie });
   t('   ...while the cookie as issued is accepted', plain.status === 200, plain.status);
+}
+
+sec('24. Write-offs (0002): a waived balance is not a payment, against real D1');
+{
+  const cust = await send('POST', '/api/customers', { name: '0002 Write-off Customer', phone: '01933-000201' });
+  const C = cust.body?.data?.id;
+  const veh = await send('POST', '/api/vehicles',
+    { customerId: C, regNo: 'DHAKA-WO-0002', brand: 'Toyota', model: 'Axio' });
+  const V = veh.body?.data?.id;
+  const mech = await send('POST', '/api/mechanics', { name: '0002 Mechanic', phone: '01933-000202', specialization: 'Electrical' });
+  const M = mech.body?.data?.id;
+  t('the section has its own customer, vehicle and mechanic', [C, V, M].every(Boolean),
+    { C, V, M, customer: cust.body, vehicle: veh.body, mechanic: mech.body });
+
+  const setStatus = (id, status) => send('POST', `/api/job-cards/${id}/status`, { status });
+  /** A Completed job card worth `total` (custom work, no stock), invoiced. */
+  const invoiceOf = async (total, over = {}) => {
+    const j = await send('POST', '/api/job-cards', {
+      customerId: C, vehicleId: V, mechanicId: M, date: '2026-10-01', complaint: '0002: to bill',
+      services: [{ serviceId: null, name: 'Electric wiring', qty: 1, unitPrice: total }], partsUsed: [], ...over,
+    });
+    const J = j.body?.data?.id;
+    for (const st of ['Inspection', 'In Progress', 'Completed']) await setStatus(J, st);
+    return (await send('POST', '/api/invoices', { jobCardId: J })).body?.data?.id;
+  };
+  const inv = async (id) => (await get(`/api/invoices/${id}`)).body?.data;
+  const figures = async (id) => { const i = await inv(id); return [i.paid, i.writtenOff, i.due, i.status]; };
+  const pay = (id, amount) => send('POST', '/api/payments', { customerId: C, invoiceId: id, amount });
+  const writeOff = (id, amount, expectedDue, extra = {}) =>
+    send('POST', '/api/invoice-adjustments', { invoiceId: id, amount, reason: 'Customer concession', expectedDue, ...extra });
+  const reverse = (adj, voidReason) => send('POST', `/api/invoice-adjustments/${adj}/void`,
+    voidReason === undefined ? {} : { voidReason });
+
+  /* ---- 24a. payment, then a write-off of the rest (the business case) ---- */
+  const A = await invoiceOf(1775, { paid: 500 });
+  t('a new invoice starts unpaid, whatever the job card typed', JSON.stringify(await figures(A))
+    === JSON.stringify([0, 0, 1775, 'Unpaid']), await figures(A));
+  await pay(A, 1500);
+  t('a payment of 1500 leaves 275 due', JSON.stringify(await figures(A))
+    === JSON.stringify([1500, 0, 275, 'Partial']), await figures(A));
+  const w1 = await writeOff(A, 275, 275, { recordedBy: 'Front desk' });
+  t('POST /api/invoice-adjustments -> 201', w1.status === 201, w1.body);
+  const adj1 = w1.body?.data;
+  t('   ...an ADJ id', /^ADJ-\d{4}$/.test(adj1?.id || ''), adj1);
+  t('   ...the server took the customer from the invoice', adj1?.customerId === C, adj1);
+  t('   ...and worked out the before/after due', adj1?.dueBefore === 275 && adj1?.dueAfter === 0, adj1);
+  t('   ...dated today (YYYY-MM-DD), Active, recorded by the name given',
+    /^\d{4}-\d{2}-\d{2}$/.test(adj1?.date || '') && adj1?.status === 'Active' && adj1?.recordedBy === 'Front desk', adj1);
+  t('the invoice: paid stays cash (1500), 275 written off, due 0, Paid',
+    JSON.stringify(await figures(A)) === JSON.stringify([1500, 275, 0, 'Paid']), await figures(A));
+  t('   ...and its total is untouched', (await inv(A)).total === 1775);
+  const payments = (await get('/api/payments?limit=1000')).body?.data ?? [];
+  t('a write-off is not a payment: the invoice still has exactly one payment, of 1500',
+    JSON.stringify(payments.filter((p) => p.invoiceId === A).map((p) => p.amount)) === JSON.stringify([1500]));
+
+  /* ---- 24b. duplicate submission, stale balance, over-adjustment ---- */
+  const dupe = await writeOff(A, 275, 275, { recordedBy: 'Front desk' });
+  t('the same write-off sent again -> 409 stale_balance', dupe.status === 409
+    && dupe.body?.error?.reason === 'stale_balance' && dupe.body?.error?.currentDue === 0, dupe.body);
+  t('a payment after the balance is cleared -> 409 overpayment',
+    (await pay(A, 1)).body?.error?.reason === 'overpayment');
+  const B = await invoiceOf(1000);
+  t('a write-off above the due -> 409 over_adjustment',
+    (await writeOff(B, 1001, 1000)).body?.error?.reason === 'over_adjustment');
+  t('a write-off against a due the user no longer sees -> 409 stale_balance',
+    (await writeOff(B, 100, 900)).body?.error?.reason === 'stale_balance');
+  t('   ...and neither wrote anything', JSON.stringify(await figures(B)) === JSON.stringify([0, 0, 1000, 'Unpaid']));
+
+  /* ---- 24c. validation and refused fields ---- */
+  const bad = await send('POST', '/api/invoice-adjustments', {
+    invoiceId: B, amount: 0, expectedDue: 1000, date: '2026-01-01', customerId: C, status: 'Void', dueBefore: 1, dueAfter: 0,
+  });
+  t('amount 0, no reason, and server-owned fields -> 422', bad.status === 422, bad.body);
+  t('   ...each named', ['amount', 'reason', 'date', 'customerId', 'status', 'dueBefore', 'dueAfter']
+    .every((k) => bad.body?.error?.fields?.[k]), bad.body?.error?.fields);
+  t('a missing expectedDue -> 422', (await send('POST', '/api/invoice-adjustments',
+    { invoiceId: B, amount: 10, reason: 'x' })).body?.error?.fields?.expectedDue !== undefined);
+  t('an unknown type -> 422', (await writeOff(B, 10, 1000, { type: 'discount' })).status === 422);
+  t('an unknown invoice -> 409 invoice_not_found',
+    (await writeOff('INV-8888', 10, 0)).body?.error?.reason === 'invoice_not_found');
+
+  /* ---- 24d. reversal ---- */
+  t('reversing without a reason -> 422', (await reverse(adj1.id)).status === 422);
+  const r1 = await reverse(adj1.id, 'Customer agreed to pay');
+  t('reversing -> 200, the write-off is Void with its reason and time',
+    r1.status === 200 && r1.body?.data?.status === 'Void' && r1.body?.data?.voidReason === 'Customer agreed to pay'
+      && !!r1.body?.data?.voidedAt, r1.body);
+  t('   ...the row is kept, amount and snapshots untouched',
+    r1.body?.data?.amount === 275 && r1.body?.data?.dueBefore === 275 && r1.body?.data?.dueAfter === 0, r1.body?.data);
+  t('   ...and the invoice is owed 275 again', JSON.stringify(await figures(A))
+    === JSON.stringify([1500, 0, 275, 'Partial']), await figures(A));
+  t('reversing twice -> 409 adjustment_void', (await reverse(adj1.id, 'again')).body?.error?.reason === 'adjustment_void');
+  t('no PUT or DELETE on a write-off -> 405',
+    (await send('PUT', `/api/invoice-adjustments/${adj1.id}`, { reason: 'x' })).status === 405
+      && (await send('DELETE', `/api/invoice-adjustments/${adj1.id}`)).status === 405);
+  const one = await get(`/api/invoice-adjustments/${adj1.id}`);
+  t('GET /api/invoice-adjustments/:id returns the record', one.status === 200 && one.body?.data?.id === adj1.id, one.body);
+
+  /* ---- 24e. write-off before payment, several write-offs, a full write-off ---- */
+  await writeOff(B, 200, 1000);
+  t('a write-off on an unpaid invoice: still Unpaid (no cash), due 800',
+    JSON.stringify(await figures(B)) === JSON.stringify([0, 200, 800, 'Unpaid']), await figures(B));
+  await pay(B, 800);
+  t('   ...then paying the rest: paid 800, written off 200, due 0, Paid',
+    JSON.stringify(await figures(B)) === JSON.stringify([800, 200, 0, 'Paid']), await figures(B));
+  const D = await invoiceOf(1000);
+  await writeOff(D, 100, 1000); await writeOff(D, 150, 900);
+  t('two write-offs add up', JSON.stringify(await figures(D)) === JSON.stringify([0, 250, 750, 'Unpaid']), await figures(D));
+  const full = await writeOff(D, 750, 750);
+  t('writing off everything on an unpaid invoice clears it (stored status Paid)',
+    full.status === 201 && JSON.stringify(await figures(D)) === JSON.stringify([0, 1000, 0, 'Paid']), await figures(D));
+
+  /* ---- 24f. a Void invoice is frozen ---- */
+  const voided = await send('POST', `/api/invoices/${D}/void`);
+  t('voiding an invoice with write-offs -> 200, figures frozen',
+    voided.status === 200 && JSON.stringify(await figures(D)) === JSON.stringify([0, 1000, 0, 'Void']), await figures(D));
+  t('   ...a write-off on it -> 409 invoice_void', (await writeOff(D, 1, 0)).body?.error?.reason === 'invoice_void');
+  t('   ...reversing one of its write-offs -> 409 invoice_void',
+    (await reverse(full.body?.data?.id, 'x')).body?.error?.reason === 'invoice_void');
+  t('   ...and it cannot be deleted -> 409 invoice_has_adjustments',
+    (await send('DELETE', `/api/invoices/${D}`)).body?.error?.reason === 'invoice_has_adjustments');
+
+  /* ---- 24g. concurrency ---- */
+  {
+    const E = await invoiceOf(500);
+    const [p, w] = await Promise.all([pay(E, 500), writeOff(E, 500, 500)]);
+    t('a payment and a write-off racing for the same 500: exactly one wins',
+      [p.status, w.status].filter((c) => c === 201).length === 1, { payment: p.status, writeOff: w.status });
+    const [paid, wo, due] = await figures(E);
+    t('   ...and the invoice is never over-settled', paid + wo === 500 && due === 0, await figures(E));
+    const F = await invoiceOf(300);
+    const many = await Promise.all(Array.from({ length: 5 }, () => writeOff(F, 300, 300)));
+    t('five identical write-offs at once: exactly one 201',
+      many.filter((r) => r.status === 201).length === 1, many.map((r) => r.status));
+    t('   ...the rest refused as stale or over', many.filter((r) => r.status === 409).length === 4, many.map((r) => r.status));
+    t('   ...and the invoice counts 300 once', JSON.stringify(await figures(F)) === JSON.stringify([0, 300, 0, 'Paid']));
+  }
+
+  /* ---- 24h. the invariant, across every invoice this database holds ---- */
+  {
+    const invoices = (await get('/api/invoices?limit=1000')).body?.data ?? [];
+    const pays = (await get('/api/payments?limit=1000')).body?.data ?? [];
+    const adjs = (await get('/api/invoice-adjustments?limit=1000')).body?.data ?? [];
+    t('GET /api/invoice-adjustments lists the section\'s write-offs', adjs.length >= 6, adjs.length);  // 6, or 7 if the write-off won 24g's race
+    const sum = (rows, id) => rows.filter((r) => r.invoiceId === id && r.status !== 'Void')
+      .reduce((s2, r) => s2 + r.amount, 0);
+    const touched = new Set([...pays.map((p) => p.invoiceId), ...adjs.map((a) => a.invoiceId)].filter(Boolean));
+    const wrong = invoices.filter((i) => {
+      if (i.status === 'Void' || !touched.has(i.id)) return false;
+      const paid = Math.min(i.total, Math.max(0, sum(pays, i.id)));
+      const wo = Math.min(i.total - paid, Math.max(0, sum(adjs, i.id)));
+      const due = Math.max(i.total - paid - wo, 0);
+      const status = i.total > 0 && paid + wo >= i.total ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid';
+      return i.paid !== paid || i.writtenOff !== wo || i.due !== due || i.status !== status;
+    });
+    t('every live invoice agrees with its payments AND its write-offs', wrong.length === 0,
+      wrong.map((i) => ({ id: i.id, paid: i.paid, writtenOff: i.writtenOff, due: i.due, status: i.status })));
+    t('   ...and no invoice ever has paid + written off above its total',
+      invoices.every((i) => i.paid + i.writtenOff <= i.total + 1e-9), invoices.filter((i) => i.paid + i.writtenOff > i.total));
+  }
+
+  // cleanup.sql removes these rows (write-offs first) and resets the counters.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

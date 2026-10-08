@@ -64,12 +64,31 @@ const Utils = (() => {
     'Pending': 'neutral', 'Confirmed': 'info', 'In Service': 'warn',
     'Scheduled': 'neutral', 'No Show': 'bad',
     'Paid': 'good', 'Partial': 'warn', 'Unpaid': 'bad', 'Active': 'good', 'Inactive': 'neutral',
-    'Void': 'neutral'
+    'Void': 'neutral',
+    // display-only invoice labels (invoiceStatusLabel); never stored
+    'Settled': 'good', 'Written Off': 'info'
   };
 
   function badge(status) {
     const tone = STATUS_TONE[status] || 'neutral';
     return `<span class="badge badge--${tone}">${esc(status)}</span>`;
+  }
+
+  /**
+   * The label an invoice's status is SHOWN with. The stored status stays one
+   * of Unpaid / Partial / Paid / Void (filters, the API and the database all
+   * use it); a write-off only changes how a fully cleared invoice reads:
+   *   Settled      nothing is owed, some cash was paid and the rest written off
+   *   Written Off  nothing is owed and no cash was paid at all
+   */
+  function invoiceStatusLabel(inv) {
+    if (!inv) return '';
+    if (inv.status === 'Void') return 'Void';
+    const writtenOff = Number(inv.writtenOff) || 0;
+    if (writtenOff > 0 && (Number(inv.due) || 0) < 0.005) {
+      return (Number(inv.paid) || 0) > 0 ? 'Settled' : 'Written Off';
+    }
+    return inv.status;
   }
 
   /* ---------- toast notifications ---------- */
@@ -616,7 +635,7 @@ const Utils = (() => {
   }
 
   return {
-    money, fmtDate, fmtTime, todayStr, toDateStr, esc, badge, toast, Modal,
+    money, fmtDate, fmtTime, todayStr, toDateStr, esc, badge, invoiceStatusLabel, toast, Modal,
     saving, guard, wrote,
     liveJobBalance, liveJobPaid, liveJobDue, sumJobsDue, sumJobsPaid,
     customerName, mechanicName, vehicleLabel, vehicleReg, serviceName,

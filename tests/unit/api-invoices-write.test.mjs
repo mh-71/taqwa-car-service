@@ -193,33 +193,29 @@ console.log('\n-- 2. Every figure is copied from the job card --');
   check('subtotal', at('subtotal'), 8000);
   check('tax', at('tax'), 395);
   check('total', at('total'), 8295);
-  check('paid is the job card\'s figure at this moment', at('paid'), 3000);
-  check('due = total - paid', at('due'), 5295);
-  check('status is derived from what is paid', at('status'), 'Partial');
+  // Decision (a), 0002: the job card's typed paid (3000 here) is not a recorded
+  // payment, so it is NOT copied. A new invoice starts unpaid.
+  check('paid starts at 0, not the job card\'s typed figure', at('paid'), 0);
+  check('due is the whole total', at('due'), 8295);
+  check('status starts Unpaid', at('status'), 'Unpaid');
+  check('written_off is not set by the create (column default 0)', at('written_off'), undefined);
   ok_('nothing is recomputed from the lines: the job card already did that',
     at('subtotal') === 8000, at('subtotal'));
 }
-for (const [label, over, expected] of [
-  ['nothing paid -> Unpaid', { paid: 0 }, 'Unpaid'],
-  ['part paid -> Partial', { paid: 1 }, 'Partial'],
-  ['paid in full -> Paid', { paid: 8295 }, 'Paid'],
-  ['overpaid is still Paid, and clamped', { paid: 99999 }, 'Paid'],
+// Whatever the job card's typed paid says, the new invoice is the same:
+// paid 0, due = total, Unpaid. Cash reaches it only as a payment.
+for (const [label, over] of [
+  ['job paid 0', { paid: 0 }],
+  ['job paid 1', { paid: 1 }],
+  ['job paid in full', { paid: 8295 }],
+  ['job "overpaid"', { paid: 99999 }],
+  ['job paid negative', { paid: -50 }],
 ]) {
   const db = stubDB({ job: { ...JOB, ...over } });
   await post({ jobCardId: 'JOB-0001' }, db);
-  check(label, insertAt(db)('status'), expected);
-}
-{
-  const db = stubDB({ job: { ...JOB, paid: 99999 } });
-  await post({ jobCardId: 'JOB-0001' }, db);
-  check('paid can never exceed the total', insertAt(db)('paid'), 8295);
-  check('   ...so due floors at zero', insertAt(db)('due'), 0);
-}
-{
-  const db = stubDB({ job: { ...JOB, paid: -50 } });
-  await post({ jobCardId: 'JOB-0001' }, db);
-  check('a negative paid floors at zero', insertAt(db)('paid'), 0);
-  check('   ...and due is the whole total', insertAt(db)('due'), 8295);
+  const at = insertAt(db);
+  check(`${label} -> invoice paid 0, due 8295, Unpaid`,
+    [at('paid'), at('due'), at('status')], [0, 8295, 'Unpaid']);
 }
 {
   const db = stubDB({ job: { ...JOB, labour_cost: null, discount: null, tax_rate: null, subtotal: null, tax: null } });
@@ -665,7 +661,7 @@ for (const [path, method, body] of [
   ok_('health advertises all four new routes',
     ['POST /api/invoices', 'PUT /api/invoices/:id', 'DELETE /api/invoices/:id',
       'POST /api/invoices/:id/void'].every((r) => routes.includes(r)), routes);
-  check('   ...and the registry is 60 routes', routes.length, 63);
+  check('   ...and the registry is 67 routes', routes.length, 67);
   ok_('   ...with no PUT or DELETE on the void path',
     !routes.includes('PUT /api/invoices/:id/void')
       && !routes.includes('DELETE /api/invoices/:id/void'), routes);

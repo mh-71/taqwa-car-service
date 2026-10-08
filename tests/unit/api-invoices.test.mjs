@@ -140,7 +140,7 @@ console.log('-- 1. Populated list and parent mapping --');
   check('record shape', Object.keys(full).sort(),
     ['createdAt', 'customerId', 'date', 'discount', 'due', 'id', 'jobCardId', 'labourCost',
       'notes', 'paid', 'partsUsed', 'services', 'status', 'subtotal', 'tax', 'taxRate',
-      'total', 'vehicleId']);
+      'total', 'vehicleId', 'writtenOff']);
   ok_('no snake_case leaked',
     !JSON.stringify(body).match(/job_card_id|customer_id|labour_cost|tax_rate|unit_price|part_no|invoice_id/),
     JSON.stringify(full).slice(0, 200));

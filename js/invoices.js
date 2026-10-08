@@ -38,7 +38,7 @@
 
 (() => {
 
-  const { esc, money, fmtDate, badge, toast, Modal } = Utils;
+  const { esc, money, fmtDate, badge, invoiceStatusLabel, toast, Modal } = Utils;
 
   const ELIGIBLE_JOB_STATUSES = ['Completed', 'Delivered'];
   const STATUSES = ['Unpaid', 'Partial', 'Paid', 'Void'];
@@ -155,9 +155,12 @@
     // so this never changes a legitimately-created invoice's numbers -- it
     // only guards the financial record itself against ever storing an
     // invalid combination (negative total, or paid > total).
+    // A new invoice starts unpaid: the Job Card's typed "Paid / Advance" is not
+    // a recorded payment, so it is not copied (the server does the same). Cash
+    // reaches an invoice only as a payment, which is what paid follows.
     const total = Math.max(0, Number(job.total) || 0);
-    const paid = Math.min(total, Math.max(0, Number(job.paid) || 0));
-    const due = Math.max(total - paid, 0);
+    const paid = 0;
+    const due = total;
 
     const invoice = Storage.addData('invoices', {
       jobCardId: job.id,
@@ -340,7 +343,7 @@
         <td class="num ivl-total" data-label="Total">${money(i.total)}</td>
         <td class="num ivl-paid" data-label="Paid">${money(i.paid)}</td>
         <td class="num ivl-due${i.status !== 'Void' && Number(i.due) > 0 ? ' ivl-due--open' : ''}" data-label="Due">${money(i.due)}</td>
-        <td class="ivl-status">${badge(i.status)}</td>
+        <td class="ivl-status">${badge(invoiceStatusLabel(i))}</td>
         <td class="ivl-act">
           <div class="row-actions row-actions--wrap">
             <button class="icon-btn icon-btn--sm" data-action="view" title="View" aria-label="View ${esc(i.id)}">
@@ -403,7 +406,8 @@
         <p class="muted-note" style="margin-top:10px">
           Services, parts, labour, discount, tax and totals are copied from ${esc(job.id)} exactly as they
           stand now and will not change if the service or part catalog changes later.
-        </p>`,
+        </p>
+        ${Number(job.paid) > 0 ? `<p class="invc-create__warn" role="note">This Job Card shows ${money(job.paid)} as Paid/Advance. It is not a recorded payment and won't be applied. Record or link the payment on the Payments page.</p>` : ''}`,
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Create Invoice</button>`
     });
@@ -576,18 +580,27 @@
 
   /* Presentation only: how the Details dialog dresses each status. The status
      itself, and every figure, is the stored one. */
-  const VIEW_TONE = { Paid: 'good', Partial: 'warn', Unpaid: 'bad', Void: 'neutral' };
-  const VIEW_NOTE = { Paid: 'Fully settled', Partial: 'Partly paid', Unpaid: 'Awaiting payment', Void: 'Kept for history' };
+  const VIEW_TONE = { Paid: 'good', Partial: 'warn', Unpaid: 'bad', Void: 'neutral', Settled: 'good', 'Written Off': 'neutral' };
+  const VIEW_NOTE = {
+    Paid: 'Fully settled', Partial: 'Partly paid', Unpaid: 'Awaiting payment', Void: 'Kept for history',
+    Settled: 'Balance adjusted', 'Written Off': 'Balance written off'
+  };
 
   function paymentStatusCard(i) {
+    const label = invoiceStatusLabel(i);
+    const wo = Number(i.writtenOff) || 0;
+    // a write-off is named next to the cash, never folded into it
+    const woPart = wo > 0 ? ` \u00b7 ${money(wo)} written off` : '';
     const say = {
       Paid: ['This invoice has been fully paid.', `A total of ${money(i.paid)} has been received.`],
-      Partial: ['This invoice is partly paid.', `${money(i.paid)} received \u00b7 ${money(i.due)} outstanding.`],
-      Unpaid: ['This invoice is unpaid.', `${money(i.due)} is outstanding.`],
+      Settled: ['This invoice is settled.', `${money(i.paid)} received${woPart}.`],
+      'Written Off': ['This invoice has been written off.', `${money(wo)} written off \u00b7 no payment received.`],
+      Partial: ['This invoice is partly paid.', `${money(i.paid)} received${woPart} \u00b7 ${money(i.due)} outstanding.`],
+      Unpaid: ['This invoice is unpaid.', wo > 0 ? `${money(wo)} written off \u00b7 ${money(i.due)} outstanding.` : `${money(i.due)} is outstanding.`],
       Void: ['This invoice has been voided.', 'It is kept for history and is no longer billable.']
-    }[i.status];
+    }[label];
     if (!say) return '';
-    return `<section class="inv-view__pay inv-view__pay--${VIEW_TONE[i.status]}">
+    return `<section class="inv-view__pay inv-view__pay--${VIEW_TONE[label]}">
       <span class="inv-view__pay-icon" aria-hidden="true"></span>
       <div class="inv-view__pay-text">
         <h3 class="inv-view__title">Payment Status</h3>
@@ -608,6 +621,7 @@
     if (!title || typeof modal.setAttribute !== 'function') return;
     modal.classList.add('inv-view');
     if (i.status === 'Void') modal.classList.add('inv-view--void');
+    const label = invoiceStatusLabel(i);
     // the heading still reads "Invoice INV-xxxx"; "Invoice" becomes a small kicker above the number
     title.innerHTML = `<span class="inv-view__kicker">Invoice</span> ${esc(i.id)}`;
     title.insertAdjacentHTML('beforebegin', '<span class="inv-view__icon" aria-hidden="true"></span>');
@@ -619,7 +633,7 @@
     modal.setAttribute('aria-describedby', 'inv-view-sub');
     titles.insertAdjacentHTML('afterend', `
       <div class="inv-view__facts">
-        <div class="detail-item inv-view__fact inv-view__fact--status inv-view__fact--${VIEW_TONE[i.status] || 'neutral'}"><span>Status</span><strong>${badge(i.status)}</strong>${VIEW_NOTE[i.status] ? `<small class="inv-view__note">${VIEW_NOTE[i.status]}</small>` : ''}</div>
+        <div class="detail-item inv-view__fact inv-view__fact--status inv-view__fact--${VIEW_TONE[label] || 'neutral'}"><span>Status</span><strong>${badge(label)}</strong>${VIEW_NOTE[label] ? `<small class="inv-view__note">${VIEW_NOTE[label]}</small>` : ''}</div>
         <div class="detail-item inv-view__fact inv-view__fact--date"><span>Invoice Date</span><strong>${fmtDate(i.date)}</strong></div>
         <div class="detail-item inv-view__fact inv-view__fact--job"><span>Job Card</span><strong>${i.jobCardId ? esc(i.jobCardId) : '—'}</strong></div>
       </div>`);
@@ -688,12 +702,199 @@
     ov.querySelector('[data-back]').addEventListener('click', () => openDetailModal(i.id));
   }
 
+  /* ---------- write-offs (0002) ----------
+     A write-off waives part of an invoice's outstanding due. It is not a
+     payment: paid stays the cash received, and the invoice's written-off
+     total, due and status are recomputed by the server from its payments and
+     its Active write-offs. Backend only -- offline the feature is hidden, so
+     there is no second, browser-side copy of the server's checks. */
+
+  /** An invoice's write-offs, reversed ones included, newest first. */
+  function invoiceAdjustments(invoiceId) {
+    return Storage.getData('invoiceAdjustments')
+      .filter(a => a.invoiceId === invoiceId)
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
+  }
+
+  function adjustmentsSection(i, list, canAdjust) {
+    if (!list.length) return '';
+    const anyVoid = list.some(a => a.status === 'Void');
+    return `<section class="inv-view__card inv-view__card--adj">
+      ${cardHead('Adjustments', `<span class="inv-view__count">${list.length} write-off${list.length === 1 ? '' : 's'}</span>`)}
+      <div class="inv-view__card-body">
+        <div class="table-wrap"><table class="table table--compact inv-view__adj">
+          <thead><tr><th scope="col">Write-off</th><th scope="col">Reason</th><th scope="col" class="num">Amount</th>${canAdjust ? '<th scope="col" class="num">Action</th>' : ''}</tr></thead>
+          <tbody>${list.map(a => `<tr${a.status === 'Void' ? ' class="inv-view__adj--void"' : ''}>
+            <td class="inv-view__adj-id"><span class="cell-main">${esc(a.id)}</span><span class="cell-sub">${fmtDate(a.date)}${a.recordedBy ? ` · ${esc(a.recordedBy)}` : ''}</span></td>
+            <td class="inv-view__adj-reason">${esc(a.reason)}${a.status === 'Void' ? `<span class="cell-sub">Reversed: ${esc(a.voidReason || '')}</span>` : ''}</td>
+            <td class="num inv-view__adj-sum"><span class="inv-view__adj-amt">− ${money(a.amount)}</span><span class="cell-sub">${badge(a.status === 'Void' ? 'Reversed' : 'Active')}</span></td>
+            ${canAdjust ? `<td class="num inv-view__adj-act">${a.status === 'Active' ? `<button class="btn btn--ghost btn--sm" data-reverse-adj="${esc(a.id)}">Reverse</button>` : ''}</td>` : ''}
+          </tr>`).join('')}</tbody>
+        </table></div>
+        ${anyVoid ? '<p class="muted-note" style="margin:10px 0 0">Reversed write-offs are kept for history and no longer reduce the balance.</p>' : ''}
+      </div>
+    </section>`;
+  }
+
+  function openWriteOffModal(id) {
+    const inv = Storage.getById('invoices', id);
+    if (!inv || inv.status === 'Void' || !(Number(inv.due) > 0) || !Storage.isApi()) return;
+    // the due the user is shown; sent as expectedDue so a balance that moved
+    // in the meantime is refused by the server instead of written off blind
+    let shownDue = Number(inv.due) || 0;
+    const ov = Modal.open({
+      title: `Write Off Balance — ${inv.id}`,
+      body: `
+        <p class="muted-note" style="margin:0 0 14px">A write-off waives part of the outstanding balance. It is not a payment:
+          the invoice total and the amount paid stay as they are, and the write-off is kept on record with its reason.</p>
+        <div class="form-grid">
+          <div class="field">
+            <label for="wo-amount">Amount (BDT)</label>
+            <input class="input" id="wo-amount" type="number" min="0" step="any" inputmode="decimal" max="${shownDue}" value="${shownDue}">
+            <div class="field__error" data-err="amount"></div>
+          </div>
+          <div class="field">
+            <label for="wo-date">Date</label>
+            <input class="input" id="wo-date" type="date" value="${esc(Utils.todayStr())}" readonly aria-readonly="true" tabindex="-1">
+            <small class="wo-hint">Recorded on today’s date.</small>
+          </div>
+          <div class="field span-2">
+            <label for="wo-reason">Reason</label>
+            <textarea class="input" id="wo-reason" rows="2" maxlength="500" placeholder="Why is this balance being written off?"></textarea>
+            <div class="field__error" data-err="reason"></div>
+          </div>
+          <div class="field span-2">
+            <label for="wo-by">Recorded by (optional)</label>
+            <input class="input" id="wo-by" maxlength="100" autocomplete="name">
+            <div class="field__error" data-err="recordedBy"></div>
+          </div>
+        </div>
+        <p class="wo-summary" id="wo-summary" aria-live="polite"></p>
+        <p class="field__error wo-form-err" data-err="expectedDue" role="alert"></p>`,
+      footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
+               <button class="btn btn--primary" data-save>Write Off</button>`
+    });
+    const amountEl = ov.querySelector('#wo-amount');
+    const summary = () => {
+      const amt = Number(amountEl.value);
+      ov.querySelector('#wo-summary').textContent = amt > 0 && amt <= shownDue + 0.005
+        ? `Due changes from ${money(shownDue)} to ${money(Math.max(shownDue - amt, 0))}.`
+        : `Outstanding due: ${money(shownDue)}.`;
+    };
+    amountEl.addEventListener('input', summary);
+    summary();
+    const showErrors = errs => {
+      ov.querySelectorAll('.field').forEach(f => f.classList.remove('field--error'));
+      ov.querySelectorAll('[data-err]').forEach(el => { el.textContent = ''; });
+      Object.entries(errs).forEach(([k, msg]) => {
+        const el = ov.querySelector(`[data-err="${k}"]`);
+        if (!el) return;
+        el.textContent = msg;
+        const field = el.closest('.field');
+        if (field) field.classList.add('field--error');
+      });
+    };
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
+      const amount = Number(amountEl.value);
+      const reason = ov.querySelector('#wo-reason').value.trim();
+      const recordedBy = ov.querySelector('#wo-by').value.trim();
+      const errs = {};
+      if (!(amount > 0)) errs.amount = 'Enter an amount greater than 0.';
+      else if (amount > shownDue + 0.005) errs.amount = `The write-off cannot exceed the outstanding due of ${money(shownDue)}.`;
+      if (!reason) errs.reason = 'A reason is required.';
+      showErrors(errs);
+      if (Object.keys(errs).length) return;
+
+      const res = await Storage.create('invoiceAdjustments', {
+        invoiceId: id, amount, reason, expectedDue: shownDue,
+        ...(recordedBy ? { recordedBy } : {})
+      });
+      if (!res.ok) {
+        if (res.status === 409) {
+          // the balance (or the invoice) changed since the dialog opened:
+          // show the current figures and let the user decide again
+          await Storage.refreshAll('invoices', 'invoiceAdjustments');
+          const fresh = Storage.getById('invoices', id);
+          if (!fresh || fresh.status === 'Void' || !(Number(fresh.due) > 0)) {
+            Modal.close(); refresh();
+            toast(res.message || 'This invoice changed and has nothing left to write off.', 'error');
+            openDetailModal(id);
+            return;
+          }
+          shownDue = Number(fresh.due) || 0;
+          amountEl.max = String(shownDue);
+          if (Number(amountEl.value) > shownDue) amountEl.value = String(shownDue);
+          summary();
+          showErrors({ expectedDue: `The balance changed. Outstanding due is now ${money(shownDue)}. Review the amount and try again.` });
+          return;
+        }
+        Utils.wrote(res, ov);
+        return;
+      }
+      const stale = await Storage.refreshAll('invoices');
+      Modal.close();
+      refresh();
+      if (stale.length) Utils.wrote({ ok: true, stale });
+      else toast(`${money(amount)} written off on ${id}.`);
+      openDetailModal(id);
+    }));
+  }
+
+  function openReverseModal(adjId, invoiceId) {
+    const a = Storage.getById('invoiceAdjustments', adjId);
+    if (!a || a.status !== 'Active' || !Storage.isApi()) return;
+    const ov = Modal.open({
+      title: `Reverse Write-off — ${a.id}`,
+      body: `
+        <p style="margin:0 0 12px">Reversing removes this ${money(a.amount)} write-off from <strong>${esc(a.invoiceId)}</strong>, so its due goes back up by that amount.
+          The write-off stays on record, marked as reversed.</p>
+        <div class="field">
+          <label for="wo-void-reason">Reason for reversing</label>
+          <textarea class="input" id="wo-void-reason" rows="2" maxlength="500"></textarea>
+          <div class="field__error" data-err="voidReason"></div>
+        </div>`,
+      footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
+               <button class="btn btn--primary" data-save>Reverse Write-off</button>`
+    });
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
+      const voidReason = ov.querySelector('#wo-void-reason').value.trim();
+      const errEl = ov.querySelector('[data-err="voidReason"]');
+      errEl.textContent = '';
+      errEl.closest('.field').classList.remove('field--error');
+      if (!voidReason) {
+        errEl.textContent = 'A reason is required.';
+        errEl.closest('.field').classList.add('field--error');
+        return;
+      }
+      const res = await Storage.action('invoiceAdjustments', adjId, 'void', { voidReason }, ['invoices']);
+      if (!res.ok) {
+        if (res.status === 409) {
+          await Storage.refreshAll('invoices', 'invoiceAdjustments');
+          Modal.close(); refresh();
+          toast(res.message || 'This write-off changed. Review it and try again.', 'error');
+          openDetailModal(invoiceId);
+          return;
+        }
+        Utils.wrote(res, ov);
+        return;
+      }
+      Modal.close();
+      refresh();
+      if (res.stale && res.stale.length) Utils.wrote(res);
+      else toast(`Write-off ${adjId} reversed.`);
+      openDetailModal(invoiceId);
+    }));
+  }
+
   function openDetailModal(id) {
     const i = Storage.getById('invoices', id);
     if (!i) return;
     const vehicle = veh(i.vehicleId);
     const payments = invoicePayments(i.id);
     const payable = i.status !== 'Void' && Number(i.due) > 0;
+    // Write-offs exist only with the backend: offline the feature is hidden.
+    const canAdjust = Storage.isApi() && i.status !== 'Void';
+    const adjustments = invoiceAdjustments(i.id);
 
     const ov = Modal.open({
       title: `Invoice ${i.id}`, size: 'lg',
@@ -738,6 +939,7 @@
                 <div><span>Tax (${i.taxRate || 0}%)</span><strong>+ ${money(i.tax)}</strong></div>
                 <div class="totals-grand"><span>Grand Total</span><strong>${money(i.total)}</strong></div>
                 <div class="inv-view__paid"><span>Paid</span><strong>${money(i.paid)}</strong></div>
+                ${Number(i.writtenOff) > 0 ? `<div class="inv-view__wo"><span>Written off</span><strong>\u2212 ${money(i.writtenOff)}</strong></div>` : ''}
                 <div class="inv-view__due ${Number(i.due) > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(i.due)}</strong></div>
               </div>
             </div>
@@ -746,12 +948,14 @@
             ${paymentStatusCard(i)}
             ${i.notes ? `<section class="inv-view__card inv-view__card--notes">${cardHead('Notes')}<div class="inv-view__card-body"><p class="detail-text">${esc(i.notes)}</p></div></section>` : ''}
           </div>
-        </div>`,
+        </div>
+        ${adjustmentsSection(i, adjustments, canAdjust)}`,
       footer: `
         <button class="btn btn--ghost" data-print-view>Print</button>
         <button class="btn btn--ghost" data-modal-close>Close</button>
         ${i.jobCardId ? `<a class="btn btn--ghost" href="job-cards.html?view=${encodeURIComponent(i.jobCardId)}">View Job Card</a>` : ''}
         ${payable ? `<a class="btn btn--ghost" href="payments.html?forInvoice=${encodeURIComponent(i.id)}">Record Payment</a>` : ''}
+        ${payable && canAdjust ? '<button class="btn btn--ghost" data-write-off>Write Off Balance</button>' : ''}
         ${!payable || payments.length
           ? `<a class="btn btn--ghost" href="${payments.length === 1 ? paymentDetailsHref(payments[0], i.id) : `payments.html?invoice=${encodeURIComponent(i.id)}`}" data-view-payments>View Payments</a>`
           : ''}
@@ -769,6 +973,10 @@
       e.preventDefault();
       if (payments.length) openPaymentHistory(i, payments); else openNoPayments(i);
     });
+    const writeOffBtn = document.querySelector('[data-write-off]');
+    if (writeOffBtn) writeOffBtn.addEventListener('click', () => { Modal.close(); openWriteOffModal(id); });
+    document.querySelectorAll('[data-reverse-adj]').forEach(btn =>
+      btn.addEventListener('click', () => { const adj = btn.dataset.reverseAdj; Modal.close(); openReverseModal(adj, id); }));
   }
 
   /* ---------- print ---------- */
@@ -814,6 +1022,10 @@
     Unpaid: ['unpaid', 'alert', 'Payment Required'],
     Void: ['void', 'block', 'Void Invoice']
   };
+  /* A write-off that cleared the balance prints as Settled -- never as
+     "Written Off" on the customer's copy, and never as plain Paid, which
+     would claim the whole total was received in cash. */
+  const IVP_SETTLED = ['settled', 'check', 'Balance Adjusted'];
 
   function printInvoice(id) {
     const i = Storage.getById('invoices', id);
@@ -823,7 +1035,11 @@
     const customer = Storage.getById('customers', i.customerId);
     const root = (document.body.dataset && document.body.dataset.root) || '../';
     const isVoid = i.status === 'Void';
-    const [statusKey, statusIcon, statusNote] = IVP_STATUS[i.status] || ['void', 'block', ''];
+    const writtenOff = Number(i.writtenOff) || 0;
+    const settledByAdjustment = !isVoid && writtenOff > 0 && Number(i.due) < 0.005;
+    const stampLabel = settledByAdjustment ? 'Settled' : i.status;
+    const [statusKey, statusIcon, statusNote] = settledByAdjustment
+      ? IVP_SETTLED : (IVP_STATUS[i.status] || ['void', 'block', '']);
     const row = (label, value) => `<div class="ivp-row"><dt>${label}</dt><dd>${value}</dd></div>`;
     const secHead = (icon, title) => `<h3 class="ivp-sec__title"><span class="ivp-sec__icon">${ivpIcon(icon)}</span>${title}</h3>`;
 
@@ -882,7 +1098,7 @@
         </div>
         <div class="ivp-stamp ivp-stamp--${statusKey}">
           ${ivpIcon(statusIcon)}
-          <div><strong>${esc(i.status)}</strong>${statusNote ? `<span>${statusNote}</span>` : ''}</div>
+          <div><strong>${esc(stampLabel)}</strong>${statusNote ? `<span>${statusNote}</span>` : ''}</div>
         </div>
         <dl class="ivp-meta">
           ${row('Invoice No', `<strong>${esc(i.id)}</strong>`)}
@@ -949,7 +1165,8 @@
           <tr><td>Discount</td><td class="pr-num">− ${money(i.discount)}</td></tr>
           <tr><td>Tax (${i.taxRate || 0}%)</td><td class="pr-num">+ ${money(i.tax)}</td></tr>
           <tr class="ivp-sum__grand"><td>Grand Total</td><td class="pr-num">${money(i.total)}</td></tr>
-          <tr class="ivp-sum__paid"><td>Paid</td><td class="pr-num">${money(i.paid)}</td></tr>
+          <tr class="ivp-sum__paid"><td>Paid</td><td class="pr-num">${money(i.paid)}</td></tr>${writtenOff > 0 ? `
+          <tr class="ivp-sum__adj"><td>Adjustment</td><td class="pr-num">− ${money(writtenOff)}</td></tr>` : ''}
           <tr class="ivp-sum__due${Number(i.due) > 0 && !isVoid ? ' ivp-sum__due--open' : ''}"><td>Due</td><td class="pr-num">${money(i.due)}</td></tr>
         </table>
       </div>

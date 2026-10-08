@@ -59,7 +59,8 @@ const Storage = (() => {
   const COLLECTIONS = [
     'customers', 'vehicles', 'appointments', 'jobCards', 'services',
     'mechanics', 'parts', 'invoices', 'payments', 'expenses',
-    'inventoryTransactions'   // stock movement audit trail (added with Inventory module)
+    'inventoryTransactions',  // stock movement audit trail (added with Inventory module)
+    'invoiceAdjustments'      // invoice write-offs (0002); read-only here, written through action()/create()
   ];
 
   /**
@@ -71,7 +72,8 @@ const Storage = (() => {
     customers: 'customers', vehicles: 'vehicles', appointments: 'appointments',
     jobCards: 'job-cards', services: 'services', mechanics: 'mechanics',
     parts: 'parts', invoices: 'invoices', payments: 'payments',
-    expenses: 'expenses', inventoryTransactions: 'inventory-transactions'
+    expenses: 'expenses', inventoryTransactions: 'inventory-transactions',
+    invoiceAdjustments: 'invoice-adjustments'
   };
 
   /* ---------- mode ---------- */

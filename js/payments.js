@@ -63,13 +63,28 @@
       .reduce((s, p) => s + (Number(p.amount) || 0), 0);
   }
 
-  /** Live outstanding balance for an invoice, computed from payments -- never from a stale field. */
+  /**
+   * Sum of an invoice's Active write-offs (0002). Not cash: it only reduces
+   * what is still owed. Always 0 offline, where write-offs do not exist.
+   */
+  function sumActiveWriteOffs(invoiceId) {
+    return Storage.getData('invoiceAdjustments')
+      .filter(a => a.invoiceId === invoiceId && a.status !== 'Void')
+      .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  }
+
+  /**
+   * Live outstanding balance for an invoice, computed from payments and
+   * write-offs -- never from a stale field. Same arithmetic as the server's
+   * recompute: cash capped at the total, write-offs capped at what is left.
+   */
   function outstandingBalance(invoiceId) {
     const inv = Storage.getById('invoices', invoiceId);
     if (!inv) return 0;
     const total = Number(inv.total) || 0;
     const paid = Math.min(total, sumActivePayments(invoiceId));
-    return Math.max(total - paid, 0);
+    const writtenOff = Math.min(total - paid, sumActiveWriteOffs(invoiceId));
+    return Math.max(total - paid - writtenOff, 0);
   }
 
   /**
@@ -128,7 +143,7 @@
       if (invoice.customerId !== customerId) return { ok: false, reason: 'This invoice belongs to a different customer.' };
       const total = Number(invoice.total) || 0;
       const already = sumActivePayments(invoiceId, excludePaymentId);
-      const liveDue = Math.max(total - already, 0);
+      const liveDue = Math.max(total - already - sumActiveWriteOffs(invoiceId), 0);
       if (amt > liveDue) {
         return { ok: false, reason: `This would overpay the invoice. Outstanding due is ${money(liveDue)}.` };
       }
@@ -898,7 +913,8 @@
       ${invoice ? `
       <table class="rcp-inv">
         <tr><td>Invoice Total</td><td>${money(invoice.total)}</td></tr>
-        <tr><td>Invoice Paid to Date</td><td>${money(invoice.paid)}</td></tr>
+        <tr><td>Invoice Paid to Date</td><td>${money(invoice.paid)}</td></tr>${Number(invoice.writtenOff) > 0 ? `
+        <tr><td>Adjustment</td><td>\u2212 ${money(invoice.writtenOff)}</td></tr>` : ''}
         <tr class="rcp-inv__due"><td>Invoice Due</td><td>${money(invoice.due)}</td></tr>
       </table>` : ''}
 

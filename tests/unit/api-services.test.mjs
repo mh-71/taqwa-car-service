@@ -361,6 +361,9 @@ console.log('\n-- 11. Routing --');
     // Two actions: voiding a payment, and applying an advance to an invoice.
     // Each moves an invoice's balance, so neither is a field assignment.
     'POST /api/payments/:id/void', 'POST /api/payments/:id/link',
+    // 0002: write-offs -- list, create, detail and the void action; never PUT or DELETE.
+    'GET /api/invoice-adjustments', 'POST /api/invoice-adjustments',
+    'GET /api/invoice-adjustments/:id', 'POST /api/invoice-adjustments/:id/void',
     'GET /api/expenses', 'POST /api/expenses',
     'GET /api/expenses/:id', 'PUT /api/expenses/:id', 'DELETE /api/expenses/:id',
     'GET /api/inventory-transactions', 'POST /api/inventory-transactions',
@@ -375,7 +378,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 63);
+  check('404 advertises every route', body.error.available.length, 67);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);
