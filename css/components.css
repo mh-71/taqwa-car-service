@@ -1195,6 +1195,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
   color: color-mix(in srgb, var(--bad) 70%, var(--text));
 }
 .inv-view .modal__foot [data-void]:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
+/* with Record Payment beside it, View Payments steps back to the secondary (ghost) style */
+.inv-view .modal__foot a[href*="forInvoice="] ~ a[data-view-payments] {
+  background: transparent; border-color: var(--line); color: var(--text-2); box-shadow: none;
+}
+.inv-view .modal__foot a[href*="forInvoice="] ~ a[data-view-payments]:hover { background: transparent; border-color: var(--text-3); color: var(--text); }
 .inv-view__tag {
   margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper);
   font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-2); white-space: nowrap;
