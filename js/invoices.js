@@ -628,10 +628,72 @@
     modal.scrollTop = 0;
   }
 
+  /* ---------- View Payments (Payment History / no-payments notice) ----------
+     Read-only. A payment's details always open in the Payments page's own
+     Payment Details modal, through its existing ?view= link. */
+
+  /** Every payment linked to an invoice, Void included, newest first (the Payments list order). */
+  function invoicePayments(invoiceId) {
+    return Storage.getData('payments')
+      .filter(p => p.invoiceId === invoiceId)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id));
+  }
+
+  const paymentDetailsHref = (p, invoiceId) =>
+    `payments.html?view=${encodeURIComponent(p.id)}&invoice=${encodeURIComponent(invoiceId)}`;
+
+  function openPaymentHistory(i, payments) {
+    const anyVoid = payments.some(p => p.status === 'Void');
+    const ov = Modal.open({
+      title: `Payment History — ${i.id}`,
+      body: `
+        <p style="margin:0 0 12px">${payments.length} payments are linked to <strong>${esc(i.id)}</strong>. Select a payment to open its details.</p>
+        <div class="table-wrap"><table class="table table--compact">
+          <thead><tr><th scope="col">Payment</th><th scope="col" class="num">Amount</th></tr></thead>
+          <tbody>${payments.map(p => `
+            <tr>
+              <td><a class="cell-main" href="${paymentDetailsHref(p, i.id)}">${esc(p.id)}</a>
+                <span class="cell-sub">${fmtDate(p.date)} · ${esc(p.method)}</span></td>
+              <td class="num"><span${p.status === 'Void' ? ' style="text-decoration:line-through"' : ''}>${money(p.amount)}</span>
+                <span class="cell-sub">${badge(p.status)}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+        ${anyVoid ? '<p style="margin:12px 0 0;color:var(--text-2);font-size:.84rem">Voided payments are kept for history and are not counted toward the invoice balance.</p>' : ''}`,
+      footer: `<button class="btn btn--ghost" data-back>Back to Invoice</button>
+               <button class="btn btn--ghost" data-modal-close>Close</button>`
+    });
+    ov.querySelector('[data-back]').addEventListener('click', () => openDetailModal(i.id));
+  }
+
+  function openNoPayments(i) {
+    const isVoid = i.status === 'Void';
+    const payable = !isVoid && Number(i.due) > 0;
+    // the paid figure on an invoice can come from its Job Card at creation,
+    // with no payment record behind it -- say so rather than imply "unpaid"
+    const why = isVoid
+      ? 'When an invoice is voided, its active payments are released as advance payments, so they are no longer linked to it. They remain on the Payments page.'
+      : Number(i.paid) > 0
+        ? `The ${money(i.paid)} shown as paid on this invoice was carried over from its Job Card when the invoice was created, so it has no separate payment record.`
+        : '';
+    const ov = Modal.open({
+      title: `Payments — ${i.id}`,
+      body: `<p style="margin:0"><strong>No payments are recorded for this invoice.</strong></p>
+             ${why ? `<p style="margin:10px 0 0;color:var(--text-2);font-size:.88rem">${why}</p>` : ''}`,
+      footer: `<button class="btn btn--ghost" data-back>Back to Invoice</button>
+               <button class="btn btn--ghost" data-modal-close>Close</button>
+               ${isVoid ? '<a class="btn btn--ghost" href="payments.html">Go to Payments</a>' : ''}
+               ${payable ? `<a class="btn btn--primary" href="payments.html?forInvoice=${encodeURIComponent(i.id)}">Record Payment</a>` : ''}`
+    });
+    ov.querySelector('[data-back]').addEventListener('click', () => openDetailModal(i.id));
+  }
+
   function openDetailModal(id) {
     const i = Storage.getById('invoices', id);
     if (!i) return;
     const vehicle = veh(i.vehicleId);
+    const payments = invoicePayments(i.id);
+    const payable = i.status !== 'Void' && Number(i.due) > 0;
 
     const ov = Modal.open({
       title: `Invoice ${i.id}`, size: 'lg',
@@ -689,9 +751,10 @@
         <button class="btn btn--ghost" data-print-view>Print</button>
         <button class="btn btn--ghost" data-modal-close>Close</button>
         ${i.jobCardId ? `<a class="btn btn--ghost" href="job-cards.html?view=${encodeURIComponent(i.jobCardId)}">View Job Card</a>` : ''}
-        ${i.status !== 'Void' && Number(i.due) > 0
-          ? `<a class="btn btn--ghost" href="payments.html?forInvoice=${encodeURIComponent(i.id)}">Record Payment</a>`
-          : `<a class="btn btn--ghost" href="payments.html?invoice=${encodeURIComponent(i.id)}">View Payments</a>`}
+        ${payable ? `<a class="btn btn--ghost" href="payments.html?forInvoice=${encodeURIComponent(i.id)}">Record Payment</a>` : ''}
+        ${!payable || payments.length
+          ? `<a class="btn btn--ghost" href="${payments.length === 1 ? paymentDetailsHref(payments[0], i.id) : `payments.html?invoice=${encodeURIComponent(i.id)}`}" data-view-payments>View Payments</a>`
+          : ''}
         ${i.status !== 'Void' ? '<button class="btn btn--ghost" data-edit-notes>Edit Notes</button>' : ''}
         ${i.status !== 'Void' ? '<button class="btn btn--primary" data-void>Void Invoice</button>' : ''}`
     });
@@ -701,6 +764,11 @@
     if (editBtn) editBtn.addEventListener('click', () => { Modal.close(); openNotesModal(id); });
     const voidBtn = document.querySelector('[data-void]');
     if (voidBtn) voidBtn.addEventListener('click', () => { Modal.close(); openVoidModal(id); });
+    const viewPayments = document.querySelector('[data-view-payments]');
+    if (viewPayments && payments.length !== 1) viewPayments.addEventListener('click', e => {
+      e.preventDefault();
+      if (payments.length) openPaymentHistory(i, payments); else openNoPayments(i);
+    });
   }
 
   /* ---------- print ---------- */
