@@ -230,7 +230,9 @@ const Storage = (() => {
     }
     const res = await Api.post(`/${API_PATHS[collection]}`, record);
     if (!res.ok) return res;
-    return { ok: true, record: cachePut(collection, res.data) };
+    // meta carries what the write did beyond the record itself -- an invoice
+    // create reports the job card advances it applied (appliedAdvances).
+    return { ok: true, record: cachePut(collection, res.data), meta: res.meta || {} };
   }
 
   async function update(collection, id, changes) {

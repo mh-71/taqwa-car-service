@@ -9,9 +9,11 @@
    Model:
    - A Payment can be linked to an Invoice (invoiceId set) or be an
      ADVANCE with no invoice yet (invoiceId: null), optionally tied to
-     a jobCardId for context. Advances are NEVER auto-linked to an
-     invoice -- linking only happens via an explicit "Link to Invoice"
-     action the user takes.
+     the jobCardId it was taken for. The one automatic link is invoice
+     creation: an advance recorded against a job card (same customer,
+     not yet invoiced) is applied to that job card's new invoice, whole
+     or not at all (invoices.js / POST /api/invoices). Every other link
+     is the explicit "Link to Invoice" action the user takes.
    - Once created, a Payment's amount/date/method/invoiceId/jobCardId
      are locked. Only `notes` stays editable. Void replaces deletion
      as the correction mechanism (mirrors Job Cards/Invoices); delete
@@ -125,6 +127,11 @@
    * excludePaymentId lets a re-validation (e.g. before linking) ignore the
    * payment's own prior contribution when it's already counted elsewhere.
    */
+  /** The job card's live (non-Void) invoice, or null. */
+  function liveInvoiceForJob(jobCardId) {
+    return Storage.getData('invoices').find(i => i.jobCardId === jobCardId && i.status !== 'Void') || null;
+  }
+
   function validatePayment({ invoiceId, customerId, jobCardId, amount }, excludePaymentId = null) {
     const amt = Number(amount);
     if (!amt || amt <= 0) return { ok: false, reason: 'Amount must be greater than 0.' };
@@ -132,8 +139,20 @@
     const customer = customerId ? Storage.getById('customers', customerId) : null;
     if (!customer) return { ok: false, reason: 'A valid customer is required.' };
 
-    if (jobCardId && !Storage.getById('jobCards', jobCardId)) {
-      return { ok: false, reason: 'That Job Card no longer exists.' };
+    if (jobCardId) {
+      const job = Storage.getById('jobCards', jobCardId);
+      if (!job) return { ok: false, reason: 'That Job Card no longer exists.' };
+      // The server's job card guards (createPayment / linkPayment), mirrored:
+      // a payment never ties one customer's money to another customer's job,
+      // and an advance is money taken BEFORE invoicing -- once the job card
+      // has a live invoice, money for it is a payment against that invoice.
+      if (job.customerId !== customerId) {
+        return { ok: false, reason: 'This Job Card belongs to a different customer.' };
+      }
+      const live = !invoiceId && liveInvoiceForJob(jobCardId);
+      if (live) {
+        return { ok: false, reason: `This Job Card is already invoiced (${live.id}). Record the payment against the invoice instead.` };
+      }
     }
 
     if (invoiceId) {
@@ -380,8 +399,16 @@
     ).join('');
   }
 
+  /**
+   * The job cards an advance can be recorded against: this customer's, not
+   * Cancelled, and not yet invoiced (an invoiced job card takes payments
+   * against its invoice instead -- the server refuses an advance for it).
+   */
   function jobCardOptions(customerId, selected) {
-    const jobs = customerId ? Storage.getData('jobCards').filter(j => j.customerId === customerId) : [];
+    const jobs = customerId
+      ? Storage.getData('jobCards').filter(j =>
+          j.customerId === customerId && j.status !== 'Cancelled' && !liveInvoiceForJob(j.id))
+      : [];
     return `<option value="">— None —</option>` + jobs.map(j =>
       `<option value="${esc(j.id)}"${j.id === selected ? ' selected' : ''}>${esc(j.id)} (${esc(j.status)})</option>`
     ).join('');
@@ -559,10 +586,17 @@
     modal.setAttribute('aria-describedby', 'pay-rec-sub');
   }
 
-  function openRecordModal({ forInvoiceId = '' } = {}) {
+  /**
+   * forInvoiceId presets a payment against that invoice; advanceForJobCardId
+   * presets an advance for that job card (its customer and the job card
+   * chosen). An advance's amount is never pre-filled: it is what the customer
+   * actually handed over, which only the person taking it knows.
+   */
+  function openRecordModal({ forInvoiceId = '', advanceForJobCardId = '' } = {}) {
     const presetInvoice = forInvoiceId ? Storage.getById('invoices', forInvoiceId) : null;
+    const presetJob = !presetInvoice && advanceForJobCardId ? Storage.getById('jobCards', advanceForJobCardId) : null;
     const initialType = presetInvoice ? 'invoice' : 'advance';
-    const initialCustomer = presetInvoice ? presetInvoice.customerId : '';
+    const initialCustomer = presetInvoice ? presetInvoice.customerId : (presetJob ? presetJob.customerId : '');
 
     const ov = Modal.open({
       title: 'Record Payment', size: 'lg',
@@ -586,7 +620,7 @@
           </div>
           <div class="field" id="pf-jobcard-wrap" ${initialType === 'invoice' ? 'hidden' : ''}>
             <label for="pf-jobcard">Job Card <span class="pay-rec__opt">(optional)</span></label>
-            <select class="select" id="pf-jobcard" name="jobCardId">${jobCardOptions(initialCustomer, '')}</select>
+            <select class="select" id="pf-jobcard" name="jobCardId">${jobCardOptions(initialCustomer, presetJob ? presetJob.id : '')}</select>
           </div>
           <div class="field">
             <label for="pf-amount">Amount</label>
@@ -981,11 +1015,22 @@
     const params = new URLSearchParams(location.search);
     const viewId = params.get('view');
     const forInvoice = params.get('forInvoice');
+    const advanceFor = params.get('advanceFor');
     const filterInvoice = params.get('invoice');
     if (viewId && Storage.getById('payments', viewId)) {
       openDetailModal(viewId);
     } else if (forInvoice && Storage.getById('invoices', forInvoice)) {
       openRecordModal({ forInvoiceId: forInvoice });
+    } else if (advanceFor && Storage.getById('jobCards', advanceFor)) {
+      const live = liveInvoiceForJob(advanceFor);
+      if (live && live.status === 'Paid') {
+        toast(`${advanceFor} is already invoiced (${live.id}) and fully paid.`, 'warning');
+      } else if (live) {
+        toast(`${advanceFor} is already invoiced (${live.id}). Record the payment against the invoice instead.`, 'warning');
+        openRecordModal({ forInvoiceId: live.id });
+      } else {
+        openRecordModal({ advanceForJobCardId: advanceFor });
+      }
     } else if (filterInvoice) {
       searchTerm = filterInvoice;
       document.getElementById('paySearch').value = filterInvoice;

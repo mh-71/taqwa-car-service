@@ -92,6 +92,51 @@
 
   /* ---------- totals: single source of truth ---------- */
 
+  /* ---------- advances (payments recorded against a job card) ---------- */
+
+  /** The job card's live (non-Void) invoice, or null. */
+  function liveInvoiceOf(job) {
+    return Storage.getData('invoices').find(i => i.jobCardId === job.id && i.status !== 'Void') || null;
+  }
+
+  /** Every non-Void payment recorded against this job card, applied or not. */
+  function jobPayments(jobId) {
+    return Storage.getData('payments')
+      .filter(p => p.jobCardId === jobId && p.status !== 'Void')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
+  }
+
+  const sumAmounts = list => list.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+  /** The form's line in place of the old typed Paid / Advance input. */
+  function advanceNote(j) {
+    const recorded = j.id ? Utils.jobAdvances(j.id) : [];
+    if (recorded.length) {
+      return `${money(sumAmounts(recorded))} recorded as advance (${recorded.length} payment${recorded.length > 1 ? 's' : ''}). Use Record Advance on the Job Card to add more.`;
+    }
+    if (Number(j.paid) > 0) {
+      return `${money(j.paid)} was typed on this Job Card earlier. It is not a recorded payment. If the money was received, use Record Advance.`;
+    }
+    return j.id
+      ? 'No advance recorded. Use Record Advance on the Job Card when the customer pays.'
+      : 'Save the Job Card first, then use Record Advance when the customer pays.';
+  }
+
+  /** The details card's list of payments taken against this job card. */
+  function advanceList(j) {
+    const list = jobPayments(j.id);
+    if (!list.length) return '';
+    return `
+          <div class="jcv-advances">
+            <h4 class="jcv-advances__title">Payments &amp; Advances</h4>
+            <ul>${list.map(p => `
+              <li><a href="payments.html?view=${encodeURIComponent(p.id)}">${esc(p.id)}</a>
+                · ${fmtDate(p.date)} · ${esc(p.method)} · <strong>${money(p.amount)}</strong>
+                <span class="cell-sub">${p.invoiceId ? `On invoice ${esc(p.invoiceId)}` : 'Advance, not yet applied — applied when the invoice is created'}</span></li>`).join('')}
+            </ul>
+          </div>`;
+  }
+
   function computeTotals(job) {
     const serviceTotal = (job.services || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0);
     const partsTotal = (job.partsUsed || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0);
@@ -208,6 +253,16 @@
 
   function renderList() {
     const rows = filteredJobs();
+    // Live paid/due (Utils.liveJobBalance): the invoice once there is one,
+    // else the job card's recorded advances, else its legacy typed snapshot.
+    const invoiceById = new Map(Storage.getData('invoices').map(i => [i.id, i]));
+    const advanceByJob = new Map();
+    Storage.getData('payments').forEach(p => {
+      if (p.jobCardId && !p.invoiceId && p.status !== 'Void') {
+        advanceByJob.set(p.jobCardId, (advanceByJob.get(p.jobCardId) || 0) + (Number(p.amount) || 0));
+      }
+    });
+    const balance = j => Utils.liveJobBalance(j, invoiceById, advanceByJob);
     const total = Storage.getData('jobCards').length;
     const tbody = document.getElementById('jobTableBody');
     const isFiltered = searchTerm || fQuick !== 'all' || fStatus !== 'all' || fPriority !== 'all' || fMechanic !== 'all' || fDate;
@@ -241,7 +296,7 @@
         <td class="cell-desc">${esc((j.services || []).map(s => s.name).join(', ') || '—')}</td>
         <td>${badge(j.status)}</td>
         <td>${priorityBadge(j.priority)}</td>
-        <td class="num">${money(j.total)}${Number(j.due) > 0 ? `<span class="cell-sub due">Due ${money(j.due)}</span>` : ''}</td>
+        <td class="num">${money(j.total)}${balance(j).due > 0 ? `<span class="cell-sub due">Due ${money(balance(j).due)}</span>` : ''}</td>
         <td>
           <div class="row-actions row-actions--wrap">
             ${statusButtons(j)}
@@ -559,7 +614,7 @@
     const isCompleted = j.status === 'Completed';
     return `
       ${isCompleted ? `<div class="warn-banner">Completed Job Cards are historical records. Changes may affect future invoicing.</div>` : ''}
-      <form id="jobForm" novalidate>
+      <form id="jobForm" novalidate data-advances="${j.id ? sumAmounts(Utils.jobAdvances(j.id)) : 0}">
         ${!isEdit ? `
         <h3 class="detail-section-title">Source</h3>
         <div class="form-grid">
@@ -710,8 +765,11 @@
             <div class="field__error" data-err="taxRate"></div>
           </div>
           <div class="field">
-            <label for="jf-paid">Paid / Advance (BDT)</label>
-            <input class="input" id="jf-paid" name="paid" type="number" min="0" step="50" value="${esc(j.paid ?? 0)}">
+            <span class="field__label">Paid / Advance</span>
+            <!-- Money received is a payment, recorded with Record Advance, never
+                 a typed figure. A legacy card keeps its stored value untouched. -->
+            <input id="jf-paid" name="paid" type="hidden" value="${esc(j.paid ?? 0)}">
+            <p class="jf-advance-note">${advanceNote(j)}</p>
             <div class="field__error" data-err="paid"></div>
           </div>
         </div>
@@ -775,6 +833,9 @@
     return checklist;
   }
 
+  /** The recorded advance total the form was opened with (data-advances). */
+  const advancesOf = form => Number(form.dataset && form.dataset.advances) || 0;
+
   function updateLiveTotals(ov) {
     const form = ov.querySelector('#jobForm');
     const { services, parts } = readLines(ov);
@@ -782,7 +843,8 @@
       services, partsUsed: parts,
       labourHours: form.labourHours.value, labourRate: form.labourRate.value,
       labourCost: form.labourCost.value,
-      discount: form.discount.value, taxRate: form.taxRate.value, paid: form.paid.value
+      discount: form.discount.value, taxRate: form.taxRate.value,
+      paid: advancesOf(form) > 0 ? advancesOf(form) : form.paid.value
     });
     // keep labour total field in sync when hours×rate are supplied
     const h = Number(form.labourHours.value) || 0, r = Number(form.labourRate.value) || 0;
@@ -928,6 +990,15 @@
 
     if (!v.customerId) errors.customerId = 'Select a customer.';
     else if (!Storage.getById('customers', v.customerId)) errors.customerId = 'Selected customer no longer exists.';
+    else if (editingJob && v.customerId !== editingJob.customerId) {
+      // The server's rule (updateJobCard, job_card_has_payments), mirrored so
+      // it also holds offline: a job card holding money keeps its customer,
+      // or that money would show as paid on another customer's job.
+      const held = jobPayments(editingJob.id);
+      if (held.length) {
+        errors.customerId = `This Job Card has recorded payments or advances (${held.map(p => p.id).join(', ')}), so its customer cannot be changed. Void those payments first if the customer is wrong.`;
+      }
+    }
 
     if (!v.vehicleId) errors.vehicleId = 'Select a vehicle.';
     else {
@@ -1646,6 +1717,8 @@
     // exists (guards against a stale reference; mirrors the delete-guard
     // lookup used elsewhere).
     const linkedInvoice = j.invoiceId ? Storage.getById('invoices', j.invoiceId) : null;
+    const bal = Utils.liveJobBalance(j);
+    const canAdvance = j.status !== 'Cancelled' && !liveInvoiceOf(j);
 
     const strip = [
       ['Status', JCV_ICONS.status, badge(j.status)],
@@ -1738,14 +1811,16 @@
             <div><span>Discount</span><strong>− ${money(j.discount)}</strong></div>
             <div><span>Tax (${j.taxRate || 0}%)</span><strong>+ ${money(j.tax)}</strong></div>
             <div class="totals-grand"><span>Grand Total</span><strong>${money(j.total)}</strong></div>
-            <div><span>Paid</span><strong>${money(j.paid)}</strong></div>
-            <div class="${Number(j.due) > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(j.due)}</strong></div>
-          </div>`)}
+            <div><span>Paid</span><strong>${money(bal.paid)}</strong></div>
+            <div class="${bal.due > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(bal.due)}</strong></div>
+          </div>
+          ${advanceList(j)}`)}
         </div>
       </div>`,
       footer: `
         <button class="btn btn--ghost" data-print-view>Print</button>
         <button class="btn btn--ghost" data-modal-close>Close</button>
+        ${canAdvance ? `<a class="btn btn--ghost" href="payments.html?advanceFor=${encodeURIComponent(j.id)}">Record Advance</a>` : ''}
         ${linkedInvoice ? `<a class="btn btn--ghost" href="invoices.html?view=${encodeURIComponent(linkedInvoice.id)}">View Invoice</a>` :
           (['Completed', 'Delivered'].includes(j.status) && Number(j.total) > 0 ? `<a class="btn btn--ghost" href="invoices.html?fromJobCard=${encodeURIComponent(j.id)}">Create Invoice</a>` : '')}
         ${!TERMINAL.includes(j.status) ? '<button class="btn btn--primary" data-edit-from-view>Edit Job Card</button>' : ''}`
@@ -1823,6 +1898,7 @@
     const customer = Storage.getById('customers', j.customerId);
     const mechanic = mec(j.mechanicId);
     const t = computeTotals(j);
+    const bal = Utils.liveJobBalance(j);
     const root = (document.body.dataset && document.body.dataset.root) || '../';
 
     const lineRows = (lines, isService) => (lines || []).map((l, i) =>
@@ -1952,8 +2028,8 @@
           <tr><td>Discount</td><td class="pr-num">− ${money(j.discount)}</td></tr>
           <tr><td>Tax (${j.taxRate || 0}%)</td><td class="pr-num">+ ${money(j.tax)}</td></tr>
           <tr class="jcp-sum__grand"><td>GRAND TOTAL</td><td class="pr-num">${money(j.total)}</td></tr>
-          <tr><td>Paid</td><td class="pr-num">${money(j.paid)}</td></tr>
-          <tr class="jcp-sum__due"><td>DUE</td><td class="pr-num">${money(j.due)}</td></tr>
+          <tr><td>Paid</td><td class="pr-num">${money(bal.paid)}</td></tr>
+          <tr class="jcp-sum__due"><td>DUE</td><td class="pr-num">${money(bal.due)}</td></tr>
         </table>
       </section>
 

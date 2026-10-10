@@ -263,8 +263,12 @@ console.log('\n-- 5. No related table is touched --');
   check('the module imports only shared libraries', imports.sort(),
     ['../lib/collection.js', '../lib/http.js', '../lib/write.js']);
   ok_('and never the frontend payment engine or utils', !/utils|Utils/.test(code), 'engine import found');
+  // job_cards is read for ownership only (the advance guards): which customer
+  // a job card belongs to and whether it is invoiced. Never its money, and
+  // never written.
   ok_('the module never reads or writes a job card\'s money',
-    !/job_cards/.test(code), 'job_cards referenced');
+    !/\b(jc|job_cards)\.(paid|due)\b/.test(code) && !/(UPDATE|INSERT INTO|DELETE FROM)\s+job_cards/.test(code),
+    'job card money or a job card write referenced');
 }
 {
   // A GET must issue no statement that could change a row.

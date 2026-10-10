@@ -56,6 +56,7 @@ function stubDB({
   changes = null,
   throwOnBatch = null,
   counter = { last_value: 1, prefix: 'PAY' },
+  jobCard = { customer_id: 'CUS-0001', live_invoice: null },
 } = {}) {
   const calls = [];
   const batches = [];
@@ -74,6 +75,7 @@ function stubDB({
           if (sql.includes('id_counters')) return counter;
           if (sql.includes('AS settled')) return refusal;
           if (sql.includes('UPDATE payments SET notes')) return payment ? written : null;
+          if (sql.includes('FROM job_cards jc WHERE jc.id = ?1')) return jobCard;
           if (sql.includes('FROM payments')) return payment;
           return null;
         },
@@ -157,11 +159,15 @@ console.log('\n-- 1. An advance touches no invoice --');
   check('   ...from the payments counter', db.find('id_counters').binds, ['payments']);
   check('exactly one batch', db.batches.length, 1);
   check('   ...of one statement — nothing else to write', db.batches[0].length, 1);
-  ok_('the insert is a plain VALUES, with no balance guard',
-    /INSERT INTO payments[\s\S]*VALUES/.test(db.find('INSERT INTO payments').sql),
-    db.find('INSERT INTO payments').sql);
+  const advIns = db.find('INSERT INTO payments').sql;
+  ok_('the insert has no balance guard -- only the job card guard',
+    /INSERT INTO payments[\s\S]*SELECT[\s\S]*WHERE \(\?4 IS NULL OR EXISTS/.test(advIns) && !/SUM\(/.test(advIns),
+    advIns);
+  ok_('   ...which checks the job card is this customer\'s and not yet invoiced',
+    /jc\.id = \?4 AND jc\.customer_id = \?3/.test(advIns) && /iv\.job_card_id = jc\.id AND iv\.status <> 'Void'/.test(advIns),
+    advIns);
   ok_('   ...and no invoice is touched at all', !db.find('UPDATE invoices'), db.sql);
-  ok_('   ...nor even read', !db.find('FROM invoices'), db.sql);
+  ok_('   ...nor any balance read', !/SUM\(amount\)/.test(db.sql), db.sql);
   const at = insertAt(db);
   check('invoice_id is null, not an empty string', at('invoice_id'), null);
   check('status is Active', at('status'), 'Active');
@@ -599,6 +605,51 @@ console.log('\n-- 9. Only once a payment is already Void --');
 }
 
 /* ============================================================
+   9b. Job card guards (Job Card Advance)
+   ============================================================ */
+console.log('\n-- 9b. A payment naming a job card: same customer; an advance only before invoicing --');
+for (const [label, body, jobCard, reason] of [
+  ['an advance for another customer\'s job card', { ...ADVANCE_BODY, jobCardId: 'JOB-0001' },
+    { customer_id: 'CUS-0009', live_invoice: null }, 'job_card_customer_mismatch'],
+  ['an advance for an invoiced job card', { ...ADVANCE_BODY, jobCardId: 'JOB-0001' },
+    { customer_id: 'CUS-0001', live_invoice: 'INV-0004' }, 'job_card_invoiced'],
+  ['an advance for a job card that no longer exists', { ...ADVANCE_BODY, jobCardId: 'JOB-0404' },
+    null, 'job_card_not_found'],
+  ['an invoice payment naming another customer\'s job card', { ...LINKED_BODY, jobCardId: 'JOB-0001' },
+    { customer_id: 'CUS-0009', live_invoice: 'INV-0001' }, 'job_card_customer_mismatch'],
+]) {
+  const db = stubDB({ jobCard, changes: [0, 0] });
+  const res = await post(body, db);
+  check(`${label} -> 409`, res.status, 409);
+  check('   ...reason', (await bodyOf(res)).error.reason, reason);
+  ok_('   ...refused by the insert\'s own guard, in one batch', db.batches.length === 1);
+}
+{
+  // An invoice payment for an invoiced job card is fine: only an ADVANCE must
+  // precede the invoice. The guard then falls through to the balance reason.
+  const db = stubDB({ jobCard: { customer_id: 'CUS-0001', live_invoice: 'INV-0001' }, changes: [0, 0] });
+  const res = await post({ ...LINKED_BODY, jobCardId: 'JOB-0001' }, db);
+  check('an invoice payment on an invoiced job card is refused only for balance', (await bodyOf(res)).error.reason, 'overpayment');
+  const ins = db.find('INSERT INTO payments').sql;
+  ok_('   ...its insert checks job card ownership', /jc\.id = \?4 AND jc\.customer_id = \?3/.test(ins), ins);
+}
+{
+  const db = stubDB({ payment: ADVANCE, jobCard: { customer_id: 'CUS-0009', live_invoice: null }, changes: [0, 0] });
+  const res = await link({ invoiceId: 'INV-0001' }, db);
+  check('linking an advance whose job card is another customer\'s -> 409', res.status, 409);
+  check('   ...reason', (await bodyOf(res)).error.reason, 'job_card_customer_mismatch');
+  const upd = db.find('UPDATE payments');
+  ok_('   ...the link guard checks the job card\'s customer against the invoice\'s',
+    /jc\.id = payments\.job_card_id AND jc\.customer_id = i\.customer_id/.test(upd.sql), upd.sql);
+}
+{
+  const db = stubDB({ changes: [0] });
+  const res = await post(ADVANCE_BODY, db);
+  check('an advance with no job card whose insert matched nothing -> 409 concurrent_modification',
+    (await bodyOf(res)).error.reason, 'concurrent_modification');
+}
+
+/* ============================================================
    10. What a payment write never does
    ============================================================ */
 console.log('\n-- 10. A job card\'s money is never touched --');
@@ -621,7 +672,10 @@ for (const [label, run] of [
   const [db, pending] = run();
   const res = await pending;
   ok_(`${label} succeeded, so the statements below are real`, res.status < 400, `got ${res.status}`);
-  ok_(`   ...and names no job card table`, !db.find('job_cards'), db.sql);
+  ok_(`   ...and never writes a job card`,
+    !db.calls.some((c) => /(UPDATE|INSERT INTO|DELETE FROM)\s+job_cards/.test(c.sql)), db.sql);
+  ok_(`   ...nor reads a job card's money`,
+    !db.calls.some((c) => /\b(jc|job_cards)\.(paid|due)\b/.test(c.sql)), db.sql);
   ok_(`   ...and touches no inventory`,
     !db.find('inventory_transactions') && !db.find('UPDATE parts'), db.sql);
   ok_(`   ...having actually issued statements`, db.calls.length > 0, db.calls.length);

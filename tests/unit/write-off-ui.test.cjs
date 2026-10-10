@@ -13,8 +13,9 @@
        written off prints exactly as before;
      - Reports count write-offs separately: never as collected, never as due;
      - Payments' live balance subtracts write-offs, as the server does;
-     - a new invoice starts with nothing paid, and the create dialog says
-       so when the job card shows a Paid/Advance figure. */
+     - a new invoice never copies the job card's typed Paid/Advance: it is
+       paid only by recorded payments -- the job card's recorded advances,
+       applied on create -- and the create dialog says which. */
 process.env.TZ = 'Asia/Dhaka';
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const { boot, check, ok, summary, makeElement } = require('../lib/harness.cjs');
@@ -383,16 +384,48 @@ console.log('\n=== 8. Creating an invoice: nothing is paid yet ===');
   page.fireReady();
   const create = cap.opened.find((o) => /Create Invoice — JOB-0003/.test(o.opts.title));
   ok('the create dialog opens', !!create, cap.opened.map((o) => o.opts.title).join(' | '));
-  ok('   ...and warns that the job card Paid/Advance is not applied',
-    /class="invc-create__warn" role="note">This Job Card shows [^<]*2,000 as Paid\/Advance\. It is not a recorded payment and won't be applied\./.test(create.opts.body),
+  // The seed's PAY-0004 is a RECORDED 2,000 advance for JOB-0003: that, not
+  // the typed figure, is what the invoice is paid with.
+  ok('   ...and lists the recorded advance it will apply',
+    /class="invc-create__advances"[\s\S]*PAY-0004[\s\S]*2,000/.test(create.opts.body), create.opts.body.slice(-600));
+  ok('   ...with no typed-figure warning, since a recorded advance exists',
+    !/invc-create__warn/.test(create.opts.body));
+  create.querySelector('#invc-date').value = '2026-10-08';
+  create.querySelector('#invc-notes').value = '';
+  await create.querySelector('[data-save]')._on.click[0]({});
+  const made = ctx.Storage.getData('invoices').find((i) => i.jobCardId === 'JOB-0003');
+  check('offline, the new invoice is paid by the recorded advance only', made && [made.total, made.paid, made.due, made.status], [5775, 2000, 3775, 'Partial']);
+  check('   ...PAY-0004 is now linked to it', ctx.Storage.getById('payments', 'PAY-0004').invoiceId, made && made.id);
+  check('   ...and the job card keeps its Paid/Advance figure', ctx.Storage.getById('jobCards', 'JOB-0003').paid, 2000);
+  ok('   ...the list now shows it Partial', new RegExp(`${made && made.id}[\\s\\S]*?Partial`).test(els.get('invcTableBody').innerHTML));
+}
+{
+  // A typed Paid/Advance with NO recorded advance behind it applies nothing.
+  const page = boot({ modules: ['js/invoices.js'] });
+  const { ctx } = page;
+  ctx.Storage.seedIfEmpty();
+  ctx.Storage.updateData('jobCards', 'JOB-0003', { status: 'Completed' });
+  ctx.Storage.updateData('payments', 'PAY-0004', { status: 'Void' });
+  ctx.location.search = '?fromJobCard=JOB-0003';
+  stubQueries(ctx);
+  const cap = { opened: [] };
+  ctx.Utils.Modal.open = (opts) => {
+    const found = new Map();
+    const ov = { opts, querySelector: (s) => { if (!found.has(s)) found.set(s, makeElement(s)); return found.get(s); }, querySelectorAll: () => [] };
+    cap.opened.push(ov); return ov;
+  };
+  ctx.Utils.Modal.close = () => {};
+  page.fireReady();
+  const create = cap.opened.find((o) => /Create Invoice — JOB-0003/.test(o.opts.title));
+  ok('typed figure, no recorded advance -> warns nothing will be applied',
+    /class="invc-create__warn" role="note">This Job Card shows [^<]*2,000 as Paid\/Advance, but no advance payment is recorded for it, so nothing will be applied\./.test(create.opts.body),
     create.opts.body.slice(-400));
   create.querySelector('#invc-date').value = '2026-10-08';
   create.querySelector('#invc-notes').value = '';
   await create.querySelector('[data-save]')._on.click[0]({});
   const made = ctx.Storage.getData('invoices').find((i) => i.jobCardId === 'JOB-0003');
-  check('offline, the new invoice starts with nothing paid', made && [made.total, made.paid, made.due, made.status], [5775, 0, 5775, 'Unpaid']);
-  check('   ...and the job card keeps its Paid/Advance figure', ctx.Storage.getById('jobCards', 'JOB-0003').paid, 2000);
-  ok('   ...the list now shows it Unpaid', new RegExp(`${made && made.id}[\\s\\S]*?Unpaid`).test(els.get('invcTableBody').innerHTML));
+  check('   ...and the new invoice starts with nothing paid', made && [made.total, made.paid, made.due, made.status], [5775, 0, 5775, 'Unpaid']);
+  check('   ...the void advance stays unlinked', ctx.Storage.getById('payments', 'PAY-0004').invoiceId, null);
 }
 {
   const page = boot({ modules: ['js/invoices.js'] });
