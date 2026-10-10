@@ -754,10 +754,24 @@
 
         <h3 class="detail-section-title">Billing</h3>
         <div class="form-grid form-grid--3">
-          <div class="field">
-            <label for="jf-discount">Discount (BDT)</label>
-            <input class="input" id="jf-discount" name="discount" type="number" min="0" step="50" value="${esc(j.discount ?? 0)}">
-            <div class="field__error" data-err="discount"></div>
+          <div class="jc-discount-pair">
+            <div class="field">
+              <label for="jf-discount">Discount (BDT)</label>
+              <div class="pay-rec__money">
+                <span class="pay-rec__cur" aria-hidden="true">${esc(settings.currency || '৳')}</span>
+                <input class="input" id="jf-discount" name="discount" type="number" min="0" step="50" value="${esc(j.discount ?? 0)}">
+              </div>
+              <div class="field__error" data-err="discount"></div>
+            </div>
+            <!-- Percentage discount: layout only for now. Disabled and unnamed,
+                 so the form, validation, totals and the API never read it. -->
+            <div class="field jc-discount-pct">
+              <label for="jf-discount-pct">Discount (%) <span class="muted-note-inline">Coming soon</span></label>
+              <div class="pay-rec__money">
+                <span class="pay-rec__cur" aria-hidden="true">%</span>
+                <input class="input" id="jf-discount-pct" type="number" min="0" max="100" step="0.01" value="0" disabled>
+              </div>
+            </div>
           </div>
           <div class="field">
             <label for="jf-taxrate">Tax Rate (%)</label>
