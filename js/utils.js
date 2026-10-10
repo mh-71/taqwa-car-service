@@ -160,7 +160,12 @@ const Utils = (() => {
        - Cancelled job          -> nothing is owed (due 0); any money
                                    actually taken still counts as paid
        - Live (non-Void) invoice -> the Invoice's paid/due
-       - Otherwise               -> the Job Card's own snapshot
+       - Recorded advances       -> paid = the job card's Active advance
+                                    payments (no invoice yet), due = total
+                                    minus them: the ledger, not the typed
+                                    figure
+       - Otherwise               -> the Job Card's own snapshot (legacy
+                                    cards whose money was only typed)
 
      Voiding an Invoice clears jobCard.invoiceId (invoices.js), which
      returns the job to its un-invoiced state, so it falls back to the
@@ -176,20 +181,52 @@ const Utils = (() => {
   }
 
   /**
-   * Current paid/due for one Job Card. Pass the optional index when
-   * looping over many jobs to avoid a per-job invoice lookup.
+   * A job card's advances: Active payments recorded against it that no
+   * invoice holds yet, oldest first. Invoice creation applies exactly these.
    */
-  function liveJobBalance(job, invoiceById) {
+  function jobAdvances(jobId) {
+    return Storage.getData('payments')
+      .filter(p => p.jobCardId === jobId && !p.invoiceId && p.status !== 'Void')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
+  }
+
+  /** Map of jobCardId -> advance total, built once, for summing many jobs. */
+  function advanceIndex() {
+    const map = new Map();
+    Storage.getData('payments').forEach(p => {
+      if (!p.jobCardId || p.invoiceId || p.status === 'Void') return;
+      map.set(p.jobCardId, (map.get(p.jobCardId) || 0) + (Number(p.amount) || 0));
+    });
+    return map;
+  }
+
+  /**
+   * Current paid/due for one Job Card. Pass the optional indexes when
+   * looping over many jobs to avoid a per-job lookup.
+   */
+  function liveJobBalance(job, invoiceById, advanceByJob) {
     if (!job) return { paid: 0, due: 0 };
     const inv = job.invoiceId
       ? (invoiceById ? invoiceById.get(job.invoiceId) || null : Storage.getById('invoices', job.invoiceId))
       : null;
     const useInvoice = !!inv && inv.status !== 'Void';
-    const source = useInvoice ? inv : job;
-    return {
-      paid: Number(source.paid) || 0,
-      due: job.status === 'Cancelled' ? 0 : (Number(source.due) || 0)
-    };
+    let paid, due;
+    if (useInvoice) {
+      paid = Number(inv.paid) || 0;
+      due = Number(inv.due) || 0;
+    } else {
+      const advanced = advanceByJob
+        ? (advanceByJob.get(job.id) || 0)
+        : jobAdvances(job.id).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      if (advanced > 0) {
+        paid = advanced;
+        due = Math.max((Number(job.total) || 0) - advanced, 0);
+      } else {
+        paid = Number(job.paid) || 0;
+        due = Number(job.due) || 0;
+      }
+    }
+    return { paid, due: job.status === 'Cancelled' ? 0 : due };
   }
 
   function liveJobPaid(job) { return liveJobBalance(job).paid; }
@@ -198,13 +235,15 @@ const Utils = (() => {
   /** Total currently outstanding across a list of Job Cards. */
   function sumJobsDue(jobs) {
     const idx = invoiceIndex(jobs);
-    return (jobs || []).reduce((s, j) => s + liveJobBalance(j, idx).due, 0);
+    const adv = advanceIndex();
+    return (jobs || []).reduce((s, j) => s + liveJobBalance(j, idx, adv).due, 0);
   }
 
   /** Total actually collected across a list of Job Cards. */
   function sumJobsPaid(jobs) {
     const idx = invoiceIndex(jobs);
-    return (jobs || []).reduce((s, j) => s + liveJobBalance(j, idx).paid, 0);
+    const adv = advanceIndex();
+    return (jobs || []).reduce((s, j) => s + liveJobBalance(j, idx, adv).paid, 0);
   }
 
   /* ============================================================
@@ -637,7 +676,7 @@ const Utils = (() => {
   return {
     money, fmtDate, fmtTime, todayStr, toDateStr, esc, badge, invoiceStatusLabel, toast, Modal,
     saving, guard, wrote,
-    liveJobBalance, liveJobPaid, liveJobDue, sumJobsDue, sumJobsPaid,
+    liveJobBalance, jobAdvances, liveJobPaid, liveJobDue, sumJobsDue, sumJobsPaid,
     customerName, mechanicName, vehicleLabel, vehicleReg, serviceName,
     ACTIVE_JOB_STATUSES, DONE_JOB_STATUSES,
     getMechanicJobs, getMechanicActiveJobs, getMechanicCompletedJobs, getMechanicRevenue,

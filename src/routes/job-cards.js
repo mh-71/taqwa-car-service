@@ -960,6 +960,30 @@ function shortageConflict(shortages) {
   );
 }
 
+/* Payments are Active or Void (0001); only a Void one holds no money. */
+const VOID_PAYMENT = 'Void';
+
+/** The non-Void payments recorded against a job card, oldest first. */
+async function activePaymentsOn(env, jobCardId) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, amount, invoice_id FROM payments
+      WHERE job_card_id = ?1 AND status <> '${VOID_PAYMENT}'
+      ORDER BY date, id`
+  ).bind(jobCardId).all();
+  return results ?? [];
+}
+
+/** Refusal for a customer change on a job card that holds payments. */
+function customerLockedConflict(held) {
+  const ids = held.map((p) => p.id);
+  return conflict(
+    'This Job Card has recorded payments or advances'
+    + (ids.length ? ` (${ids.join(', ')})` : '')
+    + ', so its customer cannot be changed. Void those payments first if the customer is wrong.',
+    { reason: 'job_card_has_payments', payments: ids }
+  );
+}
+
 /**
  * A constraint the reconciliation statements raise on purpose, mapped to the
  * rule it enforces. Anything else falls through to constraintFailure().
@@ -1299,6 +1323,16 @@ export async function updateJobCard(request, env, rawId) {
     }
   }
 
+  // A job card holding money keeps its customer. An advance is the customer's
+  // money taken against THIS job card, and payments are immutable, so moving
+  // the job card to someone else would leave that money on another customer's
+  // job -- shown as paid on it, and refused when it is invoiced. This is the
+  // explanation; the UPDATE below re-checks it inside the write.
+  if (merged.customer_id !== stored.row.customer_id) {
+    const held = await activePaymentsOn(env, stored.row.id);
+    if (held.length) return customerLockedConflict(held);
+  }
+
   // ---- inventory -----------------------------------------------------------
   // :928-930 — reconciliation happens only for a job that has already started
   // issuing stock. For any other status the lines are a plan, not an issue, and
@@ -1362,13 +1396,28 @@ export async function updateJobCard(request, env, rawId) {
   };
   const names = Object.keys(columns);
 
-  const statements = [
+  const statements = [];
+  // A customer CHANGE is re-checked inside the write: if a payment was recorded
+  // against this job card after the check above, this statement writes NULL
+  // into customer_id, the NOT NULL constraint refuses it, and the whole batch
+  // -- lines and stock included -- rolls back (explained in the catch below).
+  // With no payment it matches nothing. It runs first, while the row still
+  // holds the stored customer, and is not sent at all when the customer stays.
+  if (merged.customer_id !== stored.row.customer_id) {
+    statements.push(env.DB.prepare(
+      `UPDATE job_cards SET customer_id = NULL
+        WHERE id = ?1 AND customer_id <> ?2
+          AND EXISTS (SELECT 1 FROM payments p
+                       WHERE p.job_card_id = ?1 AND p.status <> '${VOID_PAYMENT}')`
+    ).bind(stored.row.id, merged.customer_id));
+  }
+  statements.push(
     env.DB.prepare(
       `UPDATE job_cards
           SET ${names.map((n, i) => `${n} = ?${i + 1}`).join(', ')}
         WHERE id = ?${names.length + 1}`
     ).bind(...names.map((n) => columns[n]), stored.row.id),
-  ];
+  );
 
   // A line table is rewritten only when its array was supplied. The child rows
   // carry no identity anything else refers to -- the ledger reconciles by
@@ -1407,6 +1456,9 @@ export async function updateJobCard(request, env, rawId) {
   } catch (err) {
     const inventory = inventoryFailure(err);
     if (inventory) return inventory;
+    if (/NOT NULL constraint failed: job_cards\.customer_id/i.test(String((err && err.message) || err || ''))) {
+      return customerLockedConflict(await activePaymentsOn(env, stored.row.id));
+    }
     const mapped = constraintFailure(err);
     if (mapped) return mapped;
     console.error('PUT /api/job-cards/:id failed:', err);

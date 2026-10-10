@@ -85,6 +85,20 @@
   }
 
   /**
+   * Payments recorded against a Job Card before it was invoiced: non-Void,
+   * linked to no invoice, carrying this jobCardId. These are what invoice
+   * creation applies. The Job Card's typed `paid` is NOT one of them -- only
+   * a recorded payment is money the workshop holds.
+   */
+  function jobCardAdvances(jobCardId) {
+    return Storage.getData('payments')
+      .filter(p => p.jobCardId === jobCardId && !p.invoiceId && p.status !== 'Void')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id));
+  }
+
+  const sumAmounts = list => list.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+  /**
    * Checks whether a Job Card can have a new invoice created from it.
    * Returns { ok: true } or { ok: false, reason, existingInvoice? }.
    */
@@ -109,7 +123,18 @@
       return { ok: false, reason: 'This Job Card has no billable amount.' };
     }
 
-    return { ok: true, job, customer, vehicle };
+    // The server's advance refusals, in its order: an advance is applied whole
+    // or the invoice is not created -- never partly, never to another customer.
+    const advances = jobCardAdvances(job.id);
+    if (advances.some(p => p.customerId !== job.customerId)) {
+      return { ok: false, reason: 'An advance recorded on this Job Card belongs to a different customer. Resolve it on the Payments page before invoicing.' };
+    }
+    const advanceTotal = sumAmounts(advances);
+    if (advanceTotal > (Number(job.total) || 0) + 0.005) {
+      return { ok: false, reason: `The advances recorded on this Job Card (${money(advanceTotal)}) exceed the invoice total (${money(job.total)}). Nothing was created. Review the advances on the Payments page before invoicing.` };
+    }
+
+    return { ok: true, job, customer, vehicle, advances, advanceTotal };
   }
 
   /**
@@ -143,8 +168,11 @@
           ...(notes && notes.trim() ? { notes: notes.trim() } : {})
         });
         if (!res.ok) return { ok: false, reason: res.message, response: res };
-        const stale = await Storage.refreshAll('jobCards');
-        return { ok: true, invoice: res.record, ...(stale.length ? { stale } : {}) };
+        // The server applied the job card's advances in the same transaction,
+        // so the payments it linked are stale here as well as the job card.
+        const stale = await Storage.refreshAll('jobCards', 'payments');
+        const applied = (res.meta && res.meta.appliedAdvances) || [];
+        return { ok: true, invoice: res.record, appliedAdvances: applied, ...(stale.length ? { stale } : {}) };
       })();
     }
 
@@ -161,6 +189,7 @@
     const total = Math.max(0, Number(job.total) || 0);
     const paid = 0;
     const due = total;
+    const { advances } = check;
 
     const invoice = Storage.addData('invoices', {
       jobCardId: job.id,
@@ -179,7 +208,20 @@
     });
 
     Storage.updateData('jobCards', job.id, { invoiceId: invoice.id });
-    return { ok: true, invoice };
+
+    // Apply the advances checked above, then take paid/due/status from them --
+    // the same figures the server's recompute writes for a new invoice.
+    if (advances.length) {
+      advances.forEach(p => Storage.updateData('payments', p.id, { invoiceId: invoice.id }));
+      const applied = Math.min(total, sumAmounts(advances));
+      const updated = Storage.updateData('invoices', invoice.id, {
+        paid: applied,
+        due: Math.max(total - applied, 0),
+        status: deriveStatus(total, applied)
+      });
+      return { ok: true, invoice: updated, appliedAdvances: advances };
+    }
+    return { ok: true, invoice, appliedAdvances: [] };
   }
 
   /** Non-Void payments currently linked to an invoice. */
@@ -382,7 +424,7 @@
       }
       return;
     }
-    const { job, customer, vehicle } = check;
+    const { job, customer, vehicle, advances, advanceTotal } = check;
     const defaultDate = job.actualDelivery || (job.completedAt ? job.completedAt.slice(0, 10) : Utils.todayStr());
 
     const ov = Modal.open({
@@ -407,7 +449,13 @@
           Services, parts, labour, discount, tax and totals are copied from ${esc(job.id)} exactly as they
           stand now and will not change if the service or part catalog changes later.
         </p>
-        ${Number(job.paid) > 0 ? `<p class="invc-create__warn" role="note">This Job Card shows ${money(job.paid)} as Paid/Advance. It is not a recorded payment and won't be applied. Record or link the payment on the Payments page.</p>` : ''}`,
+        ${advances.length ? `
+        <div class="invc-create__advances" role="note">
+          <strong>${advances.length === 1 ? 'This advance' : `These ${advances.length} advances`} will be applied to the invoice (${money(advanceTotal)}):</strong>
+          <ul>${advances.map(p => `<li>${esc(p.id)} &middot; ${fmtDate(p.date)} &middot; ${esc(p.method)} &middot; ${money(p.amount)}</li>`).join('')}</ul>
+          <span>Invoice Due after applying: ${money(Math.max((Number(job.total) || 0) - advanceTotal, 0))}</span>
+        </div>` : ''}
+        ${Number(job.paid) > 0 && !advances.length ? `<p class="invc-create__warn" role="note">This Job Card shows ${money(job.paid)} as Paid/Advance, but no advance payment is recorded for it, so nothing will be applied. If the money was received, use Record Advance on the Job Card first.</p>` : ''}`,
       footer: `<button class="btn btn--ghost" data-modal-close>Cancel</button>
                <button class="btn btn--primary" data-save>Create Invoice</button>`
     });
@@ -423,7 +471,9 @@
       }
       Modal.close();
       refresh();
+      const nApplied = (result.appliedAdvances || []).length;
       if (result.stale && result.stale.length) Utils.wrote(result);
+      else if (nApplied) toast(`Invoice ${result.invoice.id} created. ${nApplied} advance${nApplied > 1 ? 's' : ''} (${money(sumAmounts(result.appliedAdvances))}) applied.`);
       else toast(`Invoice ${result.invoice.id} created for ${custName(result.invoice.customerId)}.`);
       openDetailModal(result.invoice.id);
     }));

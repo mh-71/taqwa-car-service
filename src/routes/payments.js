@@ -249,6 +249,62 @@ export function recomputeInvoice(env, { invoiceId, at, guard, guardBinds = [] })
 }
 
 /**
+ * Job Card guards for a new payment, as SQL over the createPayment binds
+ * (?3 customer, ?4 job card). Both are no-ops when no job card is named.
+ *
+ *   jobCardOwned       the job card belongs to the payment's customer -- so a
+ *                      payment can never tie one customer's money to another
+ *                      customer's job.
+ *   jobCardAdvanceable the same, the job card is not Cancelled, and it has no
+ *                      live invoice yet: an advance is money taken BEFORE
+ *                      invoicing, and invoice creation is what applies it. A
+ *                      Cancelled job card will never be invoiced, so money
+ *                      taken against it would sit as an advance nothing can
+ *                      apply. Money for an invoiced job card is a payment
+ *                      against that invoice instead.
+ */
+const CANCELLED = 'Cancelled';
+const jobCardOwned = `(?4 IS NULL OR EXISTS (
+     SELECT 1 FROM job_cards jc WHERE jc.id = ?4 AND jc.customer_id = ?3))`;
+const jobCardAdvanceable = `(?4 IS NULL OR EXISTS (
+     SELECT 1 FROM job_cards jc
+      WHERE jc.id = ?4 AND jc.customer_id = ?3
+        AND jc.status <> '${CANCELLED}'
+        AND NOT EXISTS (SELECT 1 FROM invoices iv
+                         WHERE iv.job_card_id = jc.id AND iv.status <> '${VOID}')))`;
+
+/**
+ * Why a payment naming a job card was refused, or null when the job card is
+ * not the reason. Run only after a guarded insert matched nothing.
+ */
+async function explainJobCardRefusal(env, jobCardId, customerId, isAdvance) {
+  const row = await env.DB.prepare(
+    `SELECT jc.customer_id, jc.status,
+            (SELECT iv.id FROM invoices iv
+              WHERE iv.job_card_id = jc.id AND iv.status <> '${VOID}' LIMIT 1) AS live_invoice
+       FROM job_cards jc WHERE jc.id = ?1`
+  ).bind(jobCardId).first();
+  if (!row) {
+    return conflict('That Job Card no longer exists.', { reason: 'job_card_not_found', jobCardId });
+  }
+  if (row.customer_id !== customerId) {
+    return conflict('This Job Card belongs to a different customer.',
+      { reason: 'job_card_customer_mismatch', jobCardId });
+  }
+  if (isAdvance && row.status === CANCELLED) {
+    return conflict('This Job Card is Cancelled, so an advance cannot be recorded against it.',
+      { reason: 'job_card_cancelled', jobCardId });
+  }
+  if (isAdvance && row.live_invoice) {
+    return conflict(
+      `This Job Card is already invoiced (${row.live_invoice}). Record the payment against the invoice instead.`,
+      { reason: 'job_card_invoiced', jobCardId, invoiceId: row.live_invoice }
+    );
+  }
+  return null;
+}
+
+/**
  * Why a payment against an invoice was refused.
  *
  * Run ONLY when the guarded write matched nothing, so the happy path costs
@@ -388,14 +444,16 @@ export async function createPayment(request, env) {
     at,
   ];
 
-  // An advance touches no invoice at all, so it has nothing to guard against
-  // and nothing to recompute (:155). It is a plain insert.
+  // An advance touches no invoice at all, so it has no balance to guard and
+  // nothing to recompute (:155). Its only guard is the job card: it must be
+  // this customer's and not yet invoiced (jobCardAdvanceable).
   const statements = [];
   if (!invoiceId.value) {
     statements.push(env.DB.prepare(
       `INSERT INTO payments
          (id, invoice_id, customer_id, job_card_id, date, amount, method, status, notes, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '${ACTIVE}', ?8, ?9)`
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, '${ACTIVE}', ?8, ?9
+        WHERE ${jobCardAdvanceable}`
     ).bind(...values));
   } else {
     statements.push(env.DB.prepare(
@@ -409,7 +467,8 @@ export async function createPayment(request, env) {
              AND i.customer_id = ?3
              AND (SELECT COALESCE(SUM(amount), 0) FROM payments
                    WHERE invoice_id = ?2 AND status <> '${VOID}')
-                 + ${adjusted('?2')} + ?6 <= i.total)`
+                 + ${adjusted('?2')} + ?6 <= i.total)
+         AND ${jobCardOwned}`
     ).bind(...values));
     statements.push(recomputeInvoice(env, {
       invoiceId: invoiceId.value, at,
@@ -431,7 +490,15 @@ export async function createPayment(request, env) {
   if ((results[0]?.meta?.changes ?? 0) !== 1) {
     // The guard matched nothing, so nothing was written -- not the payment
     // and, because it is conditional on the payment, not the balance either.
-    return explainInvoiceRefusal(env, invoiceId.value, customerId.value, amount.value);
+    if (jobCardId.value) {
+      const refused = await explainJobCardRefusal(env, jobCardId.value, customerId.value, !invoiceId.value);
+      if (refused) return refused;
+    }
+    if (invoiceId.value) {
+      return explainInvoiceRefusal(env, invoiceId.value, customerId.value, amount.value);
+    }
+    return conflict('The payment could not be recorded. Reload and try again.',
+      { reason: 'concurrent_modification' });
   }
 
   return respondWithPayment(env, allocated.id, 201);
@@ -555,7 +622,7 @@ export async function linkPayment(request, env, rawId) {
   }
 
   const payment = await env.DB.prepare(
-    'SELECT id, status, invoice_id, customer_id, amount FROM payments WHERE id = ?1'
+    'SELECT id, status, invoice_id, customer_id, job_card_id, amount FROM payments WHERE id = ?1'
   ).bind(id.value).first();
   // :160-162 — the client's own three refusals, in its own order.
   if (!payment) return fail('not_found', 'Payment not found.', 404);
@@ -584,7 +651,12 @@ export async function linkPayment(request, env, rawId) {
                  AND i.customer_id = payments.customer_id
                  AND (SELECT COALESCE(SUM(amount), 0) FROM payments p2
                        WHERE p2.invoice_id = ?2 AND p2.status <> '${VOID}')
-                     + ${adjusted('?2')} + payments.amount <= i.total)`
+                     + ${adjusted('?2')} + payments.amount <= i.total
+                 -- a payment that names a job card may only reach an invoice
+                 -- of that job card's customer
+                 AND (payments.job_card_id IS NULL OR EXISTS (
+                       SELECT 1 FROM job_cards jc
+                        WHERE jc.id = payments.job_card_id AND jc.customer_id = i.customer_id)))`
       ).bind(id.value, invoiceId.value, at),
       recomputeInvoice(env, {
         invoiceId: invoiceId.value, at,
@@ -600,6 +672,10 @@ export async function linkPayment(request, env, rawId) {
   }
 
   if ((results[0]?.meta?.changes ?? 0) !== 1) {
+    if (payment.job_card_id) {
+      const refused = await explainJobCardRefusal(env, payment.job_card_id, payment.customer_id, false);
+      if (refused) return refused;
+    }
     return explainInvoiceRefusal(env, invoiceId.value, payment.customer_id, payment.amount);
   }
 

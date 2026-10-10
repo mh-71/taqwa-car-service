@@ -4229,12 +4229,15 @@ sec('19. Payment writes: the invoice balance follows the money, against real D1'
     const reInvoice = await send('POST', '/api/invoices', { jobCardId: J });
     t('the job card can be invoiced again -> 201', reInvoice.status === 201, reInvoice.body);
     const I2 = reInvoice.body?.data?.id;
-    t('   ...and the new invoice starts Unpaid',
-      reInvoice.body?.data?.status === 'Unpaid' && reInvoice.body?.data?.paid === 0,
-      reInvoice.body?.data);
-
-    const relinked = await linkTo(P, I2);
-    t('the released advance links to the new invoice -> 200', relinked.status === 200, relinked.body);
+    // The released payment inherited J, so it is J's advance, and creating
+    // J's new invoice applies it in the same write (Job Card Advance).
+    t('   ...and applies the released advance on create',
+      JSON.stringify((reInvoice.body?.appliedAdvances || []).map((a) => a.id)) === JSON.stringify([P])
+        && reInvoice.body?.data?.status === 'Partial' && reInvoice.body?.data?.paid === 400,
+      reInvoice.body);
+    t('   ...linking it again by hand is refused',
+      (await linkTo(P, I2)).body?.error?.reason === 'payment_already_linked');
+    t('the released advance is linked to the new invoice', (await paymentOf(P))?.invoiceId === I2, await paymentOf(P));
     const inv2 = await invoiceOf(I2);
     t('   ...which now counts it',
       inv2.paid === 400 && inv2.due === 600 && inv2.status === 'Partial', inv2);
@@ -4248,6 +4251,74 @@ sec('19. Payment writes: the invoice balance follows the money, against real D1'
     t('and the job card\'s own money never moved through the whole flow',
       jobAfter.paid === jobBefore.paid && jobAfter.due === jobBefore.due,
       { before: jobBefore, after: jobAfter });
+  }
+
+  /* ---- 19h2. Job Card Advance: recorded advances applied on invoice create ---- */
+  {
+    /** A job card walked to In Progress (not yet invoiceable). */
+    const openJob = async (total) => {
+      const j = await send('POST', '/api/job-cards', {
+        customerId: C, vehicleId: V, mechanicId: M,
+        date: '2026-09-18', complaint: 'Job Card Advance',
+        services: [{ serviceId: S, name: 'Advance Service (as sold)', qty: 1, unitPrice: total }],
+        paid: 250,   // a typed figure: never applied, never copied
+      });
+      const J = j.body?.data?.id;
+      await setStatus(J, 'Inspection');
+      await setStatus(J, 'In Progress');
+      return J;
+    };
+    const createFor = async (J) => {
+      const r = await send('POST', '/api/invoices', { jobCardId: J });
+      if (r.body?.data?.id) settled.add(r.body.data.id);
+      return r;
+    };
+
+    const J = await openJob(2000);
+    const a1 = await send('POST', '/api/payments',
+      { customerId: C, jobCardId: J, amount: 600, date: '2026-09-19', method: 'Mobile Banking' });
+    t('an advance on an In Progress job card -> 201', a1.status === 201, a1.body);
+    const A1 = a1.body?.data?.id;
+    const wrongCust = await send('POST', '/api/payments', { customerId: C2, jobCardId: J, amount: 100 });
+    t('an advance from another customer for it -> 409 job_card_customer_mismatch',
+      wrongCust.status === 409 && wrongCust.body?.error?.reason === 'job_card_customer_mismatch', wrongCust.body);
+    await setStatus(J, 'Completed');
+    const a2 = await send('POST', '/api/payments', { customerId: C, jobCardId: J, amount: 400, date: '2026-09-20' });
+    const A2 = a2.body?.data?.id;
+    const voided = await send('POST', '/api/payments', { customerId: C, jobCardId: J, amount: 50 });
+    await send('POST', `/api/payments/${voided.body?.data?.id}/void`);
+
+    const inv = await createFor(J);
+    t('creating the invoice -> 201', inv.status === 201, inv.body);
+    const I = inv.body?.data?.id;
+    t('   ...applies both Active advances, oldest first, and not the void one',
+      JSON.stringify((inv.body?.appliedAdvances || []).map((a) => a.id)) === JSON.stringify([A1, A2])
+        && inv.body?.appliedAdvanceTotal === 1000, inv.body);
+    const live = await invoiceOf(I);
+    t('   ...paid/due/status from the ledger, not the typed 250',
+      live.paid === 1000 && live.due === 1000 && live.status === 'Partial', live);
+    const p1 = await paymentOf(A1);
+    t('   ...the advance keeps its date, method and amount, and names both records',
+      p1.invoiceId === I && p1.jobCardId === J && p1.date === '2026-09-19'
+        && p1.method === 'Mobile Banking' && p1.amount === 600, p1);
+    t('   ...the void advance stays unlinked', (await paymentOf(voided.body?.data?.id))?.invoiceId === null);
+    const late = await send('POST', '/api/payments', { customerId: C, jobCardId: J, amount: 10 });
+    t('an advance after invoicing -> 409 job_card_invoiced',
+      late.status === 409 && late.body?.error?.reason === 'job_card_invoiced', late.body);
+    const dup = await createFor(J);
+    t('creating the invoice again -> 409, nothing doubled',
+      dup.status === 409 && (await invoiceOf(I)).paid === 1000, dup.body);
+
+    // over the total: refused whole, nothing written
+    const J2 = await openJob(500);
+    await send('POST', '/api/payments', { customerId: C, jobCardId: J2, amount: 300 });
+    await send('POST', '/api/payments', { customerId: C, jobCardId: J2, amount: 300 });
+    await setStatus(J2, 'Completed');
+    const over = await createFor(J2);
+    t('advances over the total -> 409 advance_exceeds_total',
+      over.status === 409 && over.body?.error?.reason === 'advance_exceeds_total'
+        && over.body?.error?.advanceTotal === 600 && over.body?.error?.invoiceTotal === 500, over.body);
+    t('   ...and the job card is still un-invoiced', (await jobOf(J2))?.invoiceId === null, await jobOf(J2));
   }
 
   /* ---- 19i. concurrency ---- */

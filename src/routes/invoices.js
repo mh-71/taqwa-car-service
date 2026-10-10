@@ -62,6 +62,7 @@ import {
   readJsonBody, readOptionalBody, readString, readDate,
   nowIso, todayInDhaka, allocateId, constraintFailure,
 } from '../lib/write.js';
+import { recomputeInvoice, adjusted } from './payments.js';
 
 const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 500;
@@ -344,6 +345,18 @@ export async function getInvoice(request, env, rawId) {
 const ELIGIBLE_JOB_STATUSES = ['Completed', 'Delivered'];
 const VOID = 'Void';
 
+/** Half a poisha: the tolerance every money comparison here uses (0002). */
+const MONEY_EPSILON = 0.005;
+
+/**
+ * The most advances one invoice will apply in a single create. D1 caps a
+ * statement at 100 bound parameters and the guarded invoice insert binds the
+ * advance ids alongside its own columns, so this keeps well clear of it. A
+ * workshop job card with more than a handful of advances is already unusual;
+ * past this the create stops and says so rather than applying some of them.
+ */
+const MAX_ADVANCES = 50;
+
 /**
  * Fields the server owns. Refused by name rather than ignored, so a caller
  * cannot believe it set a figure or a line that was actually copied from the
@@ -442,6 +455,27 @@ async function readJobCardLines(env, jobCardId) {
 }
 
 /**
+ * Every unlinked, non-Void payment recorded against the job card: the advances
+ * this invoice is about to absorb.
+ *
+ * Read for all customers on purpose. createPayment only lets a job card take
+ * an advance from its own customer, but a row that predates that guard and
+ * names another customer must stop the create (`advance_customer_mismatch`)
+ * rather than be silently left behind or applied to the wrong account.
+ */
+async function readJobCardAdvances(env, jobCardId) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, customer_id, date, amount, method
+       FROM payments
+      WHERE job_card_id = ?1 AND invoice_id IS NULL AND status <> '${VOID}'
+      ORDER BY date, id`
+  ).bind(jobCardId).all();
+  return results ?? [];
+}
+
+const advanceSummary = (a) => ({ id: a.id, date: a.date, amount: a.amount, method: a.method });
+
+/**
  * POST /api/invoices
  *
  * Create an invoice from a job card. The body names the job card, and
@@ -457,6 +491,20 @@ async function readJobCardLines(env, jobCardId) {
  * It does not change the job card's status either. createInvoiceFromJobCard()
  * sets only `invoiceId` (:201), and a status move is C-6's operation with its
  * own transitions and its own inventory effects.
+ *
+ * ---- job card advances ----
+ *
+ * Money recorded against the job card before invoicing (payments with this
+ * job_card_id and no invoice_id) is applied to the new invoice in the same
+ * batch: each advance is linked, then the invoice is recomputed from its
+ * payments exactly as a payment write would. The typed job_cards.paid is NOT
+ * an advance and is never read for this -- only ledger rows are.
+ *
+ * Nothing is applied partially. The create is refused, writing nothing, when
+ * the advances exceed the invoice total, when one names a different customer,
+ * or when the set of advances changed between this read and the write. The
+ * invoice insert itself is the guard for that last case: it only happens when
+ * the job card's unlinked advances are still exactly the ones read here.
  */
 export async function createInvoice(request, env) {
   if (request.method !== 'POST') return methodNotAllowed(['POST']);
@@ -512,6 +560,7 @@ export async function createInvoice(request, env) {
   }
 
   const lines = await readJobCardLines(env, job.id);
+  const advances = await readJobCardAdvances(env, job.id);
 
   // :181-186 — the defensive floor on the total. job-cards.js validates it at
   // the source, so this never changes a legitimately created invoice.
@@ -520,11 +569,42 @@ export async function createInvoice(request, env) {
   // a record of cash -- no payment row stands behind it -- so it is no longer
   // copied: the first payment recompute used to discard it anyway, and until
   // then it showed money the payments did not hold. Cash reaches an invoice
-  // only as a payment (recorded or linked), which is what `paid` follows from
-  // here on. The job card's own paid/due are left exactly as they are.
+  // only as a payment (recorded, linked, or an advance applied below), which is
+  // what `paid` follows from here on. The job card's own paid/due are left
+  // exactly as they are.
   const total = Math.max(0, Number(job.total) || 0);
   const paid = 0;
   const due = total;
+
+  // The advances are checked before anything is allocated, so a refusal here
+  // costs nothing. The invoice is new: no payment is linked to it and it has
+  // no write-off, so the whole total is what the advances may cover.
+  const foreign = advances.filter((a) => a.customer_id !== job.customer_id);
+  if (foreign.length) {
+    return conflict(
+      'An advance recorded on this Job Card belongs to a different customer. '
+      + 'Resolve it on the Payments page before invoicing.',
+      { reason: 'advance_customer_mismatch', advances: foreign.map(advanceSummary) }
+    );
+  }
+  if (advances.length > MAX_ADVANCES) {
+    return conflict(
+      `This Job Card has ${advances.length} advances; at most ${MAX_ADVANCES} can be applied at once.`,
+      { reason: 'too_many_advances', count: advances.length }
+    );
+  }
+  const advanceTotal = advances.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+  if (advanceTotal > total + MONEY_EPSILON) {
+    return conflict(
+      `The advances recorded on this Job Card (${advanceTotal}) exceed the invoice total (${total}). `
+      + 'Nothing was created. Review the advances on the Payments page before invoicing.',
+      {
+        reason: 'advance_exceeds_total',
+        advanceTotal, invoiceTotal: total,
+        advances: advances.map(advanceSummary),
+      }
+    );
+  }
 
   // :192 — the supplied date, else the day it was handed over, else the day it
   // was completed, else today. completed_at is an instant, and slicing its
@@ -563,35 +643,82 @@ export async function createInvoice(request, env) {
   };
   const names = Object.keys(columns);
 
+  // The invoice insert is conditional on the job card's unlinked advances
+  // being exactly the ones read above: the same count, every one of those ids
+  // still among them, and the same sum. A payment recorded, voided or linked
+  // in between makes it match nothing, and because every later statement is
+  // conditional on the invoice existing, the whole batch then writes nothing.
+  const n = names.length;
+  const ids = advances.map((a) => a.id);
+  const unlinked = `FROM payments
+                     WHERE job_card_id = ?${n + 1} AND invoice_id IS NULL AND status <> '${VOID}'`;
+  const idList = ids.map((_, i) => `?${n + 5 + i}`).join(', ');
   const statements = [
     env.DB.prepare(
       `INSERT INTO invoices (${names.join(', ')})
-            VALUES (${names.map((_, i) => `?${i + 1}`).join(', ')})`
-    ).bind(...names.map((n) => columns[n])),
+       SELECT ${names.map((_, i) => `?${i + 1}`).join(', ')}
+        WHERE (SELECT COUNT(*) ${unlinked}) = ?${n + 3}
+          AND (SELECT COUNT(*) ${unlinked} AND customer_id = ?${n + 2}
+                                ${ids.length ? `AND id IN (${idList})` : ''}) = ?${n + 3}
+          AND ABS((SELECT COALESCE(SUM(amount), 0) ${unlinked}) - ?${n + 4}) < ${MONEY_EPSILON}`
+    ).bind(...names.map((k) => columns[k]),
+      job.id, job.customer_id, ids.length, advanceTotal, ...ids),
   ];
+  const invoiceWritten = `EXISTS (SELECT 1 FROM invoices WHERE id = ?1)`;
   lines.services.forEach((l, i) => {
     statements.push(env.DB.prepare(
       `INSERT INTO invoice_services
          (invoice_id, service_id, name, qty, unit_price, total, line_no)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE ${invoiceWritten}`
     ).bind(allocated.id, l.service_id, l.name, l.qty, l.unit_price, l.total, i + 1));
   });
   lines.parts.forEach((l, i) => {
     statements.push(env.DB.prepare(
       `INSERT INTO invoice_parts
          (invoice_id, part_id, name, part_no, qty, unit_price, total, line_no)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE ${invoiceWritten}`
     ).bind(allocated.id, l.part_id, l.name, l.part_no, l.qty, l.unit_price, l.total, i + 1));
   });
-  // :201 — the link, unconditional exactly as the client writes it. It is in
-  // the same batch because an invoice whose job card does not point back at it
-  // would be invisible to every guard that reads the job card first.
+  // :201 — the link. It is in the same batch because an invoice whose job card
+  // does not point back at it would be invisible to every guard that reads the
+  // job card first; it is conditional only on the invoice having been written.
   statements.push(env.DB.prepare(
-    `UPDATE job_cards SET invoice_id = ?2, updated_at = ?3 WHERE id = ?1`
+    `UPDATE job_cards SET invoice_id = ?2, updated_at = ?3
+      WHERE id = ?1 AND EXISTS (SELECT 1 FROM invoices WHERE id = ?2)`
   ).bind(job.id, allocated.id, at));
 
+  // Apply each advance: linkPayment's guard, narrowed to this job card. The
+  // running sum makes each link see the ones before it, so the total check
+  // holds for the set and not just for each advance on its own.
+  const firstLink = statements.length;
+  advances.forEach((a) => {
+    statements.push(env.DB.prepare(
+      `UPDATE payments SET invoice_id = ?2, updated_at = ?3
+        WHERE id = ?1
+          AND invoice_id IS NULL
+          AND status <> '${VOID}'
+          AND job_card_id = ?4
+          AND customer_id = ?5
+          AND EXISTS (
+            SELECT 1 FROM invoices i
+             WHERE i.id = ?2
+               AND i.status <> '${VOID}'
+               AND i.job_card_id = ?4
+               AND i.customer_id = ?5
+               AND (SELECT COALESCE(SUM(amount), 0) FROM payments p2
+                     WHERE p2.invoice_id = ?2 AND p2.status <> '${VOID}')
+                   + ${adjusted('?2')} + payments.amount <= i.total + ${MONEY_EPSILON})`
+    ).bind(a.id, allocated.id, at, job.id, job.customer_id));
+  });
+  if (advances.length) {
+    // paid/due/status from the ledger, by the one recompute every payment
+    // write uses. It only matches when the invoice was written (WHERE id).
+    statements.push(recomputeInvoice(env, { invoiceId: allocated.id, at, guard: '1 = 1' }));
+  }
+
+  let results;
   try {
-    await env.DB.batch(statements);
+    results = await env.DB.batch(statements);
   } catch (err) {
     // ux_invoices_live_job_card is the authority on "one live invoice per job
     // card". The check above explains a duplicate; this catches the one that
@@ -605,7 +732,25 @@ export async function createInvoice(request, env) {
     return fail('database_error', 'Could not create the invoice.', 500);
   }
 
-  return respondWithInvoice(env, allocated.id, 201);
+  if ((results?.[0]?.meta?.changes ?? 0) !== 1) {
+    // The advance guard matched nothing, so nothing at all was written.
+    return conflict(
+      'The advances on this Job Card changed while the invoice was being created. '
+      + 'Nothing was created. Reload and try again.',
+      { reason: 'advances_changed' }
+    );
+  }
+
+  const linked = advances.filter((_, i) => (results[firstLink + i]?.meta?.changes ?? 0) === 1);
+  if (linked.length !== advances.length) {
+    // The insert's guard and the links read the same rows in one transaction,
+    // so this cannot happen; it is logged, and reported, rather than assumed.
+    console.error(`Invoice ${allocated.id}: applied ${linked.length} of ${advances.length} advances.`);
+  }
+  return respondWithInvoice(env, allocated.id, 201, {
+    appliedAdvances: linked.map(advanceSummary),
+    appliedAdvanceTotal: linked.reduce((sum, a) => sum + (Number(a.amount) || 0), 0),
+  });
 }
 
 /* ---------------------------------------------------------------

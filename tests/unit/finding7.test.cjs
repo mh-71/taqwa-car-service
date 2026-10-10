@@ -135,13 +135,16 @@ console.log('=== Finding 7: voiding an invoice releases its payments as advances
   const newId = res.invoice.id;
   check('Job Card relinked to the replacement', ctx.Storage.getById('jobCards','JOB-0002').invoiceId, newId);
 
-  const payable = a.payableInvoicesFor('CUS-0002').map(i => i.id);
-  ok('replacement invoice is offered as payable', payable.includes(newId), payable.join(','));
-
+  // The released payments inherited JOB-0002 (Finding 7), so they are that job
+  // card's advances, and creating its replacement invoice applies them --
+  // whole, in the same write -- instead of leaving them to be linked by hand.
+  check('creating the replacement applies the released advances',
+    (res.appliedAdvances || []).map(p => p.id), linked);
   linked.forEach(id => {
-    const r = a.linkPaymentToInvoice(id, newId);
-    ok(`advance ${id} links to ${newId}`, r.ok, JSON.stringify(r));
+    check(`advance ${id} is now linked to ${newId}`, ctx.Storage.getById('payments', id).invoiceId, newId);
   });
+  const payable = a.payableInvoicesFor('CUS-0002').map(i => i.id);
+  ok('a settled replacement is no longer offered as payable', !payable.includes(newId), payable.join(','));
 
   const after = state(ctx, a);
   check('replacement invoice fully settled',
@@ -162,19 +165,18 @@ console.log('=== Finding 7: voiding an invoice releases its payments as advances
   a.voidInvoice('INV-0002');
   const newId = a.createInvoiceFromJobCard('JOB-0002', {}).invoice.id;
 
-  // link to a Void invoice
-  const toVoid = a.linkPaymentToInvoice(linked[0], 'INV-0002');
-  ok('cannot link an advance to a Void invoice', !toVoid.ok && /void/i.test(toVoid.reason), JSON.stringify(toVoid));
-
-  // link once, then again
-  ok('first link succeeds', a.linkPaymentToInvoice(linked[0], newId).ok);
+  // the released advances were applied by the create; linking again is refused
   const twice = a.linkPaymentToInvoice(linked[0], newId);
-  ok('cannot double-link the same payment', !twice.ok && /already linked/i.test(twice.reason), JSON.stringify(twice));
+  ok('cannot double-link an applied advance', !twice.ok && /already linked/i.test(twice.reason), JSON.stringify(twice));
+  check('both released advances applied, invoice settled',
+    [ctx.Storage.getById('invoices', newId).paid, ctx.Storage.getById('invoices', newId).status], [4935, 'Paid']);
 
-  // overpay: second advance is 1935, remaining due is 1935 -> fits; a third would not
-  ok('second advance links within the balance', a.linkPaymentToInvoice(linked[1], newId).ok);
   const extra = a.recordPayment({ invoiceId: null, customerId:'CUS-0002', jobCardId:null,
     date: ctx.Utils.todayStr(), amount: 500, method:'Cash', notes:'spare advance' });
+  // link to a Void invoice
+  const toVoid = a.linkPaymentToInvoice(extra.payment.id, 'INV-0002');
+  ok('cannot link an advance to a Void invoice', !toVoid.ok && /void/i.test(toVoid.reason), JSON.stringify(toVoid));
+  // overpay: the replacement is fully paid, so any further advance overpays it
   const over = a.linkPaymentToInvoice(extra.payment.id, newId);
   ok('cannot overpay by linking another advance', !over.ok && /overpay/i.test(over.reason), JSON.stringify(over));
 

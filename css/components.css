@@ -698,6 +698,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .jcv-note__title { margin: 0 0 4px; font-size: .78rem; font-weight: 700; color: var(--text-2); }
 
 /* summary: Grand Total and Due to the fore */
+/* Job Card advances: the form's note in place of the typed Paid input, and the
+   details card's list of payments taken against the job card. */
+.field__label { display: block; font-size: .78rem; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+.jf-advance-note { margin: 0; font-size: .82rem; color: var(--text-2); line-height: 1.4; }
+.jcv-advances { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: .84rem; }
+.jcv-advances__title { margin: 0 0 6px; font-size: .8rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .03em; }
+.jcv-advances ul { margin: 0; padding: 0; list-style: none; }
+.jcv-advances li { padding: 4px 0; overflow-wrap: anywhere; }
+.jcv-advances .cell-sub { display: block; }
 .jcv .totals-panel--view { margin-top: 0; padding: 4px 2px; border: 0; background: none; }
 .jcv .totals-panel--view > div { padding: 4px 0; }
 .jcv .totals-panel--view > div:nth-child(4) { margin-top: 6px; padding-top: 9px; border-top: 1px dashed var(--line); font-weight: 600; }
@@ -1238,6 +1247,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
   background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--warn);
   color: var(--text); font-size: .86rem;
 }
+.invc-create__advances {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 8px;
+  background: var(--info-soft); box-shadow: inset 3px 0 0 var(--info);
+  color: var(--text); font-size: .86rem;
+}
+.invc-create__advances ul { margin: 6px 0; padding-left: 18px; }
+.invc-create__advances li { overflow-wrap: anywhere; }
 .wo-hint { display: block; margin-top: 4px; font-size: .78rem; color: var(--text-2); }
 .wo-summary { margin: 4px 0 0; font-size: .9rem; font-weight: 600; color: var(--text); }
 .wo-form-err:empty { display: none; }
