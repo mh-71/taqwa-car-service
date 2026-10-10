@@ -1411,9 +1411,11 @@
       if (Storage.isApi()) {
         const res = await Storage.update('jobCards', id, forApi(proposed));
         if (!res.ok) {
-          if (res.status === 409) {
+          if (res.status === 409 && res.errorReason === 'insufficient_stock') {
             // A shortage, in the server's own words, in the dialog this
-            // screen has always used for one.
+            // screen has always used for one. Any other conflict (a
+            // concurrent stock change, or a payment recorded while the
+            // customer was being changed) is reported as itself below.
             Modal.open({
               title: 'Insufficient stock for this change',
               body: `<p style="margin:0">${esc(res.message)}</p>

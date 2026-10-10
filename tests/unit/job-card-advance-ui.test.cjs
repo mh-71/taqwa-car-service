@@ -370,4 +370,59 @@ async function section6() {
 
 }
 
-section6().then(() => process.exit(summary('Job Card Advance UI') === 0 ? 0 : 1));
+async function section7() {
+  console.log('\n-- 7. A server conflict is reported as itself, not as a stock shortage --');
+  const { fakeApi } = require('../lib/fake-api.cjs');
+  const job = { id: 'JOB-0001', customerId: 'CUS-0001', vehicleId: 'VEH-0001', mechanicId: 'MEC-0001',
+    appointmentId: null, priority: 'normal', date: '2026-09-22', estDelivery: '', mileage: null, mileageOut: null,
+    fuelLevel: '', conditionNotes: '', complaint: 'x', inspection: '', diagnosis: '', technicianNotes: '',
+    recommendations: '', notes: '', services: [], partsUsed: [], inspectionChecklist: {}, labourHours: null,
+    labourRate: null, labourCost: 0, discount: 0, taxRate: 0, subtotal: 500, tax: 0, total: 500, paid: 0, due: 500,
+    status: 'Inspection', invoiceId: null, completedAt: null, actualDelivery: '' };
+  const rows = {
+    customers: [{ id: 'CUS-0001', name: 'A', phone: '1', status: 'Active' }, { id: 'CUS-0002', name: 'B', phone: '2', status: 'Active' }],
+    vehicles: [{ id: 'VEH-0001', customerId: 'CUS-0001', regNo: 'R1', brand: 'B', model: 'M', status: 'Active' },
+               { id: 'VEH-0002', customerId: 'CUS-0002', regNo: 'R2', brand: 'B', model: 'M', status: 'Active' }],
+    services: [{ id: 'SRV-0001', name: 'Engine Oil Change', price: 500, status: 'Active' }],
+    mechanics: [{ id: 'MEC-0001', name: 'M', specialization: 'Engine', status: 'Active', availability: 'Available' }],
+    parts: [], appointments: [], payments: [], 'job-cards': [job],
+  };
+  const cases = [
+    // The race: the page's cache has no payment, so the form lets the change
+    // through and the SERVER refuses it.
+    ['a payment recorded during the customer change', 'job_card_has_payments',
+      'This Job Card has recorded payments or advances (PAY-0009), so its customer cannot be changed. Void those payments first if the customer is wrong.',
+      { customerId: 'CUS-0002', vehicleId: 'VEH-0002' }, false],
+    ['a real stock shortage', 'insufficient_stock', 'Insufficient stock for Oil. Available: 0, Additional required: 1.', {}, true],
+  ];
+  for (const [label, reason, message, over, stockDialog] of cases) {
+    const f = fakeApi({ rows: JSON.parse(JSON.stringify(rows)),
+      fail: ({ method, path }) => (method === 'PUT' && /^\/job-cards\//.test(path)
+        ? { status: 409, error: { code: 'conflict', message, reason } } : null) });
+    const page = boot({ modules: ['js/job-cards.js'], origin: 'http://localhost:8787', fetch: f });
+    await page.ctx.Storage.hydrate();
+    stubQueries(page.ctx);
+    const created = [];
+    const make = page.ctx.document.createElement;
+    page.ctx.document.createElement = (tag) => { const e = make(tag); created.push(e); return e; };
+    page.fireReady();
+    const titles = [];
+    const cap = {};
+    const current = page.ctx.Storage.getById('jobCards', 'JOB-0001');
+    page.ctx.Utils.Modal.open = (opts) => { titles.push(opts && opts.title); return editOverlay(formFrom(current, over), cap); };
+    page.ctx.Utils.Modal.close = () => {};
+    const btn = { dataset: { action: 'edit' }, closest: (sel) => (sel === 'tr' ? { dataset: { id: 'JOB-0001' } } : btn) };
+    page.els.get('jobTableBody').dispatch('click', { target: { closest: (sel) => (sel === '[data-action]' ? btn : null) } });
+    if (cap.save) await cap.save({});
+    const puts = f.calls.filter((c) => c.method === 'PUT').length;
+    const shown = titles.includes('Insufficient stock for this change');
+    const toasts = created.filter((e) => /toast__dot/.test(e.innerHTML)).map((e) => e.innerHTML.replace(/<[^>]+>/g, ''));
+    check(`${label}: the request reached the server`, puts, 1);
+    check(`   ...the stock-shortage dialog is ${stockDialog ? '' : 'NOT '}shown`, shown, stockDialog);
+    if (!stockDialog) {
+      ok('   ...the server\'s own message is shown instead', toasts.some((t) => t.includes('customer cannot be changed')), JSON.stringify(toasts));
+    }
+  }
+}
+
+section6().then(section7).then(() => process.exit(summary('Job Card Advance UI') === 0 ? 0 : 1));
