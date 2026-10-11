@@ -82,6 +82,21 @@
   .inv-view .modal__close { order: 2; }
   .inv-view__facts { order: 3; flex: 1 1 100%; }
   .inv-view__cols, .inv-view__cols--end { grid-template-columns: minmax(0, 1fr); }
+  /* post-completion preview: payments and history rows stack as labelled cards */
+  .pca-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .pca-table, .pca-table tbody { display: block; width: 100%; }
+  .pca-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .pca-table td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; background: none !important; }
+  .pca-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: .74rem; font-weight: 500; color: var(--text-2); }
+  .pca-table td.num { text-align: right; }
+  .pca-table td.pca-amt { grid-column: 2; grid-row: 1; }
+  .pca-table .badge { max-width: 100%; white-space: normal; }
+  .pca-hist tr.pca-row--example { padding: 12px; margin-bottom: 10px; border: 1px dashed var(--line); border-radius: 10px;
+    background: repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in srgb, var(--paper) 70%, transparent) 10px 20px); }
+  .pca-hist td.pca-hist__reason { grid-column: 1 / -1; min-width: 0; }
+  .pca-hist td.pca-hist__act { grid-column: 1 / -1; text-align: left; white-space: normal; }
+  .pca-hist td.pca-hist__act::before { display: none; }
+  .pca-hist .pca-hist__btns { justify-content: flex-start; }
 }
 
 /* ---------- ≤640px : phone ---------- */

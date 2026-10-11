@@ -936,6 +936,252 @@
     }));
   }
 
+  /* ---------- post-completion discount & refund: DESIGN PREVIEW ----------
+     A preview of the screens, not the feature: nothing here calls the API or
+     writes to Storage. Figures are read from the stored invoice and its
+     linked payments; the dialogs check their fields and then say plainly
+     that nothing was saved. Example history rows are labelled as examples. */
+
+  const PCA_NOTICE = 'Post-completion discounts and refunds will need Owner/Admin approval, and every change will be kept in the adjustment history for audit.';
+  const pcaPreviewTag = '<span class="pca-tag">Preview</span>';
+  // no refund is ever recorded yet: the preview has nothing to subtract
+  const pcaRefunded = () => 0;
+  const pcaNetPaid = i => Math.max((Number(i.paid) || 0) - pcaRefunded(i), 0);
+  const pcaRound = n => Math.round(n * 100) / 100;
+
+  function pcaPaymentsCard(i, payments) {
+    return `<section class="inv-view__card inv-view__card--pca-pay">
+      ${cardHead('Payments', `<span class="inv-view__count">${payments.length} payment${payments.length === 1 ? '' : 's'}</span>`)}
+      <div class="inv-view__card-body">${payments.length
+        ? `<div class="table-wrap"><table class="table table--compact pca-table pca-pay">
+            <thead><tr><th scope="col">Payment</th><th scope="col">Method</th><th scope="col">Status</th><th scope="col" class="num">Amount</th></tr></thead>
+            <tbody>${payments.map(p => `<tr${p.status === 'Void' ? ' class="pca-row--void"' : ''}>
+              <td class="pca-pay__id"><a class="cell-main" href="${paymentDetailsHref(p, i.id)}">${esc(p.id)}</a><span class="cell-sub">${fmtDate(p.date)}</span></td>
+              <td data-label="Method">${esc(p.method || '—')}</td>
+              <td data-label="Status">${badge(p.status)}</td>
+              <td class="num pca-amt" data-label="Amount">${money(p.amount)}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>`
+        : `<p class="muted-note">${Number(i.paid) > 0 ? `No payment records. The ${money(i.paid)} paid was carried over from the Job Card.` : 'No payments are recorded for this invoice.'}</p>`}
+      </div>
+    </section>`;
+  }
+
+  function pcaBillSummary(i) {
+    const canRefund = pcaNetPaid(i) > 0;
+    return `<section class="inv-view__card inv-view__card--pca-bill">
+      ${cardHead('Bill Summary')}
+      <div class="inv-view__card-body">
+        <div class="pca-bill">
+          <div><span>Subtotal</span><strong>${money(i.subtotal)}</strong></div>
+          <div><span>Original Discount</span><strong>− ${money(i.discount)}</strong></div>
+          <div class="pca-bill__total"><span>Invoice Total</span><strong>${money(i.total)}</strong></div>
+          <div><span>Total Paid</span><strong>${money(i.paid)}</strong></div>
+          <div><span>Total Refund</span><strong>− ${money(pcaRefunded(i))}</strong></div>
+          <div class="pca-bill__net"><span>Net Paid by Customer</span><strong>${money(pcaNetPaid(i))}</strong></div>
+        </div>
+        <div class="pca-actions">
+          <button type="button" class="btn btn--primary" data-pca-discount>Add Post-Completion Discount</button>
+          <button type="button" class="btn btn--ghost" data-pca-refund${canRefund ? '' : ' disabled title="Nothing has been paid on this invoice."'}>Issue Refund</button>
+          <button type="button" class="btn btn--ghost" data-pca-history>View Adjustment History</button>
+        </div>
+        <p class="pca-notice" role="note">${PCA_NOTICE}</p>
+      </div>
+    </section>`;
+  }
+
+  function pcaSection(i, payments) {
+    return `<section class="pca" aria-labelledby="pca-title">
+      <div class="pca__head">
+        <h3 class="pca__title" id="pca-title">Post-Completion Discount &amp; Refund</h3>
+        ${pcaPreviewTag}
+        <p class="pca__sub">Design preview. These actions are not connected yet and do not change the invoice, its payments or its balance.</p>
+      </div>
+      <div class="inv-view__cols inv-view__cols--end pca__cols">
+        ${pcaPaymentsCard(i, payments)}
+        ${pcaBillSummary(i)}
+      </div>
+    </section>`;
+  }
+
+  const pcaBanner = () => `<p class="pca-banner" role="note"><strong>Preview only.</strong> This form is not connected to the system yet. Nothing you enter here is saved.</p>`;
+
+  /** Shared field-error display for the preview dialogs. */
+  function pcaShowErrors(ov, errs) {
+    ov.querySelectorAll('.field').forEach(f => f.classList.remove('field--error'));
+    ov.querySelectorAll('[data-err]').forEach(el => { el.textContent = ''; });
+    Object.entries(errs).forEach(([k, msg]) => {
+      const el = ov.querySelector(`[data-err="${k}"]`);
+      if (!el) return;
+      el.textContent = msg;
+      const field = el.closest('.field');
+      if (field) field.classList.add('field--error');
+    });
+  }
+
+  /** After a valid preview submit: say that nothing was saved (never a success message). */
+  function pcaNotSaved(ov, what) {
+    const out = ov.querySelector('[data-pca-result]');
+    out.innerHTML = `<strong>Not saved.</strong> This is a preview, so no ${what} was created. The invoice, its payments and its balance are unchanged.`;
+    out.hidden = false;
+  }
+
+  function openPcaDiscountModal(id) {
+    const i = Storage.getById('invoices', id);
+    if (!i || i.status === 'Void') return;
+    const base = Number(i.total) || 0;
+    const ov = Modal.open({
+      title: `Add Post-Completion Discount — ${i.id}`,
+      body: `
+        ${pcaBanner()}
+        <div class="pca-context">
+          <div><span>Invoice Total</span><strong>${money(base)}</strong></div>
+          <div><span>Net Paid by Customer</span><strong>${money(pcaNetPaid(i))}</strong></div>
+        </div>
+        <div class="form-grid pca-pair" data-pca-mode="fixed">
+          <div class="field">
+            <label for="pca-amount">Discount Amount (BDT)</label>
+            <input class="input" id="pca-amount" type="number" min="0" step="any" inputmode="decimal" placeholder="0">
+            <div class="field__error" data-err="amount"></div>
+          </div>
+          <div class="field">
+            <label for="pca-pct">Discount Percentage (%)</label>
+            <input class="input" id="pca-pct" type="number" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0">
+            <div class="field__error" data-err="pct"></div>
+          </div>
+          <div class="field span-2">
+            <label for="pca-reason">Reason</label>
+            <textarea class="input" id="pca-reason" rows="3" maxlength="500" placeholder="Why is this discount being given after completion?"></textarea>
+            <div class="field__error" data-err="reason"></div>
+          </div>
+        </div>
+        <p class="pca-hint" id="pca-preview" aria-live="polite"></p>
+        <p class="pca-notice" role="note">${PCA_NOTICE}</p>
+        <p class="pca-result" data-pca-result role="status" hidden></p>`,
+      footer: `<button class="btn btn--ghost" data-pca-back>Cancel</button>
+               <button class="btn btn--primary" data-pca-save>Add Discount</button>`
+    });
+    const amountEl = ov.querySelector('#pca-amount');
+    const pctEl = ov.querySelector('#pca-pct');
+    const pair = ov.querySelector('.pca-pair');
+    const preview = () => {
+      const amt = Number(amountEl.value);
+      ov.querySelector('#pca-preview').textContent = amt > 0 && amt <= base
+        ? `For reference: ${money(amt)} off an invoice total of ${money(base)} leaves ${money(pcaRound(base - amt))}.`
+        : '';
+    };
+    // two-way: the box being typed in leads, the other one follows
+    const sync = from => {
+      pair.dataset.pcaMode = from;
+      const fromAmount = from === 'fixed';
+      const src = fromAmount ? amountEl : pctEl, dst = fromAmount ? pctEl : amountEl;
+      const v = Number(src.value);
+      dst.value = src.value === '' || !Number.isFinite(v) || base <= 0
+        ? ''
+        : String(fromAmount ? Math.min(pcaRound(v / base * 100), 100) : pcaRound(base * v / 100));
+      src.classList.remove('is-derived');
+      dst.classList.add('is-derived');
+      preview();
+    };
+    amountEl.addEventListener('input', () => sync('fixed'));
+    pctEl.addEventListener('input', () => sync('percent'));
+    ov.querySelector('[data-pca-back]').addEventListener('click', () => openDetailModal(id));
+    ov.querySelector('[data-pca-save]').addEventListener('click', () => {
+      const amount = Number(amountEl.value), pct = Number(pctEl.value);
+      const errs = {};
+      if (!(amount > 0)) errs.amount = 'Enter a discount greater than 0.';
+      else if (amount > base) errs.amount = `The discount cannot exceed the invoice total of ${money(base)}.`;
+      if (pctEl.value !== '' && !(pct >= 0 && pct <= 100)) errs.pct = 'Enter a percentage from 0 to 100.';
+      if (!ov.querySelector('#pca-reason').value.trim()) errs.reason = 'A reason is required.';
+      pcaShowErrors(ov, errs);
+      ov.querySelector('[data-pca-result]').hidden = true;
+      if (!Object.keys(errs).length) pcaNotSaved(ov, 'discount');
+    });
+  }
+
+  function openPcaRefundModal(id) {
+    const i = Storage.getById('invoices', id);
+    if (!i || i.status === 'Void') return;
+    const max = pcaNetPaid(i);
+    const ov = Modal.open({
+      title: `Issue Refund — ${i.id}`,
+      body: `
+        ${pcaBanner()}
+        <div class="pca-context">
+          <div><span>Net Paid by Customer</span><strong>${money(max)}</strong></div>
+          <div><span>Invoice Total</span><strong>${money(i.total)}</strong></div>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="pca-refund">Refund Amount (BDT)</label>
+            <input class="input" id="pca-refund" type="number" min="0" max="${max}" step="any" inputmode="decimal" placeholder="0">
+            <div class="field__error" data-err="amount"></div>
+          </div>
+          <div class="field">
+            <label for="pca-method">Refund Method</label>
+            <select class="select" id="pca-method">${['Cash', 'Card', 'Mobile Banking', 'Bank Transfer'].map(m => `<option>${m}</option>`).join('')}</select>
+          </div>
+          <div class="field span-2">
+            <label for="pca-refund-reason">Reason</label>
+            <textarea class="input" id="pca-refund-reason" rows="3" maxlength="500" placeholder="Why is this refund being issued?"></textarea>
+            <div class="field__error" data-err="reason"></div>
+          </div>
+        </div>
+        <p class="pca-notice" role="note">${PCA_NOTICE}</p>
+        <p class="pca-result" data-pca-result role="status" hidden></p>`,
+      footer: `<button class="btn btn--ghost" data-pca-back>Cancel</button>
+               <button class="btn btn--primary" data-pca-save>Issue Refund</button>`
+    });
+    ov.querySelector('[data-pca-back]').addEventListener('click', () => openDetailModal(id));
+    ov.querySelector('[data-pca-save]').addEventListener('click', () => {
+      const amount = Number(ov.querySelector('#pca-refund').value);
+      const errs = {};
+      if (!(amount > 0)) errs.amount = 'Enter a refund greater than 0.';
+      else if (amount > max) errs.amount = `The refund cannot exceed the ${money(max)} paid.`;
+      if (!ov.querySelector('#pca-refund-reason').value.trim()) errs.reason = 'A reason is required.';
+      pcaShowErrors(ov, errs);
+      ov.querySelector('[data-pca-result]').hidden = true;
+      if (!Object.keys(errs).length) pcaNotSaved(ov, 'refund');
+    });
+  }
+
+  /* Example rows only show the table's layout; they are never data. */
+  const PCA_EXAMPLES = [
+    { type: 'Discount', amount: 500, reason: 'Goodwill discount for a delayed delivery', by: 'Example user', status: ['Pending Approval', 'warn'] },
+    { type: 'Refund', amount: 1000, reason: 'Part returned unused', by: 'Example user', status: ['Approved', 'good'] },
+    { type: 'Discount', amount: 200, reason: 'Duplicate request', by: 'Example user', status: ['Rejected', 'bad'] }
+  ];
+
+  function openPcaHistoryModal(id) {
+    const i = Storage.getById('invoices', id);
+    if (!i) return;
+    const ov = Modal.open({
+      title: `Adjustment History — ${i.id}`, size: 'lg',
+      body: `
+        <p class="pca-empty"><strong>No post-completion adjustments are recorded for this invoice.</strong>
+          Discounts and refunds will be listed here once the feature is connected.</p>
+        <div class="pca-example-head"><h3 class="pca__title">Example layout</h3><span class="pca-tag">Not real records</span></div>
+        <div class="table-wrap"><table class="table table--compact pca-table pca-hist">
+          <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col" class="num">Amount</th><th scope="col">Reason</th><th scope="col">By</th><th scope="col">Status</th><th scope="col" class="num">Actions</th></tr></thead>
+          <tbody>${PCA_EXAMPLES.map(r => `<tr class="pca-row--example">
+            <td class="pca-hist__date" data-label="Date">${fmtDate(Utils.todayStr())}<span class="pca-tag pca-tag--sm">Example</span></td>
+            <td data-label="Type">${r.type}</td>
+            <td class="num pca-amt" data-label="Amount">− ${money(r.amount)}</td>
+            <td class="pca-hist__reason" data-label="Reason">${esc(r.reason)}</td>
+            <td data-label="By">${esc(r.by)}</td>
+            <td data-label="Status"><span class="badge badge--${r.status[1]}">${r.status[0]}</span></td>
+            <td class="num pca-hist__act" data-label="Actions"><div class="pca-hist__btns">${r.status[0] === 'Pending Approval'
+              ? '<button type="button" class="btn btn--ghost btn--sm" disabled title="Preview only">Approve</button><button type="button" class="btn btn--ghost btn--sm" disabled title="Preview only">Reject</button>'
+              : '<button type="button" class="btn btn--ghost btn--sm" disabled title="Preview only">View</button>'}</div></td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <p class="pca-notice" role="note">${PCA_NOTICE}</p>`,
+      footer: `<button class="btn btn--ghost" data-pca-back>Back to Invoice</button>
+               <button class="btn btn--ghost" data-modal-close>Close</button>`
+    });
+    ov.querySelector('[data-pca-back]').addEventListener('click', () => openDetailModal(id));
+  }
+
   function openDetailModal(id) {
     const i = Storage.getById('invoices', id);
     if (!i) return;
@@ -999,7 +1245,8 @@
             ${i.notes ? `<section class="inv-view__card inv-view__card--notes">${cardHead('Notes')}<div class="inv-view__card-body"><p class="detail-text">${esc(i.notes)}</p></div></section>` : ''}
           </div>
         </div>
-        ${adjustmentsSection(i, adjustments, canAdjust)}`,
+        ${adjustmentsSection(i, adjustments, canAdjust)}
+        ${i.status !== 'Void' ? pcaSection(i, payments) : ''}`,
       footer: `
         <button class="btn btn--ghost" data-print-view>Print</button>
         <button class="btn btn--ghost" data-modal-close>Close</button>
@@ -1027,6 +1274,9 @@
     if (writeOffBtn) writeOffBtn.addEventListener('click', () => { Modal.close(); openWriteOffModal(id); });
     document.querySelectorAll('[data-reverse-adj]').forEach(btn =>
       btn.addEventListener('click', () => { const adj = btn.dataset.reverseAdj; Modal.close(); openReverseModal(adj, id); }));
+    // design preview: these open dialogs that save nothing
+    [['[data-pca-discount]', openPcaDiscountModal], ['[data-pca-refund]', openPcaRefundModal], ['[data-pca-history]', openPcaHistoryModal]]
+      .forEach(([sel, open]) => { const btn = ov.querySelector(sel); if (btn) btn.addEventListener('click', () => open(id)); });
   }
 
   /* ---------- print ---------- */

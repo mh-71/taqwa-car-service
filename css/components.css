@@ -1262,3 +1262,77 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .wo-summary { margin: 4px 0 0; font-size: .9rem; font-weight: 600; color: var(--text); }
 .wo-form-err:empty { display: none; }
 .wo-form-err { margin: 8px 0 0; }
+
+/* ---------- Invoices: post-completion discount & refund (design preview) ----------
+   Screens only; invoices.js wires them to dialogs that save nothing. Built
+   from the Invoice Details cards, buttons and tokens. */
+.pca { display: grid; gap: 12px; min-width: 0; padding-top: 4px; }
+.pca__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.pca__title { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--text); }
+.pca__sub { flex: 1 1 100%; margin: 0; font-size: .84rem; color: var(--text-2); }
+.pca__cols { align-items: start; }
+.pca-tag {
+  display: inline-block; padding: 2px 9px; border: 1px dashed color-mix(in srgb, var(--warn) 55%, var(--line)); border-radius: 999px;
+  background: var(--warn-soft); font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--warn) 70%, var(--text)); white-space: nowrap;
+}
+.pca-tag--sm { margin-left: 6px; padding: 0 6px; font-size: .64rem; }
+.inv-view__card--pca-pay { --ico: var(--inv-ico-card); }
+.inv-view__card--pca-bill { --ico: var(--inv-ico-calc); }
+.inv-view__card--pca-bill .inv-view__card-head { background: color-mix(in srgb, var(--amber-soft) 45%, var(--surface)); }
+.inv-view__card--pca-bill .inv-view__card-icon { background: var(--amber-soft); color: var(--amber-deep); }
+
+.pca-table td { vertical-align: top; }
+.pca-table .pca-amt { font-weight: 700; white-space: nowrap; }
+.pca-table .pca-row--void .pca-amt { text-decoration: line-through; color: var(--text-2); }
+
+.pca-bill { display: grid; }
+.pca-bill > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 2px; font-size: .92rem; border-bottom: 1px solid var(--line); }
+.pca-bill span { color: var(--text-2); }
+.pca-bill strong { font-weight: 600; color: var(--text); white-space: nowrap; }
+.pca-bill .pca-bill__total { border-bottom: 2px solid var(--line); }
+.pca-bill .pca-bill__total span, .pca-bill .pca-bill__total strong { font-weight: 700; color: var(--text); }
+.pca-bill .pca-bill__net {
+  margin-top: 8px; padding: 11px 16px; border: 0; border-radius: 10px;
+  background: var(--good-soft);
+}
+.pca-bill .pca-bill__net span { font-weight: 700; color: var(--text); }
+.pca-bill .pca-bill__net strong { font-size: 1.2rem; font-weight: 800; color: var(--good); }
+
+.pca-actions { display: grid; gap: 8px; margin-top: 14px; }
+.pca-actions .btn { justify-content: center; min-height: 42px; white-space: normal; }
+.pca-actions .btn[disabled], .pca-hist .btn[disabled] { opacity: .55; cursor: not-allowed; }
+
+.pca-notice {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 8px;
+  background: var(--info-soft); box-shadow: inset 3px 0 0 var(--info);
+  font-size: .82rem; color: var(--text);
+}
+.pca-banner {
+  margin: 0 0 14px; padding: 10px 12px; border-radius: 8px;
+  background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--warn);
+  font-size: .86rem; color: var(--text);
+}
+.pca-context { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 0 0 14px; }
+.pca-context > div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.pca-context span { display: block; font-size: .78rem; color: var(--text-2); }
+.pca-context strong { font-size: 1.05rem; font-weight: 800; color: var(--text); }
+.pca-pair .input.is-derived { background: var(--paper); color: var(--text-2); }
+.pca-hint { margin: 2px 0 0; font-size: .86rem; color: var(--text-2); }
+.pca-hint:empty { display: none; }
+.pca-result {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 8px;
+  background: var(--paper); box-shadow: inset 3px 0 0 var(--text-3);
+  font-size: .86rem; color: var(--text);
+}
+
+.pca-empty { margin: 0 0 16px; padding: 14px; border-radius: 10px; background: var(--paper); font-size: .88rem; color: var(--text-2); text-align: center; }
+.pca-empty strong { display: block; margin-bottom: 2px; color: var(--text); }
+.pca-example-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.pca-example-head .pca__title { font-size: .95rem; }
+.pca-hist th { background: var(--paper); font-size: .78rem; color: var(--text-2); }
+.pca-hist .pca-row--example td { background: repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in srgb, var(--paper) 70%, transparent) 10px 20px); color: var(--text-2); }
+.pca-hist .pca-hist__date { white-space: nowrap; }
+.pca-hist .pca-hist__date .pca-tag--sm { display: block; width: fit-content; margin: 4px 0 0; }
+.pca-hist .pca-hist__reason { min-width: 140px; overflow-wrap: anywhere; }
+.pca-hist__btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
