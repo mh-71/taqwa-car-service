@@ -771,22 +771,22 @@
 
         <h3 class="detail-section-title">Billing</h3>
         <div class="form-grid form-grid--3">
-          <div class="jc-discount-pair">
+          <div class="jc-discount-pair" data-discount-mode="${pct ? 'percent' : 'fixed'}">
             <div class="field">
               <label for="jf-discount">Discount (BDT)</label>
               <div class="pay-rec__money">
                 <span class="pay-rec__cur" aria-hidden="true">${esc(settings.currency || '৳')}</span>
-                <input class="input" id="jf-discount" name="discount" type="number" min="0" step="50" value="${esc(j.discount ?? 0)}"${pct ? ' readonly data-manual="0"' : ''}>
+                <input class="input" id="jf-discount" name="discount" type="number" min="0" step="50" value="${esc(j.discount ?? 0)}">
               </div>
               <div class="field__error" data-err="discount"></div>
             </div>
-            <!-- One discount at a time: a percentage above 0 fills Discount (BDT)
-                 with its amount and locks it; clearing the percentage unlocks it. -->
+            <!-- One discount at a time: the box the user last typed in is the one
+                 saved; the other shows its equivalent (data-discount-mode). -->
             <div class="field jc-discount-pct">
               <label for="jf-discount-pct">Discount (%)</label>
               <div class="pay-rec__money">
                 <span class="pay-rec__cur" aria-hidden="true">%</span>
-                <input class="input" id="jf-discount-pct" name="discountRate" type="number" min="0" max="100" step="0.01" value="${esc(pct ? j.discountRate : 0)}">
+                <input class="input" id="jf-discount-pct" name="discountRate" type="number" min="0" max="100" step="0.01" value="${esc(pct ? j.discountRate : '')}">
               </div>
               <div class="field__error" data-err="discountRate"></div>
             </div>
@@ -868,39 +868,46 @@
   /** The recorded advance total the form was opened with (data-advances). */
   const advancesOf = form => Number(form.dataset && form.dataset.advances) || 0;
 
-  /** A percentage is in use whenever its box holds anything but blank or 0. */
-  const percentInUse = form => !!form.discountRate && form.discountRate.value !== '' && Number(form.discountRate.value) !== 0;
-
   /**
-   * Discount (BDT) is locked while a percentage is in use, and gets back the
-   * amount it held before (0 for a card saved with a percentage) once it is not.
+   * Which discount box the user typed in last: 'fixed' (Discount BDT) or
+   * 'percent'. That box is what gets saved; the other only shows its
+   * equivalent. Forms without the pair (unit-test stand-ins) are 'fixed'.
    */
-  function syncDiscountLock(form) {
-    const amount = form.discount;
-    if (percentInUse(form)) {
-      if (!amount.readOnly) { amount.dataset.manual = amount.value; amount.readOnly = true; }
-    } else if (amount.readOnly) {
-      amount.readOnly = false;
-      amount.value = amount.dataset.manual ?? 0;
-      delete amount.dataset.manual;
-    }
+  const discountPair = form => (form.querySelector && form.querySelector('.jc-discount-pair')) || null;
+  const discountMode = form => (discountPair(form) && discountPair(form).dataset.discountMode) || 'fixed';
+
+  /** A percentage applies when its box is the active one and holds anything but blank or 0. */
+  const percentInUse = form => discountMode(form) === 'percent'
+    && !!form.discountRate && form.discountRate.value !== '' && Number(form.discountRate.value) !== 0;
+
+  /** What `discount` is as a percentage of `subtotal`, to 2 decimals, at most 100; 0 when undefined. */
+  function discountPercentOf(subtotal, discount) {
+    const s = Number(subtotal), d = Number(discount);
+    if (!Number.isFinite(s) || !Number.isFinite(d) || s <= 0 || d <= 0) return 0;
+    return Math.min(Math.round(d / s * 10000) / 100, 100);
   }
 
   function updateLiveTotals(ov) {
     const form = ov.querySelector('#jobForm');
     const { services, parts } = readLines(ov);
-    syncDiscountLock(form);
+    const mode = discountMode(form);
     const pct = percentInUse(form);
     const t = computeTotals({
       services, partsUsed: parts,
       labourHours: form.labourHours.value, labourRate: form.labourRate.value,
       labourCost: form.labourCost.value,
-      discount: form.discount.value, taxRate: form.taxRate.value,
+      // a blank or 0 percentage is no discount, whatever the amount box last showed
+      discount: mode === 'percent' ? 0 : form.discount.value, taxRate: form.taxRate.value,
       discountType: pct ? 'percent' : 'amount', discountRate: pct ? form.discountRate.value : null,
       paid: advancesOf(form) > 0 ? advancesOf(form) : form.paid.value
     });
-    // the locked amount box shows what the percentage comes to
-    if (pct) form.discount.value = t.discount;
+    // the box the user is not typing in shows the equivalent; values set here fire no input event
+    if (form.discountRate) {
+      if (mode === 'percent') form.discount.value = t.discount;
+      else form.discountRate.value = discountPercentOf(t.subtotal, form.discount.value);
+      form.discount.classList.toggle('is-derived', mode === 'percent');
+      form.discountRate.classList.toggle('is-derived', mode !== 'percent');
+    }
     // keep labour total field in sync when hours×rate are supplied
     const h = Number(form.labourHours.value) || 0, r = Number(form.labourRate.value) || 0;
     if (h > 0 && r > 0) form.labourCost.value = h * r;
@@ -1006,6 +1013,10 @@
       if (e.target.matches('.line-qty, .line-price, #jf-lhours, #jf-lrate, #jf-lcost, #jf-discount, #jf-discount-pct, #jf-taxrate, #jf-paid')) {
         // typing hours/rate recomputes labour; typing labourCost directly clears hours×rate precedence
         if (e.target.id === 'jf-lcost') { form.labourHours.value = ''; form.labourRate.value = ''; }
+        // typing (not focusing) in a discount box makes it the one that is saved
+        if (e.target.id === 'jf-discount' || e.target.id === 'jf-discount-pct') {
+          discountPair(form).dataset.discountMode = e.target.id === 'jf-discount' ? 'fixed' : 'percent';
+        }
         updateLiveTotals(ov);
       }
     });
@@ -1021,6 +1032,7 @@
     const num = n => form[n] && form[n].value !== '' ? Number(form[n].value) : '';
     const { services, parts } = readLines(ov);
     const srcSel = ov.querySelector('#jf-source');
+    const pctTyped = discountMode(form) === 'percent' && num('discountRate') !== '' && num('discountRate') !== 0;
     return {
       appointmentId: srcSel
         ? (srcSel.value === 'appointment' ? val('appointmentId') : null)
@@ -1036,10 +1048,12 @@
       services, parts,
       inspectionChecklist: readInspection(ov),
       labourHours: num('labourHours'), labourRate: num('labourRate'), labourCost: num('labourCost') || 0,
-      discount: num('discount') || 0, taxRate: num('taxRate') || 0, paid: num('paid') || 0,
-      // blank or 0 means no percentage; anything else (even out of range) is one, so validate() sees it
-      discountType: num('discountRate') !== '' && num('discountRate') !== 0 ? 'percent' : 'amount',
-      discountRate: num('discountRate') !== '' && num('discountRate') !== 0 ? num('discountRate') : null
+      discount: discountMode(form) === 'percent' && !pctTyped ? 0 : (num('discount') || 0),
+      taxRate: num('taxRate') || 0, paid: num('paid') || 0,
+      // a percentage only when its box is the active one; blank or 0 there is no discount,
+      // anything else (even out of range) is one, so validate() sees it
+      discountType: pctTyped ? 'percent' : 'amount',
+      discountRate: pctTyped ? num('discountRate') : null
     };
   }
 
