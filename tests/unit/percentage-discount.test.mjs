@@ -125,6 +125,29 @@ ok_('fixed-amount totals are unchanged from the original formula (5000 random ca
 ok_('percentage totals: client and server agree on every field (5000 random cards)', parityBad === 0, `${parityBad} differ`);
 
 /* ---------------------------------------------------------- */
+console.log('\n-- 1b. Two-way entry: the percentage a BDT discount comes to (display only) --');
+{
+  const ctx = {};
+  vm.runInNewContext(`${fnSource(src('js/job-cards.js'), 'discountPercentOf')}\nthis.f = discountPercentOf;`, ctx);
+  const pctOf = ctx.f;
+  check('BDT 500 on 5,700 -> 8.77%', pctOf(5700, 500), 8.77);
+  check('BDT 800 on 5,700 -> 14.04%', pctOf(5700, 800), 14.04);
+  check('BDT 570 on 5,700 -> 10%', pctOf(5700, 570), 10);
+  check('BDT 1,120 on 16,000 -> 7%', pctOf(16000, 1120), 7);
+  check('the whole subtotal -> 100%', pctOf(5700, 5700), 100);
+  check('above the subtotal shows 100% (the save is refused as before)', pctOf(5700, 6000), 100);
+  check('zero subtotal -> 0, never NaN or Infinity', [pctOf(0, 500), pctOf(0, 0)], [0, 0]);
+  check('empty, invalid and negative amounts -> 0', [pctOf(5700, ''), pctOf(5700, 'abc'), pctOf(5700, -50), pctOf(5700, null), pctOf('', 500)], [0, 0, 0, 0, 0]);
+  check('the other direction is unchanged: 10% of 5,700 -> 570', client.percentDiscount(5700, 10), 570);
+  // a displayed equivalent is never fed back: ৳500 stays ৳500; choosing 8.77% instead gives 499.89
+  check('8.77% typed as a percentage -> 499.89 (the expected rounding)', client.percentDiscount(5700, 8.77), 499.89);
+  const fixed = client.computeTotals({ services: [{ qty: 1, unitPrice: 5700 }], partsUsed: [], discount: 500, taxRate: 5, paid: 1000 });
+  check('fixed ৳500 on 5,700, tax 5%: discount 500, tax 260, total 5,460, due 4,460', [fixed.discount, fixed.tax, fixed.total, fixed.due], [500, 260, 5460, 4460]);
+  const pct = client.computeTotals({ services: [{ qty: 1, unitPrice: 5700 }], partsUsed: [], discountType: 'percent', discountRate: 10, taxRate: 5, paid: 1000 });
+  check('10% on 5,700, tax 5%: discount 570, tax 257, total 5,387, due 4,387', [pct.discount, pct.tax, pct.total, pct.due], [570, 257, 5387, 4387]);
+}
+
+/* ---------------------------------------------------------- */
 let DatabaseSync = null;
 try { ({ DatabaseSync } = await import('node:sqlite')); } catch { /* reported below */ }
 if (!DatabaseSync) {

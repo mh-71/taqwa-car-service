@@ -583,10 +583,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 /* billing: the inputs beside a summary with Grand Total and Due to the fore */
 .jc-billing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 18px; align-items: start; }
 .jc-billing .form-grid--3 { grid-template-columns: 1fr; }
-/* the two discount inputs side by side; the amount box is locked while a percentage is in use */
+/* the two discount inputs side by side; the one showing a calculated equivalent is greyed (still editable) */
 /* (they stack by themselves when the column is too narrow for both) */
 .jc-discount-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 16px; }
-.jc-discount-pair .input[readonly] { background: var(--paper); color: var(--text-2); cursor: not-allowed; }
+.jc-discount-pair .input.is-derived { background: var(--paper); color: var(--text-2); }
 :is(.jc-new, .jc-edit) #totalsPanel { margin-top: 0; padding: 12px 16px; background: var(--paper); }
 :is(.jc-new, .jc-edit) #totalsPanel > div { padding: 4px 0; }
 :is(.jc-new, .jc-edit) #totalsPanel > div:nth-child(4) { margin-top: 6px; padding-top: 9px; border-top: 1px dashed var(--line); font-weight: 600; }
