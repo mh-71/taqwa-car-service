@@ -215,6 +215,10 @@ const Api = (() => {
       status,
       ...(error.fields ? { fields: error.fields } : {}),
       ...(error.conflictsWith ? { conflictsWith: error.conflictsWith } : {}),
+      // The server's machine-readable reason (e.g. 'insufficient_stock'), for
+      // a caller that must tell one 409 from another. Named apart from the
+      // `reason` that module wrappers use for the human-readable message.
+      ...(typeof error.reason === 'string' ? { errorReason: error.reason } : {}),
     });
   }
 

@@ -9,7 +9,7 @@
    validates its input server-side and binds every SQL parameter.
    ============================================================ */
 
-import { ok, fail, notFound, methodNotAllowed, noDatabase } from './lib/http.js';
+import { ok, fail, notFound, methodNotAllowed, noDatabase, SECURITY_HEADERS } from './lib/http.js';
 import { checkAuth } from './lib/auth.js';
 import { session } from './routes/session.js';
 import {
@@ -244,18 +244,11 @@ async function health(env) {
   }
 }
 
-// Helper to remove CSP header from response
-function stripCSPHeaders(response) {
-  if (!response.headers) return response;
-  const headers = new Headers(response.headers);
-  headers.delete('content-security-policy');
-  headers.delete('x-content-security-policy');
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers
-  });
-}
+// The website-bookings proxy answers with its own bodies, so it takes the same
+// headers every other API response carries rather than none. A CSP on a JSON
+// response cannot cause the page's CSP violations (those come from _headers);
+// it only stops the response being rendered as a document.
+const PROXY_HEADERS = { 'content-type': 'application/json; charset=utf-8', ...SECURITY_HEADERS };
 
 export default {
   async fetch(request, env) {
@@ -327,19 +320,19 @@ export default {
           if (!res.ok) {
             return new Response(JSON.stringify({ error: 'Website API error', status: res.status }), {
               status: 500,
-              headers: { 'Content-Type': 'application/json' }
+              headers: PROXY_HEADERS
             });
           }
 
-          return stripCSPHeaders(new Response(JSON.stringify(data), {
+          return new Response(JSON.stringify(data), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          }));
+            headers: PROXY_HEADERS
+          });
         } catch (err) {
           console.error('Website bookings proxy error:', err.message);
           return new Response(JSON.stringify({ error: err.message }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' }
+            headers: PROXY_HEADERS
           });
         }
       }
@@ -393,7 +386,6 @@ export default {
       }
     }
 
-    const response = notFound(ROUTES);
-    return stripCSPHeaders(response);
+    return notFound(ROUTES);
   },
 };

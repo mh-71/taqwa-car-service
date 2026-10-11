@@ -114,6 +114,8 @@ const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON;');
 db.exec(migration('0001_initial_schema.sql'));
 db.exec(migration('0002_invoice_adjustments.sql'));
+db.exec(migration('0003_job_card_discount_type.sql'));
+db.exec(migration('0004_job_card_discount_rate.sql'));
 db.exec(`INSERT INTO customers (id, name, phone, created_at) VALUES ('CUS-P', 'Prop', '01900000000', 't');
          INSERT INTO vehicles (id, customer_id, reg_no, brand, model, created_at)
               VALUES ('VEH-P', 'CUS-P', 'PROP-1', 'B', 'M', 't');`);

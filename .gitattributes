@@ -1,0 +1,6 @@
+# The CSP in _headers allows the pages' one inline script by the SHA-256 of its
+# exact bytes. A CRLF checkout (core.autocrlf on Windows) changes those bytes,
+# so pages deployed from it no longer match their CSP and the browser blocks
+# the theme script. Keep these files LF on every platform.
+*.html   text eol=lf
+_headers text eol=lf
