@@ -145,12 +145,28 @@
     // hours×rate wins when provided; otherwise a directly entered labourCost stands (legacy support)
     const labourCost = (hours > 0 && rate > 0) ? hours * rate : (Number(job.labourCost) || 0);
     const subtotal = serviceTotal + partsTotal + labourCost;
-    const discount = Math.min(Number(job.discount) || 0, subtotal);
     const taxRate = Number(job.taxRate) || 0;
-    const tax = Math.round((subtotal - discount) * taxRate / 100);
-    const total = subtotal - discount + tax;
     const paid = Number(job.paid) || 0;
+    let discount, tax, total;
+    if (job.discountType === 'percent') {
+      // worked in paisa so a discount such as 49.95 leaves no float residue in the total
+      discount = percentDiscount(subtotal, Number(job.discountRate) || 0);
+      const net = Math.round(subtotal * 100) - Math.round(discount * 100);
+      tax = Math.round(net * taxRate / 10000);
+      total = (net + tax * 100) / 100;
+    } else {
+      discount = Math.min(Number(job.discount) || 0, subtotal);
+      tax = Math.round((subtotal - discount) * taxRate / 100);
+      total = subtotal - discount + tax;
+    }
     return { serviceTotal, partsTotal, labourCost, subtotal, discount, taxRate, tax, total, paid, due: Math.max(total - paid, 0) };
+  }
+
+  /** rate% of subtotal, half-up to the paisa, in integer arithmetic; the server's percentDiscount() is the same. */
+  function percentDiscount(subtotal, rate) {
+    const bp = Math.round(rate * 100);
+    const paisa = Math.floor((Math.round(subtotal * 10000) * bp + 500000) / 1000000);
+    return Math.min(paisa / 100, subtotal);
   }
 
   /** Custom work: a service line with no catalogue service behind it. serviceId null, never a name marker. */
@@ -609,6 +625,7 @@
   function formHtml(j = {}, fromAppointmentId = '') {
     const isEdit = !!j.id;
     const settings = Storage.getSettings();
+    const pct = j.discountType === 'percent';
     const services = (j.services && j.services.length) ? j.services : [{}];
     const parts = j.partsUsed || [];
     const isCompleted = j.status === 'Completed';
@@ -759,18 +776,19 @@
               <label for="jf-discount">Discount (BDT)</label>
               <div class="pay-rec__money">
                 <span class="pay-rec__cur" aria-hidden="true">${esc(settings.currency || '৳')}</span>
-                <input class="input" id="jf-discount" name="discount" type="number" min="0" step="50" value="${esc(j.discount ?? 0)}">
+                <input class="input" id="jf-discount" name="discount" type="number" min="0" step="50" value="${esc(j.discount ?? 0)}"${pct ? ' readonly data-manual="0"' : ''}>
               </div>
               <div class="field__error" data-err="discount"></div>
             </div>
-            <!-- Percentage discount: layout only for now. Disabled and unnamed,
-                 so the form, validation, totals and the API never read it. -->
+            <!-- One discount at a time: a percentage above 0 fills Discount (BDT)
+                 with its amount and locks it; clearing the percentage unlocks it. -->
             <div class="field jc-discount-pct">
-              <label for="jf-discount-pct">Discount (%) <span class="muted-note-inline">Coming soon</span></label>
+              <label for="jf-discount-pct">Discount (%)</label>
               <div class="pay-rec__money">
                 <span class="pay-rec__cur" aria-hidden="true">%</span>
-                <input class="input" id="jf-discount-pct" type="number" min="0" max="100" step="0.01" value="0" disabled>
+                <input class="input" id="jf-discount-pct" name="discountRate" type="number" min="0" max="100" step="0.01" value="${esc(pct ? j.discountRate : 0)}">
               </div>
+              <div class="field__error" data-err="discountRate"></div>
             </div>
           </div>
           <div class="field">
@@ -850,16 +868,39 @@
   /** The recorded advance total the form was opened with (data-advances). */
   const advancesOf = form => Number(form.dataset && form.dataset.advances) || 0;
 
+  /** A percentage is in use whenever its box holds anything but blank or 0. */
+  const percentInUse = form => !!form.discountRate && form.discountRate.value !== '' && Number(form.discountRate.value) !== 0;
+
+  /**
+   * Discount (BDT) is locked while a percentage is in use, and gets back the
+   * amount it held before (0 for a card saved with a percentage) once it is not.
+   */
+  function syncDiscountLock(form) {
+    const amount = form.discount;
+    if (percentInUse(form)) {
+      if (!amount.readOnly) { amount.dataset.manual = amount.value; amount.readOnly = true; }
+    } else if (amount.readOnly) {
+      amount.readOnly = false;
+      amount.value = amount.dataset.manual ?? 0;
+      delete amount.dataset.manual;
+    }
+  }
+
   function updateLiveTotals(ov) {
     const form = ov.querySelector('#jobForm');
     const { services, parts } = readLines(ov);
+    syncDiscountLock(form);
+    const pct = percentInUse(form);
     const t = computeTotals({
       services, partsUsed: parts,
       labourHours: form.labourHours.value, labourRate: form.labourRate.value,
       labourCost: form.labourCost.value,
       discount: form.discount.value, taxRate: form.taxRate.value,
+      discountType: pct ? 'percent' : 'amount', discountRate: pct ? form.discountRate.value : null,
       paid: advancesOf(form) > 0 ? advancesOf(form) : form.paid.value
     });
+    // the locked amount box shows what the percentage comes to
+    if (pct) form.discount.value = t.discount;
     // keep labour total field in sync when hours×rate are supplied
     const h = Number(form.labourHours.value) || 0, r = Number(form.labourRate.value) || 0;
     if (h > 0 && r > 0) form.labourCost.value = h * r;
@@ -962,7 +1003,7 @@
       updateLiveTotals(ov);
     });
     ov.querySelector('.modal__body').addEventListener('input', e => {
-      if (e.target.matches('.line-qty, .line-price, #jf-lhours, #jf-lrate, #jf-lcost, #jf-discount, #jf-taxrate, #jf-paid')) {
+      if (e.target.matches('.line-qty, .line-price, #jf-lhours, #jf-lrate, #jf-lcost, #jf-discount, #jf-discount-pct, #jf-taxrate, #jf-paid')) {
         // typing hours/rate recomputes labour; typing labourCost directly clears hours×rate precedence
         if (e.target.id === 'jf-lcost') { form.labourHours.value = ''; form.labourRate.value = ''; }
         updateLiveTotals(ov);
@@ -995,7 +1036,10 @@
       services, parts,
       inspectionChecklist: readInspection(ov),
       labourHours: num('labourHours'), labourRate: num('labourRate'), labourCost: num('labourCost') || 0,
-      discount: num('discount') || 0, taxRate: num('taxRate') || 0, paid: num('paid') || 0
+      discount: num('discount') || 0, taxRate: num('taxRate') || 0, paid: num('paid') || 0,
+      // blank or 0 means no percentage; anything else (even out of range) is one, so validate() sees it
+      discountType: num('discountRate') !== '' && num('discountRate') !== 0 ? 'percent' : 'amount',
+      discountRate: num('discountRate') !== '' && num('discountRate') !== 0 ? num('discountRate') : null
     };
   }
 
@@ -1072,7 +1116,12 @@
     if (v.labourHours !== '' && v.labourHours < 0) errors.labourHours = 'Hours cannot be negative.';
     if (v.labourRate !== '' && v.labourRate < 0) errors.labourRate = 'Rate cannot be negative.';
     if (v.labourCost < 0) errors.labourCost = 'Labour cannot be negative.';
-    if (v.discount < 0) errors.discount = 'Discount cannot be negative.';
+    if (v.discountType !== 'percent' && v.discount < 0) errors.discount = 'Discount cannot be negative.';
+    if (v.discountType === 'percent') {
+      const r = v.discountRate;
+      if (!Number.isFinite(r) || r < 0 || r > 100) errors.discountRate = 'Discount must be between 0 and 100%.';
+      else if (Math.abs(r * 100 - Math.round(r * 100)) >= 1e-9) errors.discountRate = 'Use at most two decimal places.';
+    }
     if (v.taxRate < 0 || v.taxRate > 100) errors.taxRate = 'Tax rate must be between 0 and 100.';
     if (v.paid < 0) errors.paid = 'Paid amount cannot be negative.';
 
@@ -1080,8 +1129,8 @@
       errors.estDelivery = 'Estimated Delivery cannot be earlier than the Job Date.';
 
     // discount must not exceed subtotal; paid must not exceed grand total
-    const t = computeTotals({ services: v.services, partsUsed: v.parts, labourHours: v.labourHours, labourRate: v.labourRate, labourCost: v.labourCost, discount: v.discount, taxRate: v.taxRate, paid: 0 });
-    if (v.discount > t.subtotal) errors.discount = 'Discount cannot exceed the subtotal.';
+    const t = computeTotals({ services: v.services, partsUsed: v.parts, labourHours: v.labourHours, labourRate: v.labourRate, labourCost: v.labourCost, discount: v.discount, discountType: v.discountType, discountRate: v.discountRate, taxRate: v.taxRate, paid: 0 });
+    if (v.discountType !== 'percent' && v.discount > t.subtotal) errors.discount = 'Discount cannot exceed the subtotal.';
     if (v.paid > t.total) errors.paid = 'Paid amount cannot exceed the grand total.';
 
     return { valid: Object.keys(errors).length === 0, errors };
@@ -1121,6 +1170,7 @@
       labourRate: v.labourRate === '' ? '' : v.labourRate,
       labourCost: t.labourCost,
       discount: t.discount, taxRate: t.taxRate,
+      discountType: v.discountType, discountRate: v.discountType === 'percent' ? v.discountRate : null,
       subtotal: t.subtotal, tax: t.tax, total: t.total, paid: t.paid, due: t.due
     };
   }
@@ -1142,6 +1192,10 @@
    */
   function forApi(record) {
     const { subtotal, tax, total, due, ...rest } = record;
+    // A percentage goes as its rate (the server derives the amount and refuses
+    // one sent alongside); a fixed amount goes exactly as it always has.
+    if (rest.discountType === 'percent') delete rest.discount;
+    else { delete rest.discountType; delete rest.discountRate; }
     return rest;
   }
 

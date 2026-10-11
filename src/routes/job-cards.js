@@ -83,7 +83,7 @@ const PARENT_COLUMNS = `
   status, priority, mileage, mileage_out, fuel_level,
   complaint, inspection, diagnosis, technician_notes, recommendations,
   condition_notes, notes, inspection_checklist,
-  labour_hours, labour_rate, labour_cost, discount, tax_rate,
+  labour_hours, labour_rate, labour_cost, discount, discount_type, discount_rate, tax_rate,
   subtotal, tax, total, paid, due, created_at, updated_at
 `;
 
@@ -195,6 +195,8 @@ function toRecord(row, services, partsUsed) {
     labourRate: row.labour_rate ?? null,
     labourCost: row.labour_cost,
     discount: row.discount,
+    discountType: row.discount_type ?? 'amount',   // NULL only before migration 0003
+    discountRate: row.discount_rate ?? null,
     taxRate: row.tax_rate,
     subtotal: row.subtotal,
     tax: row.tax,
@@ -451,6 +453,21 @@ const SERVER_OWNED = {
    Totals — a line-for-line port of computeTotals(), job-cards.js:95-109
    --------------------------------------------------------------- */
 
+const DISCOUNT_TYPES = ['amount', 'percent'];
+
+/**
+ * `rate` percent of `subtotal`, rounded half-up to the paisa, never above the
+ * subtotal. All integer arithmetic (basis points x subtotal in units of
+ * 1/10000 taka), so it is exact up to a subtotal of 1 crore: 999 x 5% is
+ * 49.95, 16,000 x 7% is 1,120. The client's copy (js/job-cards.js) is the same
+ * function.
+ */
+function percentDiscount(subtotal, rate) {
+  const bp = Math.round(rate * 100);
+  const paisa = Math.floor((Math.round(subtotal * 10000) * bp + 500000) / 1000000);
+  return Math.min(paisa / 100, subtotal);
+}
+
 /**
  * The single source of truth for a job card's money, on the server side.
  *
@@ -475,11 +492,21 @@ function computeTotals(job) {
   const rate = Number(job.labourRate) || 0;
   const labourCost = (hours > 0 && rate > 0) ? hours * rate : (Number(job.labourCost) || 0);
   const subtotal = serviceTotal + partsTotal + labourCost;
-  const discount = Math.min(Number(job.discount) || 0, subtotal);
   const taxRate = Number(job.taxRate) || 0;
-  const tax = Math.round((subtotal - discount) * taxRate / 100);
-  const total = subtotal - discount + tax;
   const paid = Number(job.paid) || 0;
+  let discount, tax, total;
+  if (job.discountType === 'percent') {
+    // Worked in paisa so a discount such as 49.95 leaves no float residue in
+    // the total. The fixed-amount branch below is untouched.
+    discount = percentDiscount(subtotal, Number(job.discountRate) || 0);
+    const net = Math.round(subtotal * 100) - Math.round(discount * 100);
+    tax = Math.round(net * taxRate / 10000);
+    total = (net + tax * 100) / 100;
+  } else {
+    discount = Math.min(Number(job.discount) || 0, subtotal);
+    tax = Math.round((subtotal - discount) * taxRate / 100);
+    total = subtotal - discount + tax;
+  }
   return {
     serviceTotal, partsTotal, labourCost, subtotal, discount, taxRate,
     tax, total, paid, due: Math.max(total - paid, 0),
@@ -631,6 +658,52 @@ function readChecklist(raw) {
    Field reading
    --------------------------------------------------------------- */
 
+/** 0 to 100 with at most two decimals, or null when absent. */
+function readDiscountRate(body) {
+  const read = readNumber(body, 'discountRate', { min: 0, max: 100, fallback: null });
+  if (read.error || read.value === null) return read;
+  if (Math.abs(read.value * 100 - Math.round(read.value * 100)) >= 1e-9) {
+    return { error: '`discountRate` can have at most two decimal places.' };
+  }
+  return read;
+}
+
+/**
+ * Which discount a write leaves the job card with: { type, rate } or { errors }.
+ *
+ * A percentage discount's money is always derived from its rate, so a request
+ * may not also send `discount` for one. A request that sends `discount`
+ * without `discountType` is a fixed amount -- that is every client written
+ * before percentages, and it keeps working unchanged. A request that names
+ * neither keeps what the card already has (a create starts at 'amount'), so an
+ * edit that only changes lines re-applies a stored percentage to them.
+ */
+function resolveDiscount(body, values, stored = null) {
+  const sent = (key) => body[key] !== undefined && body[key] !== null && body[key] !== '';
+  let type;
+  if (sent('discountType')) type = values.discount_type;
+  else if (sent('discount')) type = 'amount';
+  else if (sent('discountRate')) {
+    return { errors: { discountRate: '`discountRate` needs `discountType: "percent"`.' } };
+  } else type = (stored && stored.discount_type) || 'amount';
+
+  if (type === 'percent') {
+    if (sent('discount')) {
+      return { errors: { discount: 'A percentage discount is calculated from `discountRate`; do not send `discount`.' } };
+    }
+    const rate = sent('discountRate') ? values.discount_rate
+      : (stored && stored.discount_type === 'percent' ? stored.discount_rate : null);
+    if (rate === null || rate === undefined) {
+      return { errors: { discountRate: '`discountRate` is required for a percentage discount.' } };
+    }
+    return { type, rate };
+  }
+  if (sent('discountRate')) {
+    return { errors: { discountRate: '`discountRate` applies only to a percentage discount.' } };
+  }
+  return { type, rate: null };
+}
+
 /**
  * Which columns a job card write accepts, and what each one must look like.
  *
@@ -686,6 +759,8 @@ function readJobFields(body, mode) {
   // hours x rate wins whenever both are above zero.
   f.take('labour_cost', 'labourCost', readNumber(body, 'labourCost', { min: 0, fallback: 0 }));
   f.take('discount', 'discount', readNumber(body, 'discount', { min: 0, fallback: 0 }));
+  f.take('discount_type', 'discountType', readEnum(body, 'discountType', DISCOUNT_TYPES, { fallback: 'amount' }));
+  f.take('discount_rate', 'discountRate', readDiscountRate(body));
   f.take('tax_rate', 'taxRate', readNumber(body, 'taxRate', { min: 0, max: 100, fallback: 0 }));
   f.take('paid', 'paid', readNumber(body, 'paid', { min: 0, fallback: 0 }));
 
@@ -732,7 +807,7 @@ function checkRecord(merged, totals) {
 
   // :787-788. Both are also CHECK constraints; reporting them here names the
   // offending field instead of letting the database answer with a generic 422.
-  if ((Number(merged.discount) || 0) > totals.subtotal) {
+  if (merged.discount_type !== 'percent' && (Number(merged.discount) || 0) > totals.subtotal) {
     errors.discount = 'Discount cannot exceed the subtotal.';
   }
   if ((Number(merged.paid) || 0) > totals.total) {
@@ -1064,14 +1139,17 @@ export async function createJobCard(request, env) {
   if (!f.ok) return unprocessable('Some job card fields are not valid.', f.errors);
 
   const v = f.values;
+  const disc = resolveDiscount(b, v);
+  if (disc.errors) return unprocessable('Some job card fields are not valid.', disc.errors);
   const totals = computeTotals({
     services: lines.services, partsUsed: lines.partsUsed,
     labourHours: v.labour_hours, labourRate: v.labour_rate, labourCost: v.labour_cost,
-    discount: v.discount, taxRate: v.tax_rate, paid: v.paid,
+    discount: v.discount, discountType: disc.type, discountRate: disc.rate,
+    taxRate: v.tax_rate, paid: v.paid,
   });
 
   const errors = checkRecord(
-    { ...v, services: lines.services, partsUsed: lines.partsUsed }, totals
+    { ...v, discount_type: disc.type, services: lines.services, partsUsed: lines.partsUsed }, totals
   );
   if (Object.keys(errors).length) {
     return unprocessable('Some job card fields are not valid.', errors);
@@ -1155,6 +1233,8 @@ export async function createJobCard(request, env) {
     labour_rate: v.labour_rate,
     labour_cost: totals.labourCost,
     discount: totals.discount,
+    discount_type: disc.type,
+    discount_rate: disc.rate,
     tax_rate: totals.taxRate,
     subtotal: totals.subtotal,
     tax: totals.tax,
@@ -1268,6 +1348,9 @@ export async function updateJobCard(request, env, rawId) {
     return unprocessable('No job card fields were supplied to update.');
   }
 
+  const disc = resolveDiscount(b, f.values, stored.row);
+  if (disc.errors) return unprocessable('Some job card fields are not valid.', disc.errors);
+
   // The merged record: stored values, with what was supplied written over them.
   const pick = (column) => (column in f.values ? f.values[column] : stored.row[column]);
   const merged = {
@@ -1292,6 +1375,8 @@ export async function updateJobCard(request, env, rawId) {
     labour_rate: pick('labour_rate'),
     labour_cost: pick('labour_cost'),
     discount: pick('discount'),
+    discount_type: disc.type,
+    discount_rate: disc.rate,
     tax_rate: pick('tax_rate'),
     paid: pick('paid'),
     services: lines.services ?? stored.services,
@@ -1302,7 +1387,8 @@ export async function updateJobCard(request, env, rawId) {
     services: merged.services, partsUsed: merged.partsUsed,
     labourHours: merged.labour_hours, labourRate: merged.labour_rate,
     labourCost: merged.labour_cost,
-    discount: merged.discount, taxRate: merged.tax_rate, paid: merged.paid,
+    discount: merged.discount, discountType: merged.discount_type, discountRate: merged.discount_rate,
+    taxRate: merged.tax_rate, paid: merged.paid,
   });
 
   const errors = checkRecord(merged, totals);
@@ -1386,6 +1472,8 @@ export async function updateJobCard(request, env, rawId) {
     labour_rate: merged.labour_rate,
     labour_cost: totals.labourCost,
     discount: totals.discount,
+    discount_type: merged.discount_type,
+    discount_rate: merged.discount_rate,
     tax_rate: totals.taxRate,
     subtotal: totals.subtotal,
     tax: totals.tax,
