@@ -1443,3 +1443,92 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
   .summary-tile { border-radius: var(--radius-sm); }
   .page-subtitle { color: var(--text-2); }
 }
+
+/* ============================================================
+   Admin profile menu — DESIGN PROTOTYPE
+   ------------------------------------------------------------
+   The header's existing avatar block (.topbar__user) styled as a
+   button that opens a dark menu. The items are previews only:
+   app.js shows a "not active yet" notice and nothing else.
+   ============================================================ */
+@media screen {
+  .topbar__actions { position: relative; }
+
+  .topbar__user {
+    padding: 4px 8px 4px 4px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s;
+  }
+  .topbar__user:hover, .topbar__user.is-open { background: var(--paper); border-color: var(--line); }
+  .topbar__user:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .topbar__chevron { flex: none; color: var(--text-3); transition: transform .15s; }
+  .topbar__user.is-open .topbar__chevron { transform: rotate(180deg); }
+
+  .profile-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 50;
+    width: 232px;
+    padding: 6px;
+    background: #16202c;
+    border: 1px solid rgba(255, 255, 255, .09);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(10, 16, 22, .32), 0 2px 6px rgba(10, 16, 22, .18);
+    color: #e6ebf1;
+  }
+  .profile-menu[hidden] { display: none; }
+  :root[data-theme="dark"] .profile-menu { background: #0f1720; border-color: rgba(255, 255, 255, .12); }
+
+  .profile-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+  }
+  .profile-menu__item svg { flex: none; color: #9fb0c2; }
+  .profile-menu__item:hover, .profile-menu__item:focus-visible { background: rgba(255, 255, 255, .07); outline: none; }
+  .profile-menu__item:hover svg, .profile-menu__item:focus-visible svg { color: #fff; }
+  .profile-menu__item--danger, .profile-menu__item--danger svg { color: #ff9a9a; }
+  .profile-menu__item--danger:hover, .profile-menu__item--danger:focus-visible { background: rgba(216, 67, 78, .16); }
+  .profile-menu__item--danger:hover svg, .profile-menu__item--danger:focus-visible svg { color: #ffb4b4; }
+
+  .profile-menu__sep { height: 1px; margin: 6px 4px; background: rgba(255, 255, 255, .09); }
+  .profile-menu__note {
+    margin: 6px 4px 2px;
+    padding: 8px 8px 4px;
+    border-top: 1px solid rgba(255, 255, 255, .09);
+    font-size: .7rem;
+    letter-spacing: .02em;
+    color: #8d9cad;
+  }
+}
+/* Phones: the avatar alone is the trigger, so the header is no wider than
+   before (at 400px and below it is exactly the original 36px avatar), and
+   the menu is pinned to the screen edge so it can never be pushed off it. */
+@media screen and (max-width: 640px) {
+  .topbar__user { padding: 2px; gap: 2px; }
+  .topbar__chevron { width: 14px; height: 14px; }
+  .profile-menu { position: fixed; top: calc(var(--topbar-h) + 6px); right: 12px; }
+}
+@media screen and (max-width: 400px) {
+  .topbar__user { padding: 0; border-width: 0; }
+  .topbar__chevron { display: none; }
+}
+@media print { .profile-menu { display: none !important; } }

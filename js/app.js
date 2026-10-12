@@ -197,6 +197,29 @@ const App = (() => {
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
             </button>`;
 
+  /* Admin profile menu -- DESIGN PROTOTYPE. The items show how the menu will
+     look; they do not navigate and Sign Out here does not sign out (the
+     existing #signOutBtn above is untouched and still does). Each item only
+     says it is a preview. */
+  const PROFILE_ITEM_ICONS = {
+    profile: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+    settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
+    signout: 'M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z'
+  };
+  const profileItem = (key, label, extra = '') => `
+              <button type="button" class="profile-menu__item${extra}" role="menuitem" tabindex="-1" data-preview-item="${label}">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${PROFILE_ITEM_ICONS[key]}"/></svg>
+                <span>${label}</span>
+              </button>`;
+  const PROFILE_MENU = `
+            <div class="profile-menu" id="profileMenu" role="menu" aria-labelledby="profileMenuBtn" hidden>
+              ${profileItem('profile', 'Profile')}
+              ${profileItem('settings', 'Account Settings')}
+              <div class="profile-menu__sep" role="separator"></div>
+              ${profileItem('signout', 'Sign Out', ' profile-menu__item--danger')}
+              <p class="profile-menu__note">Design preview · not active yet</p>
+            </div>`;
+
   /**
    * `pending` draws the shell before the data has arrived: the parts that
    * depend on the source (the footer, the sign-out button, the business
@@ -261,14 +284,17 @@ const App = (() => {
               <svg class="ico-moon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.3 2c-5.6 0-10 4.5-10 10s4.4 10 10 10c3.9 0 7.3-2.3 9-5.6-8 1.9-13.9-6.4-9-14.4z"/></svg>
             </button>
             ${(pending ? earlySignOut() : Storage.isApi()) ? SIGN_OUT_BUTTON : ''}
-            <div class="topbar__user">
+            <button type="button" class="topbar__user" id="profileMenuBtn"
+                    aria-haspopup="menu" aria-expanded="false" aria-controls="profileMenu">
               <img class="avatar" src="${root}assets/avatar/admin.webp"
                    alt="Admin profile photo" width="36" height="36">
-              <div class="topbar__user-text">
+              <span class="topbar__user-text">
                 <strong>Admin</strong>
                 <span>${Utils.esc(settings.businessName.split(' ')[0])} ASC</span>
-              </div>
-            </div>
+              </span>
+              <svg class="topbar__chevron" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${CHEVRON_ICON}"/></svg>
+            </button>
+            ${PROFILE_MENU}
           </div>
         </header>
         <main class="content" id="content">${pending ? CONTENT_SKELETON : ''}</main>
@@ -332,7 +358,54 @@ const App = (() => {
       });
     }
 
+    bindProfileMenu();
     bindSignOut();
+  }
+
+  /* Open/close and keyboard support for the profile menu prototype. Nothing
+     here navigates, signs out or writes anything. */
+  function bindProfileMenu() {
+    const btn = document.getElementById('profileMenuBtn');
+    const menu = document.getElementById('profileMenu');
+    if (!btn || !menu) return;
+    const items = () => [...menu.querySelectorAll('[role="menuitem"]')];
+    const isOpen = () => !menu.hidden;
+
+    function setOpen(open, focusFirst = false) {
+      menu.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+      btn.classList.toggle('is-open', open);
+      if (open && focusFirst) items()[0].focus();
+    }
+    function close(returnFocus) {
+      if (!isOpen()) return;
+      setOpen(false);
+      if (returnFocus) btn.focus();
+    }
+
+    btn.addEventListener('click', () => setOpen(!isOpen()));
+    btn.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true, true); }
+      else if (e.key === 'Escape' && isOpen()) { e.stopPropagation(); close(true); }
+    });
+    menu.addEventListener('keydown', e => {
+      const list = items(); const i = list.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+      else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
+      else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+      else if (e.key === 'Tab') close(false);
+    });
+    menu.addEventListener('click', e => {
+      const item = e.target.closest('[data-preview-item]');
+      if (!item) return;
+      close(true);
+      Utils.toast(`Design preview: “${item.dataset.previewItem}” is not active yet.`, 'info');
+    });
+    document.addEventListener('click', e => {
+      if (isOpen() && !menu.contains(e.target) && !btn.contains(e.target)) close(false);
+    });
   }
 
   function bindSignOut() {
