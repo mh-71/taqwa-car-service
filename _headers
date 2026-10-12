@@ -4,7 +4,8 @@
 #
 # The CSP allows the ONE inline <script> by hash rather than with
 # 'unsafe-inline'. That script is the pre-paint theme bootstrap in the <head>
-# of all 13 pages, and it is byte-identical in every one of them -- so a
+# of every page (index.html and pages/*.html), and it is byte-identical in
+# every one of them -- so a
 # single hash covers the app and script injection stays blocked. If that
 # snippet is ever edited, this hash must be recomputed or every page will
 # lose its theme on first paint:

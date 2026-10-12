@@ -33,6 +33,31 @@
   --shadow-lift: 0 8px 28px rgba(22, 32, 44, .16);
 
   --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Modern Light additions. New names only, so nothing that already reads a
+     token changes meaning. */
+  --line-strong: #d3dae3;    /* input and secondary-button borders */
+  --amber-text:  #9a5a00;    /* amber used AS text on light surfaces (AA) */
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--amber) 28%, transparent);
+}
+
+/* Modern Light values for the screen. Inside @media screen on purpose: the
+   printed job card, invoice, receipt and report keep the values above
+   byte-for-byte (the report prints the on-screen markup). The theme blocks
+   below are more specific than :root, so dark and system-dark still win. */
+@media screen {
+  :root {
+    --paper:  #f5f7fa;
+    --line:   #e5e9f0;
+    --text:   #172131;
+    --text-2: #566476;
+    --text-3: #6b7889;       /* was #8a97a6: small muted text now reads at AA */
+
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .04);
+    --shadow-lift: 0 12px 32px rgba(16, 24, 40, .14), 0 2px 6px rgba(16, 24, 40, .06);
+  }
 }
 
 /* ---------- dark theme ---------- */
@@ -52,6 +77,9 @@
 
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
   --shadow-lift: 0 8px 28px rgba(0, 0, 0, .5);
+
+  --line-strong: #3a4b60;
+  --amber-text:  #f2b545;
 }
 
 /* "System" before app.js has resolved it. The pre-paint script in each
@@ -78,6 +106,9 @@
 
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
     --shadow-lift: 0 8px 28px rgba(0, 0, 0, .5);
+
+    --line-strong: #3a4b60;
+    --amber-text:  #f2b545;
   }
 }
 

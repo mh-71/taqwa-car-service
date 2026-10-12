@@ -1336,3 +1336,199 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--amber); }
 .pca-hist .pca-hist__date .pca-tag--sm { display: block; width: fit-content; margin: 4px 0 0; }
 .pca-hist .pca-hist__reason { min-width: 140px; overflow-wrap: anywhere; }
 .pca-hist__btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+
+/* ============================================================
+   Modern Light — shared components (Stage 1)
+   ------------------------------------------------------------
+   Overrides of the generic components above, for the screen only:
+   the printed job card, invoice, receipt and report (which reuses
+   the on-screen report markup) keep the rules above unchanged.
+   Selectors are the existing generic ones, so every page- and
+   modal-scoped design (Invoice Details, Record Payment, ...) keeps
+   precedence. No markup, id, hook or behaviour is involved.
+   ============================================================ */
+@media screen {
+  /* cards */
+  .card { border-color: var(--line); box-shadow: var(--shadow); }
+  .card__head { padding: 16px 20px; }
+  .card__head h2 { font-size: 1rem; font-weight: 700; }
+  .card__body { padding: 20px; }
+  .card__body--flush { padding: 0; }
+
+  /* buttons */
+  .btn {
+    min-height: 38px;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s;
+  }
+  .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+  .btn--primary {
+    background: var(--amber);
+    color: #241a05;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .08);
+  }
+  /* darker amber, dark text: white on #c47f06 would fall below AA */
+  .btn--primary:hover { background: var(--amber-deep); color: #1d1404; }
+  .btn--ghost {
+    background: var(--surface);
+    border-color: var(--line-strong);
+    color: var(--text);
+  }
+  .btn--ghost:hover { background: var(--paper); border-color: var(--text-3); color: var(--text); }
+  .btn--danger:hover { background: color-mix(in srgb, var(--bad) 85%, #000); }
+  .btn--sm { min-height: 32px; padding: 5px 12px; font-size: .78rem; }
+
+  .icon-btn {
+    border-color: var(--line-strong);
+    border-radius: var(--radius-sm);
+    transition: background-color .15s, border-color .15s, color .15s;
+  }
+  .icon-btn:hover { background: var(--paper); color: var(--text); border-color: var(--text-3); }
+  .icon-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .icon-btn--danger:hover { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
+
+  /* badges: soft pill with a hairline. The text is the tone mixed toward the
+     theme's text colour -- darker on light, lighter on dark -- for contrast. */
+  .badge {
+    padding: 3px 10px;
+    border: 1px solid transparent;
+    line-height: 1.35;
+    letter-spacing: .01em;
+  }
+  .badge--good    { color: color-mix(in srgb, var(--good) 72%, var(--text)); border-color: color-mix(in srgb, var(--good) 28%, transparent); }
+  .badge--info    { color: color-mix(in srgb, var(--info) 72%, var(--text)); border-color: color-mix(in srgb, var(--info) 28%, transparent); }
+  .badge--warn    { color: color-mix(in srgb, var(--warn) 72%, var(--text)); border-color: color-mix(in srgb, var(--warn) 28%, transparent); }
+  .badge--bad     { color: color-mix(in srgb, var(--bad) 72%, var(--text));  border-color: color-mix(in srgb, var(--bad) 28%, transparent); }
+  .badge--neutral { border-color: var(--line-strong); }
+
+  /* tables: small uppercase headers, calmer rows */
+  .table th {
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    color: var(--text-2);
+  }
+  .table tbody tr { transition: background-color .12s; }
+  .table tbody tr:hover { background: color-mix(in srgb, var(--paper) 75%, transparent); }
+
+  /* forms */
+  .field label { color: var(--text); }
+  .input, .select, .textarea {
+    border-color: var(--line-strong);
+    border-radius: var(--radius-sm);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .input:hover, .select:hover, .textarea:hover { border-color: var(--text-3); }
+  .input::placeholder, .textarea::placeholder { color: var(--text-3); opacity: 1; }
+  .input:focus, .select:focus, .textarea:focus { border-color: var(--amber); box-shadow: var(--focus-ring); }
+  .field--error .input, .field--error .select, .field--error .textarea { border-color: var(--bad); }
+  .input:disabled, .select:disabled, .textarea:disabled,
+  .input[readonly], .textarea[readonly] { background: var(--paper); }
+
+  /* modals */
+  .modal-overlay { background: rgba(15, 23, 42, .48); }
+  .modal { border-radius: calc(var(--radius) + 2px); border: 1px solid var(--line); }
+  .modal__head { padding: 18px 22px; }
+  .modal__head h2 { font-size: 1.05rem; font-weight: 700; }
+  .modal__body { padding: 22px; }
+  .modal__foot { padding: 14px 22px; background: var(--surface); }
+
+  /* toolbar, empty state, small type */
+  .toolbar__count { color: var(--text-2); }
+  .empty { color: var(--text-3); }
+  .empty h3 { color: var(--text); font-weight: 600; }
+  .summary-tile { border-radius: var(--radius-sm); }
+  .page-subtitle { color: var(--text-2); }
+}
+
+/* ============================================================
+   Admin profile menu — DESIGN PROTOTYPE
+   ------------------------------------------------------------
+   The header's existing avatar block (.topbar__user) styled as a
+   button that opens a dark menu. The items are previews only:
+   app.js shows a "not active yet" notice and nothing else.
+   ============================================================ */
+@media screen {
+  .topbar__actions { position: relative; }
+
+  .topbar__user {
+    padding: 4px 8px 4px 4px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s;
+  }
+  .topbar__user:hover, .topbar__user.is-open { background: var(--paper); border-color: var(--line); }
+  .topbar__user:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .topbar__chevron { flex: none; color: var(--text-3); transition: transform .15s; }
+  .topbar__user.is-open .topbar__chevron { transform: rotate(180deg); }
+
+  .profile-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 50;
+    width: 232px;
+    padding: 6px;
+    background: #16202c;
+    border: 1px solid rgba(255, 255, 255, .09);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(10, 16, 22, .32), 0 2px 6px rgba(10, 16, 22, .18);
+    color: #e6ebf1;
+  }
+  .profile-menu[hidden] { display: none; }
+  :root[data-theme="dark"] .profile-menu { background: #0f1720; border-color: rgba(255, 255, 255, .12); }
+
+  .profile-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+  }
+  .profile-menu__item svg { flex: none; color: #9fb0c2; }
+  .profile-menu__item:hover, .profile-menu__item:focus-visible { background: rgba(255, 255, 255, .07); outline: none; }
+  .profile-menu__item:hover svg, .profile-menu__item:focus-visible svg { color: #fff; }
+  .profile-menu__item--danger, .profile-menu__item--danger svg { color: #ff9a9a; }
+  .profile-menu__item--danger:hover, .profile-menu__item--danger:focus-visible { background: rgba(216, 67, 78, .16); }
+  .profile-menu__item--danger:hover svg, .profile-menu__item--danger:focus-visible svg { color: #ffb4b4; }
+
+  .profile-menu__sep { height: 1px; margin: 6px 4px; background: rgba(255, 255, 255, .09); }
+  .profile-menu__note {
+    margin: 6px 4px 2px;
+    padding: 8px 8px 4px;
+    border-top: 1px solid rgba(255, 255, 255, .09);
+    font-size: .7rem;
+    letter-spacing: .02em;
+    color: #8d9cad;
+  }
+}
+/* Phones: the avatar alone is the trigger, so the header is no wider than
+   before (at 400px and below it is exactly the original 36px avatar), and
+   the menu is pinned to the screen edge so it can never be pushed off it. */
+@media screen and (max-width: 640px) {
+  .topbar__user { padding: 2px; gap: 2px; }
+  .topbar__chevron { width: 14px; height: 14px; }
+  .profile-menu { position: fixed; top: calc(var(--topbar-h) + 6px); right: 12px; }
+}
+@media screen and (max-width: 400px) {
+  .topbar__user { padding: 0; border-width: 0; }
+  .topbar__chevron { display: none; }
+}
+@media print { .profile-menu { display: none !important; } }
