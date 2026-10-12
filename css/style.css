@@ -249,7 +249,14 @@ a:hover { text-decoration: underline; }
 .nav__summary svg { flex: none; opacity: .8; }
 .nav__summary:hover { background: rgba(255, 255, 255, .06); color: #fff; }
 .nav__chevron { margin-left: auto; transition: transform .15s ease; }
-.nav__inbox[open] .nav__chevron { transform: rotate(180deg); }
+.nav__inbox[open] .nav__chevron,
+.nav__group[open] .nav__chevron { transform: rotate(180deg); }
+/* Customer CRM: the group is marked while one of its pages is open, and that
+   page's entry carries the same amber active state as a top-level link. */
+.nav__group.has-active > .nav__summary { color: #fff; font-weight: 600; }
+.nav__group.has-active > .nav__summary > svg:first-child { color: var(--amber); opacity: 1; }
+a.nav__sub.is-active { background: rgba(229, 154, 23, .13); color: #fff; font-weight: 600; }
+a.nav__sub.is-active svg { color: var(--amber); opacity: 1; }
 .nav__subs {
   display: flex;
   flex-direction: column;
