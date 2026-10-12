@@ -50,7 +50,8 @@ const App = (() => {
     dashboard: 'Dashboard', customers: 'Customers', vehicles: 'Vehicles',
     appointments: 'Appointments', 'job-cards': 'Job Cards', services: 'Service Catalog',
     mechanics: 'Mechanics', inventory: 'Inventory', invoices: 'Invoices',
-    payments: 'Payments', expenses: 'Expenses', reports: 'Reports', settings: 'Settings'
+    payments: 'Payments', expenses: 'Expenses', reports: 'Reports', settings: 'Settings',
+    profile: 'Profile'   // design prototype page
   };
 
   function icon(path) {
@@ -206,14 +207,14 @@ const App = (() => {
     settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
     signout: 'M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z'
   };
-  const profileItem = (key, label, extra = '') => `
-              <button type="button" class="profile-menu__item${extra}" role="menuitem" tabindex="-1" data-preview-item="${label}">
+  const profileItem = (key, label, extra = '', href = '') => `
+              <button type="button" class="profile-menu__item${extra}" role="menuitem" tabindex="-1" data-preview-item="${label}"${href ? ` data-preview-href="${href}"` : ''}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${PROFILE_ITEM_ICONS[key]}"/></svg>
                 <span>${label}</span>
               </button>`;
   const PROFILE_MENU = `
             <div class="profile-menu" id="profileMenu" role="menu" aria-labelledby="profileMenuBtn" hidden>
-              ${profileItem('profile', 'Profile')}
+              ${profileItem('profile', 'Profile', '', 'pages/profile.html')}
               ${profileItem('settings', 'Account Settings')}
               <div class="profile-menu__sep" role="separator"></div>
               ${profileItem('signout', 'Sign Out', ' profile-menu__item--danger')}
@@ -401,6 +402,8 @@ const App = (() => {
       const item = e.target.closest('[data-preview-item]');
       if (!item) return;
       close(true);
+      // Profile opens its design-prototype page; the others stay notices.
+      if (item.dataset.previewHref) { location.href = (document.body.dataset.root || '') + item.dataset.previewHref; return; }
       Utils.toast(`Design preview: “${item.dataset.previewItem}” is not active yet.`, 'info');
     });
     document.addEventListener('click', e => {
