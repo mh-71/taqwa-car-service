@@ -619,9 +619,22 @@ const Storage = (() => {
    *
    * Emptying the cache matters: the next person at this screen must not be
    * able to read the last one's customer list out of a stale render.
+   *
+   * Success is claimed only once the server agrees the session is gone: the
+   * cookie is HttpOnly, so asking GET /api/session is the only way to know
+   * the DELETE's cleared cookie really took. Until then nothing is touched
+   * -- a sign-out that did not happen must not look as if it had, and the
+   * session it left behind still holds the data on screen anyway.
    */
   async function signOut() {
     const res = await Api.logout();
+    if (!res.ok) return res;
+    const who = await Api.session();
+    if (!who.ok || who.authenticated) {
+      return who.ok
+        ? { ok: false, code: 'still_signed_in', message: 'The server still reports this browser as signed in.' }
+        : { ok: false, code: who.code || 'network_error', message: 'The sign-out could not be confirmed with the server.' };
+    }
     COLLECTIONS.forEach(c => { delete cache[c]; });
     cachedSettings = null;
     mode = 'locked';
