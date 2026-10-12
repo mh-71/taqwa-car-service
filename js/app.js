@@ -51,7 +51,8 @@ const App = (() => {
     appointments: 'Appointments', 'job-cards': 'Job Cards', services: 'Service Catalog',
     mechanics: 'Mechanics', inventory: 'Inventory', invoices: 'Invoices',
     payments: 'Payments', expenses: 'Expenses', reports: 'Reports', settings: 'Settings',
-    profile: 'Profile'   // design prototype page
+    profile: 'Profile',   // design prototype pages
+    'account-settings': 'Account Settings'
   };
 
   function icon(path) {
@@ -215,7 +216,7 @@ const App = (() => {
   const PROFILE_MENU = `
             <div class="profile-menu" id="profileMenu" role="menu" aria-labelledby="profileMenuBtn" hidden>
               ${profileItem('profile', 'Profile', '', 'pages/profile.html')}
-              ${profileItem('settings', 'Account Settings')}
+              ${profileItem('settings', 'Account Settings', '', 'pages/account-settings.html')}
               <div class="profile-menu__sep" role="separator"></div>
               ${profileItem('signout', 'Sign Out', ' profile-menu__item--danger')}
               <p class="profile-menu__note">Design preview · not active yet</p>
@@ -402,7 +403,8 @@ const App = (() => {
       const item = e.target.closest('[data-preview-item]');
       if (!item) return;
       close(true);
-      // Profile opens its design-prototype page; the others stay notices.
+      // Profile and Account Settings open their design-prototype pages;
+      // Sign Out stays a notice.
       if (item.dataset.previewHref) { location.href = (document.body.dataset.root || '') + item.dataset.previewHref; return; }
       Utils.toast(`Design preview: “${item.dataset.previewItem}” is not active yet.`, 'info');
     });
