@@ -199,17 +199,16 @@ const App = (() => {
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
             </button>`;
 
-  /* Admin profile menu -- DESIGN PROTOTYPE. Profile and Account Settings open
-     their design-prototype pages (pages/profile.html, pages/account-settings.html);
-     Sign Out here does not sign out (the existing #signOutBtn above is
-     untouched and still does) -- it only says it is a preview. */
+  /* Admin profile menu. Profile and Account Settings open their pages
+     (pages/profile.html, pages/account-settings.html); Sign Out does exactly
+     what the #signOutBtn above does (signOutNow). */
   const PROFILE_ITEM_ICONS = {
     profile: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
     settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
     signout: 'M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z'
   };
-  const profileItem = (key, label, extra = '', href = '') => `
-              <button type="button" class="profile-menu__item${extra}" role="menuitem" tabindex="-1" data-preview-item="${label}"${href ? ` data-preview-href="${href}"` : ''}>
+  const profileItem = (key, label, extra = '', href = '', attrs = '') => `
+              <button type="button" class="profile-menu__item${extra}" role="menuitem" tabindex="-1" data-preview-item="${label}"${href ? ` data-preview-href="${href}"` : ''}${attrs}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${PROFILE_ITEM_ICONS[key]}"/></svg>
                 <span>${label}</span>
               </button>`;
@@ -218,8 +217,7 @@ const App = (() => {
               ${profileItem('profile', 'Profile', '', 'pages/profile.html')}
               ${profileItem('settings', 'Account Settings', '', 'pages/account-settings.html')}
               <div class="profile-menu__sep" role="separator"></div>
-              ${profileItem('signout', 'Sign Out', ' profile-menu__item--danger')}
-              <p class="profile-menu__note">Design preview · not active yet</p>
+              ${profileItem('signout', 'Sign Out', ' profile-menu__item--danger', '', ' data-signout')}
             </div>`;
 
   /**
@@ -364,9 +362,8 @@ const App = (() => {
     bindSignOut();
   }
 
-  /* Open/close and keyboard support for the profile menu prototype. Profile
-     and Account Settings navigate to their prototype pages; nothing here
-     signs out or writes anything. */
+  /* Open/close and keyboard support for the profile menu. Profile and
+     Account Settings navigate to their pages; Sign Out runs signOutNow(). */
   function bindProfileMenu() {
     const btn = document.getElementById('profileMenuBtn');
     const menu = document.getElementById('profileMenu');
@@ -404,10 +401,8 @@ const App = (() => {
       const item = e.target.closest('[data-preview-item]');
       if (!item) return;
       close(true);
-      // Profile and Account Settings open their design-prototype pages;
-      // Sign Out stays a notice.
       if (item.dataset.previewHref) { location.href = (document.body.dataset.root || '') + item.dataset.previewHref; return; }
-      Utils.toast(`Design preview: “${item.dataset.previewItem}” is not active yet.`, 'info');
+      if ('signout' in item.dataset) signOutNow();
     });
     document.addEventListener('click', e => {
       if (isOpen() && !menu.contains(e.target) && !btn.contains(e.target)) close(false);
@@ -416,16 +411,79 @@ const App = (() => {
 
   function bindSignOut() {
     const signOut = document.getElementById('signOutBtn');
-    if (signOut) {
-      signOut.addEventListener('click', Utils.saving(async () => {
-        await Storage.signOut();
-        // A full reload is the honest way to end a session: it throws away
-        // every rendered row along with the cache, so the next person at this
-        // screen cannot read the last one's customers out of the DOM.
-        location.reload();
-      }));
-    }
+    if (signOut) signOut.addEventListener('click', () => signOutNow());
   }
+
+  /**
+   * End the session -- the header button and the profile menu's Sign Out
+   * both come here.
+   *
+   * Storage.signOut() reports success only once the server confirms the
+   * session is gone. Then a full reload is the honest way to finish: it
+   * throws away every rendered row along with the cache, so the next person
+   * at this screen cannot read the last one's customers out of the DOM, and
+   * the page comes back as the sign-in screen. Anything short of that
+   * leaves the page as it was and says so: the session is still live.
+   *
+   * Not Utils.saving(): it would swap the icon button's SVG for "Saving…"
+   * text and, on a failure, never put it back.
+   */
+  let signingOut = false;
+
+  async function signOutNow() {
+    if (signingOut) return;
+    // No server configured at all (a page opened from disk, the static demo):
+    // there was never a session. Anything else asks the server, including a
+    // press while the page is still loading and the mode is not settled yet.
+    if (!Api.baseUrl) {
+      Utils.toast('This browser is not connected to the workshop server, so there is no session to sign out of.', 'info');
+      return;
+    }
+    signingOut = true;
+    const btn = document.getElementById('signOutBtn');
+    const hadFocus = !!btn && document.activeElement === btn;
+    if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
+
+    let res = null;
+    try {
+      res = await Storage.signOut();
+    } catch (e) {
+      console.error('Sign-out failed:', e);
+    }
+    if (res && res.ok) {
+      rememberSource();        // 'locked', so the reloading shell does not claim a connection
+      location.reload();
+      return;                  // the button stays disabled until the page is gone
+    }
+
+    signingOut = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      if (hadFocus) btn.focus();
+    }
+    const why = res && res.message ? ` ${res.message}` : '';
+    Utils.toast(`Sign-out failed: you are still signed in.${why}`, 'error');
+  }
+
+  /* ---------- back/forward cache ----------
+
+     A page left by navigation can be kept whole in the browser's back/forward
+     cache and shown again by Back, rendered rows and all, without running a
+     line of script -- after a sign-out on another page, too. A page holding
+     workshop data is blanked as it goes in and reloaded if it ever comes
+     back out, so what Back shows is decided by a fresh hydrate(): the
+     records again if the session is still live, the sign-in screen if not. */
+  let blankedForCache = false;
+
+  window.addEventListener('pagehide', (e) => {
+    if (!e || !e.persisted || !Storage.isApi() || !document.body) return;
+    document.body.style.display = 'none';
+    blankedForCache = true;
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e && e.persisted && blankedForCache) location.reload();
+  });
 
   /* ---------- init ---------- */
 
