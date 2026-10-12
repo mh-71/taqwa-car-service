@@ -1,5 +1,5 @@
 /* ============================================================
-   profile.css — Admin Profile page, DESIGN PROTOTYPE
+   profile.css — Profile page
    ------------------------------------------------------------
    Loaded only by pages/profile.html, so nothing here can reach
    any other page. Built from the shared tokens and components
@@ -17,62 +17,63 @@
 .pf-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .pf-title { font-size: 1.35rem; font-weight: 700; letter-spacing: -.01em; }
 .pf-sub { margin: 2px 0 0; }
-.pf-tag {
-  flex: none; padding: 3px 10px; border: 1px dashed color-mix(in srgb, var(--warn) 55%, var(--line));
-  border-radius: 999px; background: var(--warn-soft); color: color-mix(in srgb, var(--warn) 70%, var(--text));
-  font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap;
-}
 
-/* prototype notice */
+/* notice: shown only when the details are not from the shared database */
 .pf-banner {
-  display: flex; align-items: flex-start; gap: 10px; margin: 0 0 18px; padding: 11px 14px;
-  border-radius: var(--radius-sm); background: var(--info-soft); box-shadow: inset 3px 0 0 var(--info);
+  margin: 0 0 18px; padding: 11px 14px;
+  border-radius: var(--radius-sm); background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--warn);
   font-size: .85rem; color: var(--text);
 }
-.pf-banner svg { flex: none; margin-top: 1px; color: var(--info); }
+.pf-banner[hidden] { display: none; }
 
-/* layout: identity card beside the detail sections */
+/* layout: account card beside the detail sections */
 .pf-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }
-.pf-main { display: grid; gap: 18px; min-width: 0; }
+.pf-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
 .pf-card { min-width: 0; }
 
-/* identity card */
+/* account card */
 .pf-id { display: flex; flex-direction: column; align-items: center; padding: 26px 22px 22px; text-align: center; }
-.pf-avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; background: var(--amber-soft);
-  box-shadow: 0 0 0 4px var(--surface), 0 0 0 5px var(--line); }
-.pf-name { margin-top: 14px; font-size: 1.2rem; font-weight: 700; }
+.pf-mark { display: grid; place-items: center; width: 88px; height: 88px; border-radius: 50%;
+  background: var(--amber-soft); color: var(--amber-deep); box-shadow: 0 0 0 4px var(--surface), 0 0 0 5px var(--line); }
+.pf-name { margin-top: 14px; font-size: 1.15rem; font-weight: 700; overflow-wrap: anywhere; }
 .pf-role { margin: 2px 0 10px; font-size: .86rem; color: var(--text-2); }
-.pf-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin: 18px 0 16px; }
-.pf-mini > div { padding: 10px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); }
-.pf-mini dt { font-size: .7rem; color: var(--text-2); }
-.pf-mini dd { margin: 2px 0 0; font-size: .88rem; font-weight: 700; }
-.pf-edit { width: 100%; justify-content: center; }
+.pf-edit { width: 100%; justify-content: center; margin-top: 18px; }
 .pf-hint { margin: 8px 0 0; font-size: .74rem; color: var(--text-3); }
 
 /* section cards */
 .pf-card__head { gap: 12px; }
+.pf-head-link { margin-left: auto; font-size: .8rem; font-weight: 600; color: var(--amber-text, var(--amber-deep)); white-space: nowrap; }
+.pf-head-link:hover { text-decoration: underline; text-underline-offset: 2px; }
 .pf-ico { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 9px;
   background: var(--amber-soft); color: var(--amber-deep); }
+.pf-ico--muted { background: var(--paper); color: var(--text-2); }
 .pf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 4px 20px 10px; }
 .pf-row { padding: 12px 0; border-bottom: 1px solid var(--line); min-width: 0; }
-.pf-grid .pf-row:nth-child(odd) { padding-right: 18px; }
-.pf-grid .pf-row:nth-child(even) { padding-left: 18px; border-left: 1px solid var(--line); }
-.pf-grid .pf-row:nth-last-child(-n+2) { border-bottom: 0; }
+.pf-grid .pf-row:not(.pf-row--wide):nth-child(odd) { padding-right: 18px; }
+.pf-grid .pf-row:not(.pf-row--wide):nth-child(even) { padding-left: 18px; border-left: 1px solid var(--line); }
+.pf-row--wide { grid-column: 1 / -1; }
+.pf-grid .pf-row:last-child, .pf-grid .pf-row:has(+ .pf-row[hidden]:last-child) { border-bottom: 0; }
+.pf-row[hidden] { display: none; }
 .pf-row dt { font-size: .74rem; color: var(--text-2); }
 .pf-row dd { margin: 3px 0 0; font-size: .9rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.pf-row dd.pf-empty { font-weight: 400; color: var(--text-3); }
 
-/* tablet: identity card becomes a horizontal header */
+/* features that need per-person accounts */
+.pf-unavail { padding: 14px 20px 18px; font-size: .86rem; color: var(--text-2); }
+.pf-unavail p { margin: 0 0 8px; }
+.pf-unavail ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--text); }
+
+/* tablet: the account card becomes a horizontal header */
 @media (max-width: 1100px) {
   .pf-layout { grid-template-columns: minmax(0, 1fr); }
   .pf-id { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas:
-      "avatar name  edit" "avatar role  edit" "avatar badge edit" "mini mini mini" "hint hint hint";
+      "mark name  edit" "mark role  edit" "mark badge edit" "hint hint hint";
     column-gap: 18px; align-items: center; text-align: left; padding: 20px; }
-  .pf-avatar { grid-area: avatar; width: 80px; height: 80px; }
+  .pf-mark { grid-area: mark; width: 72px; height: 72px; }
   .pf-name { grid-area: name; margin: 0; }
   .pf-role { grid-area: role; margin: 0; }
   .pf-id > .badge { grid-area: badge; justify-self: start; margin-top: 4px; }
-  .pf-mini { grid-area: mini; margin: 16px 0 0; }
-  .pf-edit { grid-area: edit; width: auto; }
+  .pf-edit { grid-area: edit; width: auto; margin-top: 0; }
   .pf-hint { grid-area: hint; text-align: right; }
 }
 
@@ -80,11 +81,14 @@
 @media (max-width: 640px) {
   .pf-head { flex-direction: column; gap: 8px; }
   .pf-id { grid-template-columns: auto minmax(0, 1fr); grid-template-areas:
-      "avatar name" "avatar role" "avatar badge" "mini mini" "edit edit" "hint hint"; padding: 18px 16px; }
-  .pf-avatar { width: 64px; height: 64px; }
+      "mark name" "mark role" "mark badge" "edit edit" "hint hint"; padding: 18px 16px; }
+  .pf-mark { width: 60px; height: 60px; }
+  .pf-mark svg { width: 30px; height: 30px; }
   .pf-edit { width: 100%; margin-top: 14px; }
   .pf-hint { text-align: center; }
   .pf-grid { grid-template-columns: minmax(0, 1fr); padding: 2px 16px 8px; }
-  .pf-grid .pf-row:nth-child(n) { padding-left: 0; padding-right: 0; border-left: 0; border-bottom: 1px solid var(--line); }
-  .pf-grid .pf-row:last-child { border-bottom: 0; }
+  .pf-grid .pf-row:not(.pf-row--wide):nth-child(n) { padding-left: 0; padding-right: 0; border-left: 0; }
+  .pf-grid .pf-row { border-bottom: 1px solid var(--line); }
+  .pf-grid .pf-row:last-child, .pf-grid .pf-row:has(+ .pf-row[hidden]:last-child) { border-bottom: 0; }
+  .pf-unavail { padding: 12px 16px 16px; }
 }
