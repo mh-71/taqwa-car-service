@@ -35,11 +35,12 @@
 </head>
 <body data-page="account-settings" data-root="../">
 
-  <!-- DESIGN PROTOTYPE. A visual study of the existing Settings page's
-       sections (same names, same fields, same notes). Every value is
-       fictional demo data and every control is disabled: nothing here
-       reads, saves, exports, resets or changes anything, and the page
-       makes no request of its own. The working page is pages/settings.html. -->
+  <!-- Account Settings hub -- READ-ONLY. It shows the workshop's real saved
+       settings (read by js/account-settings.js from GET /api/settings) and
+       edits nothing: business, invoice and workshop details are edited on
+       the Settings page, which stays the one place that saves them. The only
+       control here is Appearance, which uses the app's existing per-device
+       theme preference (App.applyTheme / Storage.getTheme). -->
   <div id="page-content">
 
     <nav class="as-crumbs" aria-label="Breadcrumb">
@@ -52,14 +53,12 @@
     <div class="as-head">
       <div>
         <h2 class="as-title">Account Settings</h2>
-        <p class="page-subtitle as-sub">Workshop information, invoice defaults, appearance, and data management.</p>
+        <p class="page-subtitle as-sub">The workshop's saved settings at a glance, and this device's appearance.</p>
       </div>
-      <span class="as-tag">Design prototype</span>
     </div>
 
-    <p class="as-banner" role="note"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-      <span><strong>Preview only.</strong> All values below are demo data and every control is disabled — nothing is saved, exported or reset. Your real settings stay on the <a href="settings.html">Settings</a> page.</span>
-    </p>
+    <!-- Loading / signed-out / offline / error state, filled by js/account-settings.js. -->
+    <p class="as-state" id="asState" role="status" aria-live="polite" data-state="loading">Loading settings…</p>
 
     <div class="as-layout">
       <nav class="as-nav" aria-label="Settings sections">
@@ -76,114 +75,95 @@
         <section class="card as-card" id="as-business" aria-labelledby="as-h-business">
           <div class="card__head as-card__head">
             <div><h2 id="as-h-business">Business Information</h2><p class="as-card__desc">Shown on invoices and receipts.</p></div>
+            <a class="as-edit" href="settings.html">Edit in Settings</a>
           </div>
-          <div class="card__body">
-            <div class="form-grid as-form">
-              <div class="field"><label for="as-name">Business Name</label><input class="input" id="as-name" value="Demo Auto Service Center" disabled></div>
-              <div class="field"><label for="as-phone">Phone</label><input class="input" id="as-phone" value="+880 1XXX-XXXXXX" disabled></div>
-              <div class="field span-2"><label for="as-address">Address</label><input class="input" id="as-address" value="House 00, Road 00, Uttara, Dhaka (demo)" disabled></div>
-              <div class="field"><label for="as-email">Email (optional)</label><input class="input" id="as-email" type="email" value="info@example.com" disabled></div>
-              <div class="field"><label for="as-website">Website (optional)</label><input class="input" id="as-website" value="https://example.com" disabled></div>
-              <div class="field"><label for="as-taxid">Tax / VAT Number (optional)</label><input class="input" id="as-taxid" value="000000000-0000" disabled></div>
-              <div class="field span-2"><label for="as-desc">Business Description / Notes (optional)</label><textarea class="input" id="as-desc" rows="2" disabled>Demo description — car servicing, diagnostics and repairs.</textarea></div>
-            </div>
-          </div>
+          <dl class="as-grid">
+            <div class="as-row"><dt>Business Name</dt><dd data-as="businessName">—</dd></div>
+            <div class="as-row"><dt>Phone</dt><dd data-as="phone">—</dd></div>
+            <div class="as-row as-row--wide"><dt>Address</dt><dd data-as="address">—</dd></div>
+            <div class="as-row"><dt>Email</dt><dd data-as="email">—</dd></div>
+            <div class="as-row"><dt>Website</dt><dd data-as="website">—</dd></div>
+            <div class="as-row"><dt>Tax / VAT Number</dt><dd data-as="taxId">—</dd></div>
+            <div class="as-row as-row--wide"><dt>Business Description / Notes <span class="as-ref">Saved for reference — not shown elsewhere in the app</span></dt><dd data-as="businessDescription">—</dd></div>
+            <div class="as-row as-row--wide" id="asUpdatedRow" hidden><dt>Last updated</dt><dd data-as="updatedAt">—</dd></div>
+          </dl>
         </section>
 
         <!-- ---------- Invoice & Tax ---------- -->
         <section class="card as-card" id="as-invoice" aria-labelledby="as-h-invoice">
           <div class="card__head as-card__head">
-            <div><h2 id="as-h-invoice">Invoice &amp; Tax</h2><p class="as-card__desc">Defaults for new Job Cards and printed invoices.</p></div>
+            <div><h2 id="as-h-invoice">Invoice &amp; Tax</h2><p class="as-card__desc">Used on new Job Cards and on printed invoices and receipts.</p></div>
+            <a class="as-edit" href="settings.html">Edit in Settings</a>
           </div>
-          <div class="card__body">
-            <div class="form-grid as-form">
-              <div class="field">
-                <label for="as-taxrate">Default Tax Rate (%)</label>
-                <div class="as-affix"><input class="input" id="as-taxrate" type="number" value="5" disabled><span aria-hidden="true">%</span></div>
-                <p class="muted-note">Applied as the default on new Job Cards only. Existing Job Cards and Invoices keep their own historical tax value.</p>
-              </div>
-              <div class="field"><label for="as-currency">Currency Symbol</label><input class="input" id="as-currency" value="৳" disabled></div>
-              <div class="field span-2"><label for="as-footer">Invoice / Receipt Footer</label><textarea class="input" id="as-footer" rows="2" disabled>Thank you for your business. (demo)</textarea></div>
-              <div class="field span-2"><label for="as-terms">Payment Terms / Note (optional)</label><input class="input" id="as-terms" value="Payment due within 7 days" disabled></div>
-            </div>
-            <p class="as-note"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg><span>Invoice numbering (INV-0001…) is not configurable here — it's a fixed system convention, so it can never conflict with existing invoice IDs.</span></p>
-          </div>
+          <dl class="as-grid">
+            <div class="as-row"><dt>Default Tax Rate <span class="as-ref as-ref--used">Default for new Job Cards only</span></dt><dd data-as="taxRate">—</dd></div>
+            <div class="as-row"><dt>Currency Symbol <span class="as-ref as-ref--used">Used when showing amounts</span></dt><dd data-as="currency">—</dd></div>
+            <div class="as-row as-row--wide"><dt>Invoice / Receipt Footer <span class="as-ref as-ref--used">Printed on invoices and receipts</span></dt><dd data-as="invoiceFooter">—</dd></div>
+            <div class="as-row as-row--wide"><dt>Payment Terms / Note <span class="as-ref">Saved for reference — not printed or used anywhere yet</span></dt><dd data-as="paymentTerms">—</dd></div>
+          </dl>
+          <p class="as-note">Existing Job Cards and Invoices keep their own tax values. Invoice numbering (INV-0001…) is a fixed system convention, not a setting.</p>
         </section>
 
         <!-- ---------- Workshop Defaults ---------- -->
         <section class="card as-card" id="as-workshop" aria-labelledby="as-h-workshop">
           <div class="card__head as-card__head">
-            <div><h2 id="as-h-workshop">Workshop Defaults</h2><p class="as-card__desc">Reference information for your team.</p></div>
+            <div><h2 id="as-h-workshop">Workshop Defaults</h2><p class="as-card__desc">Saved for reference only — not used by the Appointments scheduler or Job Cards.</p></div>
+            <a class="as-edit" href="settings.html">Edit in Settings</a>
           </div>
-          <div class="card__body">
-            <div class="form-grid form-grid--3 as-form as-form--3">
-              <div class="field"><label for="as-duration">Default Appointment Duration (minutes)</label><input class="input" id="as-duration" type="number" value="60" disabled></div>
-              <div class="field"><label for="as-open">Opening Time</label><input class="input" id="as-open" type="time" value="09:00" disabled></div>
-              <div class="field"><label for="as-close">Closing Time</label><input class="input" id="as-close" type="time" value="19:00" disabled></div>
-            </div>
-            <fieldset class="as-days" disabled>
-              <legend>Working Days</legend>
-              <label><input type="checkbox" checked> Mon</label>
-              <label><input type="checkbox" checked> Tue</label>
-              <label><input type="checkbox" checked> Wed</label>
-              <label><input type="checkbox" checked> Thu</label>
-              <label><input type="checkbox"> Fri</label>
-              <label><input type="checkbox" checked> Sat</label>
-              <label><input type="checkbox" checked> Sun</label>
-            </fieldset>
-            <p class="as-note"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg><span>These are reference info for your team — they are not yet enforced by the Appointments scheduler or Job Cards.</span></p>
-          </div>
+          <dl class="as-grid">
+            <div class="as-row"><dt>Default Appointment Duration</dt><dd data-as="defaultAppointmentDuration">—</dd></div>
+            <div class="as-row"><dt>Working Days</dt><dd data-as="workingDays">—</dd></div>
+            <div class="as-row"><dt>Opening Time</dt><dd data-as="openingTime">—</dd></div>
+            <div class="as-row"><dt>Closing Time</dt><dd data-as="closingTime">—</dd></div>
+          </dl>
         </section>
 
         <!-- ---------- Appearance ---------- -->
         <section class="card as-card" id="as-appearance" aria-labelledby="as-h-appearance">
           <div class="card__head as-card__head">
-            <div><h2 id="as-h-appearance">Appearance</h2><p class="as-card__desc">The same theme used everywhere in the app.</p></div>
+            <div><h2 id="as-h-appearance">Appearance</h2><p class="as-card__desc">Applies to this browser on this device only.</p></div>
           </div>
           <div class="card__body">
-            <!-- The highlighted option follows the theme currently on screen
-                 (CSS only, via html[data-theme]); the options do nothing. -->
-            <fieldset class="as-themes" disabled>
-              <legend class="as-sr">Theme</legend>
-              <label class="as-theme as-theme--light"><input type="radio" name="as-theme" value="light">
+            <fieldset class="as-themes">
+              <legend class="as-themes__legend">Theme</legend>
+              <label class="as-theme as-theme--light">
+                <input type="radio" name="as-theme" value="light">
                 <span class="as-theme__preview" aria-hidden="true"><i></i><b></b><b></b></span>
-                <span class="as-theme__name">Light</span></label>
-              <label class="as-theme as-theme--dark"><input type="radio" name="as-theme" value="dark">
+                <span class="as-theme__name">Light</span>
+              </label>
+              <label class="as-theme as-theme--dark">
+                <input type="radio" name="as-theme" value="dark">
                 <span class="as-theme__preview" aria-hidden="true"><i></i><b></b><b></b></span>
-                <span class="as-theme__name">Dark</span></label>
-              <label class="as-theme as-theme--system"><input type="radio" name="as-theme" value="system">
+                <span class="as-theme__name">Dark</span>
+              </label>
+              <label class="as-theme as-theme--system">
+                <input type="radio" name="as-theme" value="system">
                 <span class="as-theme__preview" aria-hidden="true"><i></i><b></b><b></b></span>
-                <span class="as-theme__name">System</span></label>
+                <span class="as-theme__name">System <small>Follows this device's setting</small></span>
+              </label>
             </fieldset>
-            <p class="muted-note">Preview only — switch the theme with the toggle in the header or on the <a href="settings.html">Settings</a> page.</p>
+            <p class="muted-note">Changes apply immediately. The theme button in the header and the Settings page use the same preference.</p>
+            <p class="as-sr" id="asThemeStatus" role="status" aria-live="polite"></p>
           </div>
         </section>
 
         <!-- ---------- Data Management ---------- -->
         <section class="card as-card" id="as-data" aria-labelledby="as-h-data">
           <div class="card__head as-card__head">
-            <div><h2 id="as-h-data">Data Management</h2><p class="as-card__desc">Back up or reset the app's demo data.</p></div>
+            <div><h2 id="as-h-data">Data Management</h2><p class="as-card__desc">Export and reset are done on the Settings page.</p></div>
           </div>
           <div class="card__body as-data">
             <div class="as-data__row">
-              <div><h3>Export Data</h3><p>Export downloads all current data as a JSON file.</p></div>
-              <button type="button" class="btn btn--ghost" disabled title="Preview only — export is not available here"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg> Export Data</button>
+              <div><h3>Export Data</h3><p>Downloads all current records as a JSON file. The file contains customer and financial data — keep it private, and never save it inside the project folder.</p></div>
+              <a class="btn btn--ghost" href="settings.html">Open Settings</a>
             </div>
-            <div class="as-data__row as-data__row--danger">
-              <div><h3>Reset to Seed Data</h3><p>Replaces every record with the original demo dataset. Settings and theme are kept. This cannot be undone.</p></div>
-              <button type="button" class="btn as-btn-danger" disabled title="Preview only — reset is not available here"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm5 13.6L15.6 17 12 13.4 8.4 17 7 15.6 10.6 12 7 8.4 8.4 7 12 10.6 15.6 7 17 8.4 13.4 12 17 15.6z"/></svg> Reset to Seed Data</button>
+            <div class="as-data__row">
+              <div><h3>Reset to Seed Data</h3><p>Replaces this browser's demo records with the original demo dataset. It works only in browser-only (offline) mode, is refused against the shared database, and asks you to type RESET first.</p></div>
+              <a class="btn btn--ghost" href="settings.html">Open Settings</a>
             </div>
-            <p class="muted-note">Import is not offered — safely validating an arbitrary uploaded file against every collection's structure before overwriting live data isn't something this app can do safely without a lot more validation work, so it's left out rather than shipped half-safe.</p>
+            <p class="muted-note">Import is not offered.</p>
           </div>
         </section>
-
-        <div class="as-savebar">
-          <p>Preview only — saving is disabled.</p>
-          <div class="as-savebar__actions">
-            <button type="button" class="btn btn--ghost" disabled>Discard Changes</button>
-            <button type="button" class="btn btn--primary" disabled>Save Settings</button>
-          </div>
-        </div>
 
       </div>
     </div>
@@ -195,6 +175,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
+  <script src="../js/account-settings.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>
