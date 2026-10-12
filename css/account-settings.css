@@ -1,10 +1,10 @@
 /* ============================================================
-   account-settings.css — Account Settings page, DESIGN PROTOTYPE
+   account-settings.css — Account Settings hub
    ------------------------------------------------------------
    Loaded only by pages/account-settings.html, so nothing here can
    reach any other page (the working Settings page is untouched).
-   Built from the shared tokens and components (cards, fields,
-   buttons) so it matches the Admin Panel and the Profile page.
+   Built from the shared tokens and components (cards, buttons) so
+   it matches the Admin Panel and the Profile page.
    ============================================================ */
 
 .as-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -17,28 +17,28 @@
 .as-crumbs [aria-current="page"] { color: var(--text); font-weight: 600; }
 
 /* title row */
-.as-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.as-head { margin-bottom: 14px; }
 .as-title { font-size: 1.35rem; font-weight: 700; letter-spacing: -.01em; }
 .as-sub { margin: 2px 0 0; }
-.as-tag {
-  flex: none; padding: 3px 10px; border: 1px dashed color-mix(in srgb, var(--warn) 55%, var(--line));
-  border-radius: 999px; background: var(--warn-soft); color: color-mix(in srgb, var(--warn) 70%, var(--text));
-  font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap;
-}
 
-/* prototype notice */
-.as-banner {
-  display: flex; align-items: flex-start; gap: 10px; margin: 0 0 18px; padding: 11px 14px;
-  border-radius: var(--radius-sm); background: var(--info-soft); box-shadow: inset 3px 0 0 var(--info);
-  font-size: .85rem; color: var(--text);
+/* loading / signed-out / offline / error line */
+.as-state {
+  margin: 0 0 18px; padding: 11px 14px; border-radius: var(--radius-sm);
+  background: var(--info-soft); box-shadow: inset 3px 0 0 var(--info); font-size: .85rem; color: var(--text);
 }
-.as-banner svg { flex: none; margin-top: 1px; color: var(--info); }
-.as-banner a, .as-card .muted-note a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.as-state[hidden] { display: none; }
+.as-state[data-state="warn"]  { background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--warn); }
+.as-state[data-state="error"] { background: var(--bad-soft);  box-shadow: inset 3px 0 0 var(--bad); }
 
 /* layout: section navigation beside the section cards */
 .as-layout { display: grid; grid-template-columns: 256px minmax(0, 1fr); gap: 18px; align-items: start; }
 .as-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
 .as-card { min-width: 0; scroll-margin-top: calc(var(--topbar-h) + 16px); }
+
+/* visible keyboard focus everywhere on this page */
+.as-nav__link:focus-visible, .as-edit:focus-visible, .as-data .btn:focus-visible, .as-crumbs a:focus-visible {
+  outline: none; box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--amber) 28%, transparent)); border-radius: var(--radius-sm);
+}
 
 /* section navigation */
 .as-nav {
@@ -47,44 +47,39 @@
 }
 .as-nav__link { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); color: var(--text); text-decoration: none; }
 .as-nav__link:hover { background: var(--paper); }
-.as-nav__link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .as-nav__text { display: grid; min-width: 0; }
 .as-nav__text strong { font-size: .86rem; font-weight: 600; }
 .as-nav__text small { font-size: .74rem; color: var(--text-2); }
 .as-ico { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 9px; background: var(--amber-soft); color: var(--amber-deep); }
 
 /* section cards */
+.as-card__head { align-items: flex-start; gap: 12px; }
 .as-card__head h2 { margin: 0; }
 .as-card__desc { margin: 2px 0 0; font-size: .8rem; color: var(--text-2); }
-.as-form .field { min-width: 0; }
-.as-form .input:disabled, .as-days input, .as-themes input { cursor: not-allowed; }
-.as-form .input:disabled { color: var(--text); opacity: 1; -webkit-text-fill-color: var(--text); }
-.as-form textarea.input { resize: none; }
+.as-edit { margin-left: auto; flex: none; font-size: .8rem; font-weight: 600; color: var(--amber-text, var(--amber-deep)); white-space: nowrap; }
+.as-edit:hover { text-decoration: underline; text-underline-offset: 2px; }
 
-/* "5 %" — the unit sits inside the field */
-.as-affix { position: relative; }
-.as-affix .input { padding-right: 34px; }
-.as-affix span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: .85rem; color: var(--text-2); pointer-events: none; }
+/* read-only values */
+/* Two columns with a gap and no position-based dividers, so full-width rows
+   (address, notes) can sit anywhere without shifting the pairs around them. */
+.as-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; margin: 0; padding: 6px 20px 12px; }
+.as-row { padding: 10px 0; min-width: 0; }
+.as-row--wide { grid-column: 1 / -1; }
+.as-row[hidden] { display: none; }
+.as-row dt { font-size: .74rem; color: var(--text-2); }
+.as-row dd { margin: 3px 0 0; font-size: .9rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; white-space: pre-line; }
+.as-row dd.as-empty { font-weight: 400; color: var(--text-3); }
+.as-ref { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-size: .68rem; color: var(--text-2); }
+.as-ref--used { background: var(--good-soft); border-color: transparent; color: var(--good); }
+.as-note { margin: 0 20px 16px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--paper); font-size: .8rem; color: var(--text-2); }
 
-/* inline note with an icon (same copy as the Settings page's notes) */
-.as-note { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--paper); font-size: .8rem; color: var(--text-2); }
-.as-note svg { flex: none; margin-top: 1px; color: var(--text-3); }
-
-/* working days as pills */
-.as-days { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0; border: 0; min-width: 0; }
-.as-days legend { width: 100%; margin-bottom: 6px; padding: 0; font-size: .78rem; font-weight: 600; color: var(--text-2); }
-.as-days label {
-  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line-strong);
-  border-radius: 999px; background: var(--surface); font-size: .82rem; color: var(--text-2);
-}
-.as-days label:has(input:checked) { border-color: color-mix(in srgb, var(--amber) 60%, var(--line)); background: var(--amber-soft); color: var(--text); font-weight: 600; }
-.as-days input { margin: 0; accent-color: var(--amber); }
-
-/* appearance: three option cards; the highlight follows the theme on screen */
+/* appearance: three option cards backed by real radios */
 .as-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 10px; padding: 0; border: 0; min-width: 0; }
-.as-theme { position: relative; display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); cursor: not-allowed; }
-.as-theme input { position: absolute; opacity: 0; pointer-events: none; }
+.as-themes__legend { grid-column: 1 / -1; margin-bottom: 8px; padding: 0; font-size: .78rem; font-weight: 600; color: var(--text-2); }
+.as-theme { position: relative; display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-strong, var(--line)); border-radius: var(--radius); background: var(--surface); cursor: pointer; }
+.as-theme input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .as-theme__name { font-size: .85rem; font-weight: 600; color: var(--text); }
+.as-theme__name small { display: block; font-size: .72rem; font-weight: 400; color: var(--text-2); }
 .as-theme__preview { position: relative; display: block; height: 64px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--line); }
 .as-theme__preview i { position: absolute; inset: 0 auto 0 0; width: 22%; background: #16202c; }
 .as-theme__preview b { position: absolute; left: 30%; right: 10%; height: 14px; border-radius: 4px; }
@@ -96,33 +91,23 @@
 .as-theme--dark .as-theme__preview b { background: #1b2735; box-shadow: 0 0 0 1px #2b3a4d; }
 .as-theme--system .as-theme__preview { background: linear-gradient(105deg, #f2f4f7 50%, #131b24 50%); }
 .as-theme--system .as-theme__preview b { background: linear-gradient(105deg, #fff 50%, #1b2735 50%); box-shadow: 0 0 0 1px #8a97a6; }
-
 .as-theme::after {
   content: ''; position: absolute; bottom: 12px; right: 12px; width: 18px; height: 18px; border-radius: 50%;
-  border: 2px solid var(--line-strong); background: var(--surface);
+  border: 2px solid var(--line-strong, var(--line)); background: var(--surface);
 }
-:root:not([data-theme="dark"]) .as-theme--light,
-:root[data-theme="dark"] .as-theme--dark { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
-:root:not([data-theme="dark"]) .as-theme--light::after,
-:root[data-theme="dark"] .as-theme--dark::after { border-color: var(--amber); background: radial-gradient(circle, var(--amber) 0 4px, var(--surface) 5px); }
+.as-theme:hover { border-color: var(--text-3); }
+/* selected: the real radio state (with a class for browsers without :has) */
+.as-theme:has(input:checked), .as-theme.is-selected { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.as-theme:has(input:checked)::after, .as-theme.is-selected::after { border-color: var(--amber); background: radial-gradient(circle, var(--amber) 0 4px, var(--surface) 5px); }
+.as-theme:has(input:focus-visible) { outline: none; box-shadow: 0 0 0 1px var(--amber), var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--amber) 28%, transparent)); }
 
-/* data management rows */
+/* data management */
 .as-data { display: grid; gap: 12px; }
 .as-data__row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .as-data__row h3 { margin: 0; font-size: .9rem; font-weight: 600; }
 .as-data__row p { margin: 2px 0 0; font-size: .8rem; color: var(--text-2); }
 .as-data__row .btn { flex: none; }
-.as-data__row--danger { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); background: color-mix(in srgb, var(--bad-soft) 55%, var(--surface)); }
-.as-btn-danger { background: var(--surface); border: 1px solid color-mix(in srgb, var(--bad) 55%, var(--line)); color: var(--bad); }
 .as-data .muted-note { margin: 0; }
-
-/* save bar */
-.as-savebar {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px;
-  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow);
-}
-.as-savebar p { margin: 0; font-size: .82rem; color: var(--text-2); }
-.as-savebar__actions { display: flex; gap: 10px; }
 
 /* tablet: the section navigation becomes a scrollable row of chips */
 @media (max-width: 1100px) {
@@ -136,16 +121,13 @@
 
 /* phone: one column throughout */
 @media (max-width: 640px) {
-  .as-head { flex-direction: column; gap: 8px; }
-  .as-form, .as-form--3 { grid-template-columns: minmax(0, 1fr); }
-  .as-form .span-2 { grid-column: auto; }
+  .as-card__head { flex-wrap: wrap; }
+  .as-grid { grid-template-columns: minmax(0, 1fr); padding: 4px 16px 10px; }
+  .as-note { margin: 0 16px 14px; }
   .as-themes { grid-template-columns: minmax(0, 1fr); }
   .as-theme { grid-template-columns: 96px minmax(0, 1fr); align-items: center; }
   .as-theme__preview { height: 52px; }
   .as-theme::after { bottom: auto; top: 50%; transform: translateY(-50%); }
   .as-data__row { flex-direction: column; align-items: stretch; }
   .as-data__row .btn { justify-content: center; }
-  .as-savebar { flex-direction: column; align-items: stretch; }
-  .as-savebar__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .as-savebar__actions .btn { justify-content: center; padding-inline: 10px; white-space: normal; }
 }
