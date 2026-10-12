@@ -199,10 +199,10 @@ const App = (() => {
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 17l1.4-1.4-2.6-2.6H17v-2H8.8l2.6-2.6L10 7l-5 5 5 5zm9-14H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
             </button>`;
 
-  /* Admin profile menu -- DESIGN PROTOTYPE. The items show how the menu will
-     look; they do not navigate and Sign Out here does not sign out (the
-     existing #signOutBtn above is untouched and still does). Each item only
-     says it is a preview. */
+  /* Admin profile menu -- DESIGN PROTOTYPE. Profile and Account Settings open
+     their design-prototype pages (pages/profile.html, pages/account-settings.html);
+     Sign Out here does not sign out (the existing #signOutBtn above is
+     untouched and still does) -- it only says it is a preview. */
   const PROFILE_ITEM_ICONS = {
     profile: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
     settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
@@ -364,8 +364,9 @@ const App = (() => {
     bindSignOut();
   }
 
-  /* Open/close and keyboard support for the profile menu prototype. Nothing
-     here navigates, signs out or writes anything. */
+  /* Open/close and keyboard support for the profile menu prototype. Profile
+     and Account Settings navigate to their prototype pages; nothing here
+     signs out or writes anything. */
   function bindProfileMenu() {
     const btn = document.getElementById('profileMenuBtn');
     const menu = document.getElementById('profileMenu');
