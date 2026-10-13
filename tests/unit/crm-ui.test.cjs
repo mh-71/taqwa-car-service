@@ -26,7 +26,24 @@ const ENTRIES = [
 ];
 
 // Pages with a stylesheet of their own (loaded after responsive.css).
-const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css' };
+const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css' };
+
+/* The CRM pages that show their (not yet connected) layout rather than a
+   "Coming soon" card, and exactly what that layout must contain. */
+const LAYOUTS = {
+  'crm-reminders': {
+    prefix: 'crr', noun: 'reminder',
+    options: ['All statuses', 'Upcoming', 'Due Today', 'Overdue'],
+    cols: ['Customer', 'Vehicle', 'Registration Number', 'Last Service', 'Next Service Due', 'Status', 'Actions'],
+    cards: ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up'],
+  },
+  'crm-follow-up': {
+    prefix: 'crf', noun: 'follow-up',
+    options: ['All statuses', 'Pending', 'Due Today', 'Overdue', 'Completed'],
+    cols: ['Customer', 'Vehicle', 'Follow-up Reason', 'Last Contact', 'Next Follow-up', 'Status', 'Actions'],
+    cards: ['Total Follow-ups', 'Due Today', 'Contacted', 'Overdue'],
+  },
+};
 
 /** Render the shell for one page; return the sidebar HTML the shell wrote. */
 function shellFor(page, root = '', sessionHint = null) {
@@ -110,8 +127,8 @@ const settingsHead = head(read('pages/settings.html'));
 for (const [key, label, href] of ENTRIES) {
   const html = read(href);
   const body = html.slice(html.indexOf('<body data-page='));   // not the '<body>' named in a head comment
-  // Service Reminders has its own page stylesheet, added after responsive.css
-  // exactly as the Profile and Account Settings pages add theirs.
+  // Service Reminders and Customer Follow-up have their own page stylesheet,
+  // added after responsive.css exactly as Profile and Account Settings add theirs.
   const ownCss = PAGE_CSS[key]
     ? `\n  <link rel="stylesheet" href="../css/${PAGE_CSS[key]}">` : '';
   check(`${label}: <head> is the Settings head with only the title${ownCss ? ' and its stylesheet' : ''} changed`, head(html),
@@ -121,35 +138,39 @@ for (const [key, label, href] of ENTRIES) {
   ok('   ...says "Coming soon" and that it arrives in a future release',
     body.includes('Coming soon') && /activated in a future release/.test(body), '');
   ok('   ...has no form, button, textarea or inline handler', !/<form|<textarea|<button|\son[a-z]+=/i.test(body), '');
-  if (key === 'crm-reminders') {
-    // The Service Reminders layout shows its search, filters and table, but
-    // none of it works yet: every control is disabled, the table holds only
-    // its empty state, and no value is a number.
+  const L = LAYOUTS[key];
+  if (L) {
+    // The layout shows its search, filters and table, but none of it works
+    // yet: every control is disabled, the table holds only its empty state,
+    // and no value is a number.
     const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
     ok('   ...shows a search box, a status filter and a date filter, ALL disabled',
       controls.length === 3 && controls.every(c => /\sdisabled\b/.test(c))
         && /type="search"/.test(controls[0]) && controls[1].startsWith('<select') && /type="date"/.test(controls[2]), JSON.stringify(controls));
-    check('   ...the status filter offers exactly All / Upcoming / Due Today / Overdue',
-      [...body.matchAll(/<option>([^<]+)<\/option>/g)].map(m => m[1]), ['All statuses', 'Upcoming', 'Due Today', 'Overdue']);
+    ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
+    check(`   ...the status filter offers exactly ${L.options.slice(1).join(' / ')}`,
+      [...body.matchAll(/<option>([^<]+)<\/option>/g)].map(m => m[1]), L.options);
     const cols = [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]);
-    check('   ...the reminder table has the planned columns',
-      cols, ['Customer', 'Vehicle', 'Registration Number', 'Last Service', 'Next Service Due', 'Status', 'Actions']);
+    check(`   ...the ${L.noun} table has the planned columns`, cols, L.cols);
     const rows = [...body.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
     ok('   ...and no data rows -- only the one empty-state row',
-      rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1 && /<tr class="crr-empty-row">\s*<td colspan="7">/.test(rows[0]), '');
-    const stats = [...body.matchAll(/<div class="stat__value">([\s\S]*?)<\/div>\s*<div class="stat__label">([^<]+)<\/div>\s*<div class="crr-pending">([^<]+)<\/div>/g)]
+      rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1
+        && new RegExp(`<tr class="${L.prefix}-empty-row">\\s*<td colspan="${L.cols.length}">`).test(rows[0]), '');
+    ok('   ...whose empty state says "Not yet connected"',
+      new RegExp(`<span class="badge badge--neutral ${L.prefix}-empty__status">Not yet connected</span>`).test(body), '');
+    const stats = [...body.matchAll(new RegExp(`<div class="stat__value">([\\s\\S]*?)<\\/div>\\s*<div class="stat__label">([^<]+)<\\/div>\\s*<div class="${L.prefix}-pending">([^<]+)<\\/div>`, 'g'))]
       .map(m => ({ value: m[1], label: m[2], pending: m[3] }));
-    check('   ...four summary cards', stats.map(x => x.label), ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up']);
+    check('   ...four summary cards', stats.map(x => x.label), L.cards);
     ok('   ...each with a "—" placeholder marked "Not yet connected", never a number',
       stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>' && x.pending === 'Not yet connected'), JSON.stringify(stats));
     ok('   ...with no digit anywhere in the page\'s visible text',
       !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
         .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
     ok('   ...and planned actions shown as plain text, not as links or buttons',
-      /class="crr-planned"/.test(body) && !/<a\b/.test(body), '');
+      new RegExp(`class="${L.prefix}-planned"`).test(body) && !/<a\b/.test(body), '');
     ok('   ...whose stylesheet is scoped to this page alone',
-      read('css/crm-reminders.css').replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
-        .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith('[data-page="crm-reminders"]'))), '');
+      read(`css/${PAGE_CSS[key]}`).replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
+        .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith(`[data-page="${key}"]`))), '');
   } else {
     ok('   ...has no input, select or table', !/<input|<select|<table/i.test(body), '');
   }

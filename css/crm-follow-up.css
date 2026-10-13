@@ -1,0 +1,112 @@
+/* ============================================================
+   crm-follow-up.css — Customer CRM › Customer Follow-up (UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/crm-follow-up.html, and every rule is also
+   scoped to [data-page="crm-follow-up"], so nothing here can reach
+   another page. The page is built from the shared components
+   (stats grid, toolbar, inputs, card, table, badges); this file only
+   arranges them and styles the parts that exist on this page alone.
+   ============================================================ */
+
+/* ---------- page header ---------- */
+[data-page="crm-follow-up"] .crf-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+[data-page="crm-follow-up"] .crf-head__text { min-width: 0; }
+[data-page="crm-follow-up"] .crf-head__title { font-size: 1.2rem; font-weight: 700; letter-spacing: -.01em; }
+[data-page="crm-follow-up"] .crf-head__desc { margin: 2px 0 0; font-size: .86rem; color: var(--text-2); }
+[data-page="crm-follow-up"] .crf-head__status { flex: none; margin-top: 4px; }
+
+/* ---------- summary cards (shared .stat, placeholder values) ---------- */
+[data-page="crm-follow-up"] .crf-stats { margin-bottom: 18px; }
+[data-page="crm-follow-up"] .crf-stat { align-items: flex-start; }
+[data-page="crm-follow-up"] .crf-stat .stat__value { color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-stat .stat__label { font-weight: 600; color: var(--text); }
+[data-page="crm-follow-up"] .crf-pending { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
+
+/* ---------- toolbar (disabled until connected) ---------- */
+[data-page="crm-follow-up"] .crf-toolbar .input:disabled,
+[data-page="crm-follow-up"] .crf-toolbar .select:disabled { cursor: not-allowed; }
+[data-page="crm-follow-up"] .crf-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .8rem;
+  color: var(--text-3);
+}
+[data-page="crm-follow-up"] .crf-toolbar .toolbar__search { flex: 1 1 360px; max-width: 480px; }
+[data-page="crm-follow-up"] .crf-toolbar__note { white-space: normal; }
+
+/* ---------- reminder list ---------- */
+[data-page="crm-follow-up"] .crf-list__head { flex-wrap: wrap; gap: 10px; }
+[data-page="crm-follow-up"] .crf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-page="crm-follow-up"] .crf-table tbody tr.crf-empty-row:hover { background: none; }
+
+/* Compact empty state: icon, explanation and status side by side. */
+[data-page="crm-follow-up"] .crf-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 22px 8px;
+}
+[data-page="crm-follow-up"] .crf-empty__icon {
+  width: 48px; height: 48px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--text-3);
+}
+[data-page="crm-follow-up"] .crf-empty__text { flex: 1; min-width: 0; white-space: normal; }
+[data-page="crm-follow-up"] .crf-empty__text h3 { font-size: .92rem; font-weight: 600; color: var(--text); }
+[data-page="crm-follow-up"] .crf-empty__text p { margin: 4px 0 0; font-size: .8rem; color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-empty__status { flex: none; }
+[data-page="crm-follow-up"] .crf-planned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px !important; }
+[data-page="crm-follow-up"] .crf-planned__label { font-weight: 600; color: var(--text-2); }
+/* Plain text, not buttons: these actions do not exist yet. */
+[data-page="crm-follow-up"] .crf-chip {
+  padding: 2px 8px;
+  border: 1px dashed var(--line-strong, var(--line));
+  border-radius: 999px;
+  font-size: .72rem;
+  color: var(--text-3);
+}
+
+/* ---------- tablet / phone ---------- */
+/* Narrower screens: let the column headers wrap so the table never grows
+   wider than its card (the empty state would be cut off inside the scroll
+   area), and stack the empty state instead of squeezing it beside the icon. */
+@media (max-width: 1100px) {
+  [data-page="crm-follow-up"] .crf-table th { white-space: normal; }
+}
+@media (max-width: 900px) {
+  [data-page="crm-follow-up"] .crf-empty { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+@media (max-width: 640px) {
+  [data-page="crm-follow-up"] .crf-head { flex-direction: column; gap: 8px; }
+  [data-page="crm-follow-up"] .crf-head__status { margin-top: 0; }
+  [data-page="crm-follow-up"] .crf-toolbar .toolbar__search { max-width: none; }
+  [data-page="crm-follow-up"] .crf-toolbar .select,
+  [data-page="crm-follow-up"] .crf-date { flex: 1 1 100%; }
+  [data-page="crm-follow-up"] .crf-date .input { flex: 1; }
+  /* With no rows, the header row alone is wider than a phone; hide it so the
+     empty state fits instead of scrolling sideways. */
+  [data-page="crm-follow-up"] .crf-table thead { display: none; }
+  [data-page="crm-follow-up"] .crf-empty { padding: 16px 4px; gap: 12px; }
+  [data-page="crm-follow-up"] .crf-empty__icon { width: 40px; height: 40px; }
+}
