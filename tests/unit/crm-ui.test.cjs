@@ -25,6 +25,9 @@ const ENTRIES = [
   ['crm-reports', 'CRM Reports', 'pages/crm-reports.html'],
 ];
 
+// Pages with a stylesheet of their own (loaded after responsive.css).
+const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css' };
+
 /** Render the shell for one page; return the sidebar HTML the shell wrote. */
 function shellFor(page, root = '', sessionHint = null) {
   const session = new Map(sessionHint ? [['taqwa_nav_crm_open', sessionHint]] : []);
@@ -107,12 +110,49 @@ const settingsHead = head(read('pages/settings.html'));
 for (const [key, label, href] of ENTRIES) {
   const html = read(href);
   const body = html.slice(html.indexOf('<body data-page='));   // not the '<body>' named in a head comment
-  check(`${label}: <head> is the Settings head with only the title changed`, head(html),
-    settingsHead.replace('<title>Settings — ', `<title>${label} — `));
+  // Service Reminders has its own page stylesheet, added after responsive.css
+  // exactly as the Profile and Account Settings pages add theirs.
+  const ownCss = PAGE_CSS[key]
+    ? `\n  <link rel="stylesheet" href="../css/${PAGE_CSS[key]}">` : '';
+  check(`${label}: <head> is the Settings head with only the title${ownCss ? ' and its stylesheet' : ''} changed`, head(html),
+    settingsHead.replace('<title>Settings — ', `<title>${label} — `)
+      .replace('<link rel="stylesheet" href="../css/responsive.css">', `<link rel="stylesheet" href="../css/responsive.css">${ownCss}`));
   ok('   ...declares its own page key', body.startsWith(`<body data-page="${key}" data-root="../">`), body.slice(0, 60));
   ok('   ...says "Coming soon" and that it arrives in a future release',
     body.includes('Coming soon') && /activated in a future release/.test(body), '');
-  ok('   ...has no form, input, button, table or inline handler', !/<form|<input|<select|<textarea|<button|<table|\son[a-z]+=/i.test(body), '');
+  ok('   ...has no form, button, textarea or inline handler', !/<form|<textarea|<button|\son[a-z]+=/i.test(body), '');
+  if (key === 'crm-reminders') {
+    // The Service Reminders layout shows its search, filters and table, but
+    // none of it works yet: every control is disabled, the table holds only
+    // its empty state, and no value is a number.
+    const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
+    ok('   ...shows a search box, a status filter and a date filter, ALL disabled',
+      controls.length === 3 && controls.every(c => /\sdisabled\b/.test(c))
+        && /type="search"/.test(controls[0]) && controls[1].startsWith('<select') && /type="date"/.test(controls[2]), JSON.stringify(controls));
+    check('   ...the status filter offers exactly All / Upcoming / Due Today / Overdue',
+      [...body.matchAll(/<option>([^<]+)<\/option>/g)].map(m => m[1]), ['All statuses', 'Upcoming', 'Due Today', 'Overdue']);
+    const cols = [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]);
+    check('   ...the reminder table has the planned columns',
+      cols, ['Customer', 'Vehicle', 'Registration Number', 'Last Service', 'Next Service Due', 'Status', 'Actions']);
+    const rows = [...body.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
+    ok('   ...and no data rows -- only the one empty-state row',
+      rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1 && /<tr class="crr-empty-row">\s*<td colspan="7">/.test(rows[0]), '');
+    const stats = [...body.matchAll(/<div class="stat__value">([\s\S]*?)<\/div>\s*<div class="stat__label">([^<]+)<\/div>\s*<div class="crr-pending">([^<]+)<\/div>/g)]
+      .map(m => ({ value: m[1], label: m[2], pending: m[3] }));
+    check('   ...four summary cards', stats.map(x => x.label), ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up']);
+    ok('   ...each with a "—" placeholder marked "Not yet connected", never a number',
+      stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>' && x.pending === 'Not yet connected'), JSON.stringify(stats));
+    ok('   ...with no digit anywhere in the page\'s visible text',
+      !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
+        .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
+    ok('   ...and planned actions shown as plain text, not as links or buttons',
+      /class="crr-planned"/.test(body) && !/<a\b/.test(body), '');
+    ok('   ...whose stylesheet is scoped to this page alone',
+      read('css/crm-reminders.css').replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
+        .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith('[data-page="crm-reminders"]'))), '');
+  } else {
+    ok('   ...has no input, select or table', !/<input|<select|<table/i.test(body), '');
+  }
   const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
   check('   ...loads only the shared shell scripts (no page module, no requests of its own)', scripts,
     ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js']);
