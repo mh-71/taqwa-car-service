@@ -98,6 +98,105 @@ console.log('\n-- 2. reads --');
     f.calls.some(c => c.path.includes('offset=1000')),
     JSON.stringify(f.calls.filter(c => c.path.startsWith('/customers')).map(c => c.path)));
 }
+/* ---- DATA-001: paging stops at the envelope's `total`, never at `count` ----
+   The Worker answers a list with `count` = rows in THIS page and `total` = rows
+   in the whole table (src/lib/collection.js). Reading `count` as the total
+   stopped after the first page: 1400 customers came back as 1000. */
+{
+  const ids = (n) => Array.from({ length: n }, (_, i) => ({ id: `CUS-${String(i + 1).padStart(5, '0')}` }));
+  const customerGets = (f) => f.calls.filter(c => c.method === 'GET' && c.path.startsWith('/customers?'));
+  // n rows -> pages the client should ask for, stopping as soon as it holds `total`.
+  for (const [n, pages] of [[0, 1], [1, 1], [999, 1], [1000, 1], [1001, 2], [1400, 2], [2000, 2], [2500, 3]]) {
+    const fixture = ids(n);
+    const { ctx, f } = online({ rows: { customers: fixture } });
+    const r = await ctx.Storage.hydrate();
+    const got = ctx.Storage.getData('customers').map(c => c.id);
+    check(`${n} rows: api mode`, r.mode, 'api');
+    ok(`   ...all ${n} rows, in order, none duplicated or missing`,
+      got.length === n && new Set(got).size === n && got.every((id, i) => id === fixture[i].id),
+      `got ${got.length}, unique ${new Set(got).size}`);
+    check(`   ...in ${pages} request(s), no extra empty page`, customerGets(f).length, pages);
+  }
+}
+{
+  // The fake now answers like the Worker: count is per page, total is the table.
+  const { f } = online({ rows: { customers: Array.from({ length: 1400 }, (_, i) => ({ id: `C-${i}` })) } });
+  const page2 = await (await f('http://localhost:8787/api/customers?limit=1000&offset=1000', {})).json();
+  check('fake API envelope: second page count = 400, total = 1400', [page2.count, page2.total, page2.data.length], [400, 1400, 400]);
+}
+{
+  // A later page that fails must fail the whole read, never leave a partial
+  // table looking complete.
+  const many = Array.from({ length: 1400 }, (_, i) => ({ id: `CUS-${i}` }));
+  const { ctx } = online({ rows: { customers: many },
+    fail: ({ path }) => path.startsWith('/customers?') && path.includes('offset=1000')
+      ? { status: 500, error: { code: 'database_error', message: 'boom' } } : null });
+  const r = await ctx.Storage.hydrate();
+  ok('page 2 fails -> hydration does NOT report api mode', r.mode !== 'api', JSON.stringify(r));
+  check('   ...and names the collection that could not be read', r.collection, 'customers');
+  ok('   ...and the 1000 rows of page 1 are not presented as the table',
+    ctx.Storage.getData('customers').length !== 1000, String(ctx.Storage.getData('customers').length));
+}
+{
+  // A session that expires between pages -> locked, not a partial table.
+  const many = Array.from({ length: 1400 }, (_, i) => ({ id: `CUS-${i}` }));
+  const { ctx } = online({ rows: { customers: many },
+    fail: ({ path }) => path.startsWith('/customers?') && path.includes('offset=1000')
+      ? { status: 401, error: { code: 'unauthorized', message: 'Authentication required.' } } : null });
+  const r = await ctx.Storage.hydrate();
+  check('page 2 answers 401 -> locked', r.mode, 'locked');
+}
+{
+  // Envelopes the Worker does not send, handled without guessing or looping.
+  // `edit(body, n)` rewrites the n-th /customers list response.
+  const withListEnvelope = (f, edit) => {
+    let n = 0;
+    return async (url, init = {}) => {
+      const resp = await f(url, init);
+      if ((init.method || 'GET') !== 'GET' || !/\/api\/customers\?/.test(String(url))) return resp;
+      const body = edit(await resp.json(), n++);
+      return { status: resp.status, ok: resp.ok, json: async () => body };
+    };
+  };
+  const bootWith = (rows, edit) => {
+    const f = fakeApi({ rows: { customers: rows } });
+    const h = boot({ origin: 'http://localhost:8787', fetch: withListEnvelope(f, edit) });
+    return { ...h, f };
+  };
+  const rows = (n) => Array.from({ length: n }, (_, i) => ({ id: `CUS-${i}` }));
+  const drop = (key) => (b) => { const c = { ...b }; delete c[key]; return c; };
+
+  for (const [label, edit] of [['missing', drop('total')], ['null', (b) => ({ ...b, total: null })],
+                               ['a string', (b) => ({ ...b, total: '1400' })], ['negative', (b) => ({ ...b, total: -1 })]]) {
+    const { ctx } = bootWith(rows(1400), edit);
+    const r = await ctx.Storage.hydrate();
+    check(`total ${label}: still reads all 1400 rows (stops on the short page)`,
+      [r.mode, ctx.Storage.getData('customers').length], ['api', 1400]);
+  }
+  {
+    const { ctx, f } = bootWith(rows(1000), drop('total'));
+    await ctx.Storage.hydrate();
+    check('total missing, exactly one full page: reads 1000 and stops on the empty next page',
+      [ctx.Storage.getData('customers').length, f.calls.filter(c => c.path.startsWith('/customers?')).length], [1000, 2]);
+  }
+  {
+    // total claims more rows than exist: the empty page ends the read.
+    const { ctx, f } = bootWith(rows(1400), (b) => ({ ...b, total: 5000 }));
+    const r = await ctx.Storage.hydrate();
+    check('total larger than the table: stops on the empty page, no loop',
+      [r.mode, ctx.Storage.getData('customers').length, f.calls.filter(c => c.path.startsWith('/customers?')).length],
+      ['api', 1400, 3]);
+  }
+  {
+    // A server that never stops (one row per page, total huge) is cut off and
+    // reported, rather than spinning forever.
+    const { ctx, f } = bootWith(rows(1), (b, n) => ({ ...b, data: [{ id: `CUS-X${n}` }], count: 1, total: 1e9 }));
+    const r = await ctx.Storage.hydrate();
+    check('a never-ending list is cut off: not api mode, reason too_many_pages',
+      [r.mode !== 'api', r.reason, r.collection], [true, 'too_many_pages', 'customers']);
+    check('   ...after exactly 1000 page requests', f.calls.filter(c => c.path.startsWith('/customers?')).length, 1000);
+  }
+}
 {
   const { ctx } = online({ rows: { jobCards: [], 'job-cards': [{ id: 'JOB-0001' }] } });
   await ctx.Storage.hydrate();

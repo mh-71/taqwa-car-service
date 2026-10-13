@@ -2,7 +2,7 @@
    need js/api.js to have something to talk to.
 
    It is deliberately NOT a second implementation of the API's rules: it
-   answers with the API's envelopes ({data,count} / {error:{code,message}}),
+   answers with the API's envelopes ({data,count,total} / {error:{code,message}}),
    allocates ids the way the server does (the client must not), and lets a
    suite force any failure it wants. What each route is allowed to REFUSE is
    the Worker's business and is tested against the real Worker in
@@ -79,7 +79,10 @@ function fakeApi({ rows = {}, settings = null, fail = null, health = true,
       if (method === 'GET') {
         const q = new URLSearchParams(String(url).split('?')[1] || '');
         const limit = Number(q.get('limit') || 500), offset = Number(q.get('offset') || 0);
-        return res(200, { data: list.slice(offset, offset + limit), count: list.length,
+        // Same envelope as the Worker (src/lib/collection.js): `count` is the
+        // rows in this page, `total` the rows in the whole collection.
+        const page = list.slice(offset, offset + limit);
+        return res(200, { data: page, count: page.length, total: list.length,
                           limit, offset });
       }
       seq[name] = (seq[name] || 0) + 1;

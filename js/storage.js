@@ -418,21 +418,35 @@ const Storage = (() => {
   /**
    * Read one collection completely.
    *
-   * The list endpoint caps a page at 1000 rows and reports the true total,
-   * so this follows the offset until it has them all rather than quietly
-   * rendering the first page as if it were the whole table.
+   * The list endpoint caps a page at 1000 rows. Its envelope carries two
+   * numbers: `count`, the rows in THIS page, and `total`, the rows in the
+   * whole table. The loop follows the offset until it holds `total` rows, so
+   * the first page is never rendered as if it were the whole table.
+   *
+   * A failed page fails the whole read (hydrate() then refuses to start on a
+   * partial table). If `total` is missing, a full page means there may be
+   * more, so the loop keeps going until a short or empty page; MAX_PAGES
+   * bounds it either way.
    */
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 1000;
   async function fetchAll(collection) {
     const path = `/${API_PATHS[collection]}`;
     const rows = [];
     let offset = 0;
-    for (;;) {
-      const res = await Api.get(`${path}?limit=1000&offset=${offset}`);
+    for (let pages = 0; ; pages++) {
+      if (pages === MAX_PAGES) {
+        return { ok: false, status: 0, code: 'too_many_pages',
+                 message: `Stopped reading ${collection} after ${MAX_PAGES} pages.` };
+      }
+      const res = await Api.get(`${path}?limit=${PAGE_SIZE}&offset=${offset}`);
       if (!res.ok) return res;
       const page = Array.isArray(res.data) ? res.data : [];
       rows.push(...page);
-      const total = Number(res.meta && res.meta.count);
-      if (!page.length || !Number.isFinite(total) || rows.length >= total) break;
+      const total = res.meta && res.meta.total;
+      const known = typeof total === 'number' && Number.isFinite(total) && total >= 0;
+      const done = known ? rows.length >= total : page.length < PAGE_SIZE;
+      if (!page.length || done) break;
       offset += page.length;
     }
     return { ok: true, rows };
