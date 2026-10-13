@@ -250,6 +250,34 @@ async function health(env) {
 // it only stops the response being rendered as a document.
 const PROXY_HEADERS = { 'content-type': 'application/json; charset=utf-8', ...SECURITY_HEADERS };
 
+const WEBSITE_BOOKINGS_URL = 'https://taqwa.blinto.workers.dev/api/bookings/list';
+
+/**
+ * GET /api/website-bookings
+ *
+ * Relays the public website's booking list to the signed-in app, server-side
+ * so the browser needs no CORS. The list carries customer names, emails and
+ * phone numbers -- the same kind of data as /api/customers -- so it is
+ * dispatched through the auth gate like every other business read.
+ *
+ * Any upstream failure is one generic 500: the upstream's status, body and
+ * error text stay in the Worker log and never reach the client.
+ */
+async function proxyWebsiteBookings() {
+  try {
+    const res = await fetch(WEBSITE_BOOKINGS_URL);
+    if (!res.ok) {
+      console.error('Website bookings proxy: upstream answered', res.status);
+      return fail('upstream_error', 'Website bookings are unavailable right now.', 500);
+    }
+    const data = await res.json();
+    return new Response(JSON.stringify(data), { status: 200, headers: PROXY_HEADERS });
+  } catch (err) {
+    console.error('Website bookings proxy error:', err.message);
+    return fail('upstream_error', 'Website bookings are unavailable right now.', 500);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -309,33 +337,10 @@ export default {
       return methodNotAllowed(['GET', 'PUT']);
     }
 
-    // PUBLIC proxy endpoint for website bookings (NO AUTH REQUIRED)
+    // Customer contact data, so gated like every business read. Only a
+    // signed-in browser asks for it (js/storage.js, after the session check).
     if (url.pathname === '/api/website-bookings') {
-      if (request.method === 'GET') {
-        try {
-          const websiteApiUrl = 'https://taqwa.blinto.workers.dev/api/bookings/list';
-          const res = await fetch(websiteApiUrl);
-          const data = await res.json();
-
-          if (!res.ok) {
-            return new Response(JSON.stringify({ error: 'Website API error', status: res.status }), {
-              status: 500,
-              headers: PROXY_HEADERS
-            });
-          }
-
-          return new Response(JSON.stringify(data), {
-            status: 200,
-            headers: PROXY_HEADERS
-          });
-        } catch (err) {
-          console.error('Website bookings proxy error:', err.message);
-          return new Response(JSON.stringify({ error: err.message }), {
-            status: 500,
-            headers: PROXY_HEADERS
-          });
-        }
-      }
+      if (request.method === 'GET') return run(proxyWebsiteBookings);
       return methodNotAllowed(['GET']);
     }
 
