@@ -26,7 +26,8 @@ const ENTRIES = [
 ];
 
 // Pages with a stylesheet of their own (loaded after responsive.css).
-const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css', 'crm-history': 'crm-history.css', 'crm-tasks': 'crm-tasks.css' };
+const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css', 'crm-history': 'crm-history.css', 'crm-tasks': 'crm-tasks.css',
+  'crm-reports': 'crm-reports.css' };
 
 /* The CRM pages that show their (not yet connected) layout rather than a
    "Coming soon" card, and exactly what that layout must contain. */
@@ -61,6 +62,19 @@ const LAYOUTS = {
       'Status colours': [['neutral', 'Pending'], ['info', 'In Progress'], ['good', 'Completed'], ['bad', 'Overdue']],
       'Priority colours': [['neutral', 'Low'], ['info', 'Medium'], ['warn', 'High'], ['bad', 'Urgent']],
     },
+  },
+  'crm-reports': {
+    // No search box: a period select (Last 30 days pre-selected) and a From / To
+    // range, plus ONE disabled Export CSV button -- nothing exists to export yet.
+    prefix: 'crp', noun: 'CRM activity', search: false, dates: 2,
+    options: ['Last 7 days', 'Last 30 days', 'This month', 'Custom range'], selected: 'Last 30 days',
+    // The only digits allowed on the page: these period names, and only as the
+    // select's options and the "Selected period" label (never as a figure).
+    periods: ['Last 7 days', 'Last 30 days'],
+    button: 'Export CSV',
+    cols: ['Customer', 'Vehicle', 'Service Date', 'Follow-up Status', 'Assigned Staff'],
+    cards: ['Service Reminders Due', 'Pending Follow-ups', 'Completed Follow-ups', 'Returning Customers'],
+    chart: ['Reminders due', 'Pending follow-ups', 'Completed follow-ups', 'Returning customers'],   // planned series only
   },
 };
 
@@ -156,21 +170,51 @@ for (const [key, label, href] of ENTRIES) {
   ok('   ...declares its own page key', body.startsWith(`<body data-page="${key}" data-root="../">`), body.slice(0, 60));
   ok('   ...says "Coming soon" and that it arrives in a future release',
     body.includes('Coming soon') && /activated in a future release/.test(body), '');
-  ok('   ...has no form, button, textarea or inline handler', !/<form|<textarea|<button|\son[a-z]+=/i.test(body), '');
   const L = LAYOUTS[key];
+  let rest = body;
+  if (L && L.button) {
+    // Exactly one button, and it cannot do anything: type="button", disabled,
+    // no handler, explained by a note. Everything else is checked as on the
+    // other pages, with that one button taken out.
+    const buttons = body.match(/<button\b[\s\S]*?<\/button>/g) || [];
+    const b = buttons[0] || '', tag = (b.match(/^<button\b[^>]*>/) || [''])[0];
+    const note = (tag.match(/\saria-describedby="([^"]+)"/) || [])[1];
+    ok(`   ...has exactly one button, "${L.button}", and it is disabled`,
+      buttons.length === 1 && (body.match(/<button\b/g) || []).length === 1 && /^<button type="button"/.test(tag) && /\sdisabled\b/.test(tag)
+        && b.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ').trim() === L.button, JSON.stringify(buttons));
+    // Taken out of the page-wide check below, so its own tag is checked here:
+    // no inline handler (onclick=...) and nothing that could submit or send it
+    // (form=, formaction=, formmethod=, formenctype=, formtarget=, formnovalidate).
+    ok('   ...with no inline event handler on that button', !!tag && !/\son[a-z]+\s*=/i.test(tag), tag);
+    ok('   ...and no form or submission attribute on it', !!tag && !/\sform[a-z]*(\s*=|[\s>])/i.test(tag), tag);
+    ok('   ...with a note saying why it is disabled and that no file is created',
+      !!note && new RegExp(`<span id="${note}">[^<]*disabled until there is real CRM data[^<]*no file is created[^<]*</span>`).test(body), String(note));
+    rest = body.replace(b, '');
+  }
+  ok('   ...has no form, button, textarea or inline handler', !/<form|<textarea|<button|\son[a-z]+=/i.test(rest), '');
   if (L) {
     // The layout shows its search, filters and table, but none of it works
     // yet: every control is disabled, the table holds only its empty state,
     // and no value is a number.
     const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
-    const dates = L.dates || 1, selects = L.selects || 1;
-    ok(`   ...shows a search box, ${selects === 1 ? 'a status filter' : `${selects} filters`} and ${dates === 1 ? 'a date filter' : `${dates} date fields`}, ALL disabled`,
-      controls.length === 1 + selects + dates && controls.every(c => /\sdisabled\b/.test(c))
-        && /type="search"/.test(controls[0]) && controls.slice(1, 1 + selects).every(c => c.startsWith('<select'))
-        && controls.slice(1 + selects).every(c => /type="date"/.test(c)), JSON.stringify(controls));
+    const dates = L.dates || 1, selects = L.selects || 1, search = L.search === false ? 0 : 1;
+    ok(`   ...shows ${search ? 'a search box, ' : ''}${selects === 1 ? (L.selected ? 'a period select' : 'a status filter') : `${selects} filters`} and ${dates === 1 ? 'a date filter' : `${dates} date fields`}, ALL disabled`,
+      controls.length === search + selects + dates && controls.every(c => /\sdisabled\b/.test(c))
+        && (!search || /type="search"/.test(controls[0])) && controls.slice(search, search + selects).every(c => c.startsWith('<select'))
+        && controls.slice(search + selects).every(c => /type="date"/.test(c)), JSON.stringify(controls));
     ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
-    check(`   ...the ${selects === 1 ? 'status filter offers' : 'filters offer'} exactly ${L.options.slice(1).join(' / ')}`,
-      [...body.matchAll(/<option>([^<]+)<\/option>/g)].map(m => m[1]), L.options);
+    const options = [...body.matchAll(/<option\b([^>]*)>([^<]+)<\/option>/g)];
+    if (L.selected) {
+      check(`   ...the period select offers exactly ${L.options.join(' / ')}`, options.map(m => m[2]), L.options);
+      check(`   ...with "${L.selected}" pre-selected, and no other option attributes`,
+        options.filter(m => m[1] !== '').map(m => [m[1], m[2]]), [[' selected', L.selected]]);
+      ok(`   ...and the label reads "Selected period: ${L.selected} · not yet connected" (no dates computed)`,
+        new RegExp(`<p class="${L.prefix}-period" id="\\w+">Selected period: <strong class="${L.prefix}-period__value">${L.selected}</strong> &#183; not yet connected</p>`).test(body), '');
+    } else {
+      check(`   ...the ${selects === 1 ? 'status filter offers' : 'filters offer'} exactly ${L.options.slice(1).join(' / ')}`,
+        options.map(m => m[2]), L.options);
+      ok('   ...with no option pre-selected', options.every(m => m[1] === ''), '');
+    }
     const cols = [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]);
     check(`   ...the ${L.noun} table has the planned columns`, cols, L.cols);
     const rows = [...body.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
@@ -189,6 +233,20 @@ for (const [key, label, href] of ENTRIES) {
       check(`   ...a ${name.toLowerCase()} key in the app's tones`,
         [...list.matchAll(/<span class="badge badge--(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], m[2]]), keys);
     }
+    if (L.chart) {
+      // The trends chart is an empty CSS frame: a key of the planned series and
+      // an explanation, but no bars, points, axis values or data of any kind.
+      const trends = (body.match(new RegExp(`<section class="card ${L.prefix}-trends"[\\s\\S]*?<\\/section>`)) || [''])[0];
+      const frame = (trends.match(new RegExp(`<div class="${L.prefix}-chart">([\\s\\S]*)<\\/div>\\s*<\\/div>\\s*<\\/section>`)) || [])[1] || '';
+      check('   ...a trends chart whose key lists only the planned series',
+        [...trends.matchAll(new RegExp(`<li><span class="${L.prefix}-key__dot ${L.prefix}-key__dot--\\w+" aria-hidden="true"><\\/span>([^<]+)<\\/li>`, 'g'))].map(m => m[1]), L.chart);
+      const classes = [...frame.matchAll(/class="([^"]+)"/g)].map(m => m[1]);
+      ok('   ...and an empty frame: only its explanation, no bars, values, canvas or table',
+        /<h3>No activity to chart yet<\/h3>/.test(frame) && /No chart data is generated\./.test(frame)
+          && classes.every(c => /__(empty|icon)$/.test(c)) && !/<(canvas|table|img|li)\b|\sstyle=/.test(frame)
+          && !/\d/.test(frame.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ')),
+        JSON.stringify(classes));
+    }
     ok('   ...whose empty state says "Not yet connected"',
       new RegExp(`<span class="badge badge--neutral ${L.prefix}-empty__status">Not yet connected</span>`).test(body), '');
     const stats = [...body.matchAll(new RegExp(`<div class="stat__value">([\\s\\S]*?)<\\/div>\\s*<div class="stat__label">([^<]+)<\\/div>\\s*<div class="${L.prefix}-pending">([^<]+)<\\/div>`, 'g'))]
@@ -196,8 +254,15 @@ for (const [key, label, href] of ENTRIES) {
     check('   ...four summary cards', stats.map(x => x.label), L.cards);
     ok('   ...each with a "—" placeholder marked "Not yet connected", never a number',
       stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>' && x.pending === 'Not yet connected'), JSON.stringify(stats));
-    ok('   ...with no digit anywhere in the page\'s visible text',
-      !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
+    // Period names ("Last 30 days") are removed only where they are allowed:
+    // as an option of the period select and as the "Selected period" label.
+    let visible = body;
+    for (const name of L.periods || []) {
+      visible = visible.split(`<option>${name}</option>`).join('').split(`<option selected>${name}</option>`).join('')
+        .split(`<strong class="${L.prefix}-period__value">${name}</strong>`).join('');
+    }
+    ok(`   ...with no digit anywhere in the page's visible text${L.periods ? ' (other than the period names)' : ''}`,
+      !/\d/.test(visible.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
         .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
     ok('   ...and planned actions shown as plain text, not as links or buttons',
       new RegExp(`class="${L.prefix}-planned"`).test(body) && !/<a\b/.test(body), '');

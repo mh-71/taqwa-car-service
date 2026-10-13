@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="../css/components.css">
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
+  <link rel="stylesheet" href="../css/crm-reports.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -36,18 +37,132 @@
 
   <div id="page-content">
 
-    <p class="page-subtitle">Summaries of reminders, follow-up activity and returning customers.</p>
+    <!-- UI ONLY. This page shows the layout of CRM Reports and nothing else:
+         it reads no records, calculates no figure or date, draws no chart
+         data, exports no file and makes no requests of its own. Every value
+         is a placeholder and every control is disabled until the reports are
+         connected in a later release. -->
 
-    <!-- UI only: this Customer CRM page is a placeholder. It reads no records,
-         has no forms and makes no requests of its own. -->
-    <section class="card" aria-labelledby="crmSoonTitle">
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M7.5 21H2V9h5.5v12zm7.25-18h-5.5v18h5.5V3zM22 11h-5.5v10H22V11z"/></svg>
-          <h3 id="crmSoonTitle">CRM reports are coming soon</h3>
-          <p>This page will summarise reminders, follow-ups and returning customers from real records. It will be activated in a future release. No CRM figures are calculated yet.</p>
-          <span class="badge badge--info">Coming soon</span>
+    <div class="crp-head">
+      <div class="crp-head__text">
+        <h2 class="crp-head__title">CRM Reports</h2>
+        <p class="crp-head__desc">Customer relationship and service analytics</p>
+      </div>
+      <span class="badge badge--neutral crp-head__status">Coming soon &#183; not yet connected</span>
+    </div>
+
+    <div class="toolbar crp-toolbar" role="group" aria-label="Report period and export" aria-describedby="crpToolbarNote">
+      <label class="crp-field">
+        <span>Period</span>
+        <select class="select" id="crpRange" disabled aria-label="Report period">
+          <option>Last 7 days</option>
+          <option selected>Last 30 days</option>
+          <option>This month</option>
+          <option>Custom range</option>
+        </select>
+      </label>
+      <div class="crp-range" role="group" aria-label="Custom date range">
+        <label class="crp-date"><span>From</span>
+          <input type="date" class="input" id="crpFrom" disabled aria-label="Report period from"></label>
+        <label class="crp-date"><span>To</span>
+          <input type="date" class="input" id="crpTo" disabled aria-label="Report period to"></label>
+      </div>
+      <p class="crp-period" id="crpPeriod">Selected period: <strong class="crp-period__value">Last 30 days</strong> &#183; not yet connected</p>
+      <button type="button" class="btn btn--ghost btn--sm crp-export" id="crpExport" disabled aria-describedby="crpExportNote">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        Export CSV
+      </button>
+      <span class="toolbar__count crp-toolbar__note" id="crpToolbarNote">The period controls will work when CRM Reports is connected. No dates are calculated yet.
+        <span id="crpExportNote">Export CSV stays disabled until there is real CRM data to export; no file is created.</span></span>
+    </div>
+
+    <section class="stats-grid crp-stats" aria-label="CRM summary (not yet connected)">
+      <div class="stat crp-stat">
+        <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Service Reminders Due</div>
+          <div class="crp-pending">Not yet connected</div>
         </div>
+      </div>
+      <div class="stat crp-stat">
+        <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Pending Follow-ups</div>
+          <div class="crp-pending">Not yet connected</div>
+        </div>
+      </div>
+      <div class="stat crp-stat">
+        <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Completed Follow-ups</div>
+          <div class="crp-pending">Not yet connected</div>
+        </div>
+      </div>
+      <div class="stat crp-stat">
+        <div class="stat__icon crp-icon--navy"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Returning Customers</div>
+          <div class="crp-pending">Not yet connected</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card crp-trends" aria-labelledby="crpTrendsTitle">
+      <div class="card__head crp-trends__head">
+        <h2 id="crpTrendsTitle">Customer activity trends</h2>
+        <span class="spacer"></span>
+        <ul class="crp-key" aria-label="Planned chart series">
+          <li><span class="crp-key__dot crp-key__dot--warn" aria-hidden="true"></span>Reminders due</li>
+          <li><span class="crp-key__dot crp-key__dot--info" aria-hidden="true"></span>Pending follow-ups</li>
+          <li><span class="crp-key__dot crp-key__dot--good" aria-hidden="true"></span>Completed follow-ups</li>
+          <li><span class="crp-key__dot crp-key__dot--navy" aria-hidden="true"></span>Returning customers</li>
+        </ul>
+      </div>
+      <div class="card__body">
+        <!-- An empty frame: grid lines only (drawn in CSS), no bars, no axis values. -->
+        <div class="crp-chart">
+          <div class="crp-chart__empty">
+            <span class="crp-chart__icon"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg></span>
+            <h3>No activity to chart yet</h3>
+            <p>Trends for the selected period will be drawn from real CRM records when the reports are connected. No chart data is generated.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card crp-list" aria-labelledby="crpListTitle">
+      <div class="card__head crp-list__head">
+        <h2 id="crpListTitle">CRM Activity Details</h2>
+      </div>
+      <div class="table-wrap">
+        <table class="table crp-table">
+          <thead>
+            <tr>
+              <th scope="col">Customer</th><th scope="col">Vehicle</th><th scope="col">Service Date</th>
+              <th scope="col">Follow-up Status</th><th scope="col">Assigned Staff</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="crp-empty-row">
+              <td colspan="5">
+                <div class="crp-empty">
+                  <span class="crp-empty__icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M7.5 21H2V9h5.5v12zm7.25-18h-5.5v18h5.5V3zM22 11h-5.5v10H22V11z"/></svg></span>
+                  <div class="crp-empty__text">
+                    <h3>CRM activity will appear here</h3>
+                    <p>Customers, vehicles, service dates, follow-up status and assigned staff for the selected period will appear here when the reports are connected. It will be activated in a future release; no records are read, calculated or exported yet.</p>
+                    <p class="crp-planned"><span class="crp-planned__label">Planned:</span>
+                      <span class="crp-chip">Filter by period</span><span class="crp-chip">Compare with previous period</span><span class="crp-chip">Staff breakdown</span><span class="crp-chip">CSV export</span></p>
+                  </div>
+                  <span class="badge badge--neutral crp-empty__status">Not yet connected</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
