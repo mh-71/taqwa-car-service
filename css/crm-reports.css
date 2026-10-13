@@ -1,0 +1,176 @@
+/* ============================================================
+   crm-reports.css — Customer CRM › CRM Reports (UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/crm-reports.html, and every rule is also
+   scoped to [data-page="crm-reports"], so nothing here can reach
+   another page. The page is built from the shared components
+   (stats grid, toolbar, inputs, button, card, table, badges); this
+   file only arranges them and styles the parts that exist on this
+   page alone (the period controls and the empty chart frame).
+   ============================================================ */
+
+/* ---------- page header ---------- */
+[data-page="crm-reports"] .crp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+[data-page="crm-reports"] .crp-head__text { min-width: 0; }
+[data-page="crm-reports"] .crp-head__title { font-size: 1.2rem; font-weight: 700; letter-spacing: -.01em; }
+[data-page="crm-reports"] .crp-head__desc { margin: 2px 0 0; font-size: .86rem; color: var(--text-2); }
+[data-page="crm-reports"] .crp-head__status { flex: none; margin-top: 4px; }
+
+/* ---------- period toolbar (disabled until connected) ---------- */
+[data-page="crm-reports"] .crp-toolbar .input:disabled,
+[data-page="crm-reports"] .crp-toolbar .select:disabled { cursor: not-allowed; opacity: .7; }
+[data-page="crm-reports"] .crp-field,
+[data-page="crm-reports"] .crp-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .8rem;
+  color: var(--text-3);
+}
+[data-page="crm-reports"] .crp-range { display: inline-flex; flex-wrap: wrap; gap: 10px; }
+[data-page="crm-reports"] .crp-period { margin: 0; font-size: .8rem; color: var(--text-3); }
+[data-page="crm-reports"] .crp-period__value { font-weight: 600; color: var(--text-2); }
+/* Pushed to the right end of the row; disabled (shared .btn:disabled look). */
+[data-page="crm-reports"] .crp-export { margin-left: auto; }
+[data-page="crm-reports"] .crp-toolbar__note { white-space: normal; flex: 1 1 100%; }   /* own line under the controls */
+
+/* ---------- summary cards (shared .stat, placeholder values) ---------- */
+[data-page="crm-reports"] .crp-stats { margin-bottom: 18px; }
+[data-page="crm-reports"] .crp-stat { align-items: flex-start; }
+[data-page="crm-reports"] .crp-stat .stat__value { color: var(--text-3); }
+[data-page="crm-reports"] .crp-stat .stat__label { font-weight: 600; color: var(--text); }
+[data-page="crm-reports"] .crp-pending { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
+/* Returning Customers: a neutral navy tile -- a count of people is not a status. */
+[data-page="crm-reports"] .crp-icon--navy { background: var(--paper); color: var(--text); border: 1px solid var(--line); }
+
+/* ---------- activity trends: an empty chart frame ---------- */
+[data-page="crm-reports"] .crp-trends { margin-bottom: 18px; }
+[data-page="crm-reports"] .crp-trends__head { flex-wrap: wrap; gap: 10px; }
+[data-page="crm-reports"] .crp-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: .76rem;
+  color: var(--text-2);
+}
+[data-page="crm-reports"] .crp-key li { display: inline-flex; align-items: center; gap: 6px; }
+[data-page="crm-reports"] .crp-key__dot { width: 10px; height: 10px; border-radius: 3px; opacity: .55; }
+[data-page="crm-reports"] .crp-key__dot--warn { background: var(--warn); }
+[data-page="crm-reports"] .crp-key__dot--info { background: var(--info); }
+[data-page="crm-reports"] .crp-key__dot--good { background: var(--good); }
+[data-page="crm-reports"] .crp-key__dot--navy { background: var(--text); }
+/* Faint horizontal grid lines and a baseline, nothing plotted on them. */
+[data-page="crm-reports"] .crp-chart {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  padding: 16px;
+  border-left: 1px solid var(--line-strong, var(--line));
+  border-bottom: 1px solid var(--line-strong, var(--line));
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%);
+}
+[data-page="crm-reports"] .crp-chart__empty {
+  max-width: 420px;
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: center;
+}
+[data-page="crm-reports"] .crp-chart__icon {
+  width: 40px; height: 40px;
+  display: inline-grid;
+  place-items: center;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--text-3);
+}
+[data-page="crm-reports"] .crp-chart__empty h3 { font-size: .92rem; font-weight: 600; color: var(--text); }
+[data-page="crm-reports"] .crp-chart__empty p { margin: 4px 0 0; font-size: .8rem; color: var(--text-3); }
+
+/* ---------- activity details ---------- */
+[data-page="crm-reports"] .crp-table tbody tr.crp-empty-row:hover { background: none; }
+
+/* Compact empty state: icon, explanation and status side by side. */
+[data-page="crm-reports"] .crp-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 22px 8px;
+}
+[data-page="crm-reports"] .crp-empty__icon {
+  width: 48px; height: 48px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--text-3);
+}
+[data-page="crm-reports"] .crp-empty__text { flex: 1; min-width: 0; white-space: normal; }
+[data-page="crm-reports"] .crp-empty__text h3 { font-size: .92rem; font-weight: 600; color: var(--text); }
+[data-page="crm-reports"] .crp-empty__text p { margin: 4px 0 0; font-size: .8rem; color: var(--text-3); }
+[data-page="crm-reports"] .crp-empty__status { flex: none; }
+[data-page="crm-reports"] .crp-planned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px !important; }
+[data-page="crm-reports"] .crp-planned__label { font-weight: 600; color: var(--text-2); }
+/* Plain text, not buttons: these features do not exist yet. */
+[data-page="crm-reports"] .crp-chip {
+  padding: 2px 8px;
+  border: 1px dashed var(--line-strong, var(--line));
+  border-radius: 999px;
+  font-size: .72rem;
+  color: var(--text-3);
+}
+
+/* ---------- tablet / phone ---------- */
+/* Narrower screens: let the column headers wrap so the table never grows
+   wider than its card (the empty state would be cut off inside the scroll
+   area), and stack the empty state instead of squeezing it beside the icon. */
+@media (max-width: 1100px) {
+  [data-page="crm-reports"] .crp-table th { white-space: normal; }
+}
+@media (max-width: 900px) {
+  [data-page="crm-reports"] .crp-empty { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+@media (max-width: 640px) {
+  [data-page="crm-reports"] .crp-head { flex-direction: column; gap: 8px; }
+  [data-page="crm-reports"] .crp-head__status { margin-top: 0; }
+  /* Two columns that may shrink below their longest label (as the Dashboard
+     does), so "Completed Follow-ups" wraps instead of widening a phone screen. */
+  [data-page="crm-reports"] .crp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  [data-page="crm-reports"] .crp-stat > div:not(.stat__icon) { min-width: 0; }
+  [data-page="crm-reports"] .crp-stat .stat__label { overflow-wrap: break-word; }
+  [data-page="crm-reports"] .crp-field,
+  [data-page="crm-reports"] .crp-range,
+  [data-page="crm-reports"] .crp-date,
+  [data-page="crm-reports"] .crp-period { flex: 1 1 100%; }
+  [data-page="crm-reports"] .crp-field .select,
+  [data-page="crm-reports"] .crp-date .input { flex: 1; min-width: 0; }
+  [data-page="crm-reports"] .crp-field > span,
+  [data-page="crm-reports"] .crp-date > span { min-width: 3.2em; }   /* Period / From / To fields line up */
+  [data-page="crm-reports"] .crp-export { flex: 1 1 100%; justify-content: center; margin-left: 0; }
+  [data-page="crm-reports"] .crp-chart { min-height: 200px; padding: 12px 8px; }
+  /* With no rows, the header row alone is wider than a phone; hide it so the
+     empty state fits instead of scrolling sideways. */
+  [data-page="crm-reports"] .crp-table thead { display: none; }
+  [data-page="crm-reports"] .crp-empty { padding: 16px 4px; gap: 12px; }
+  [data-page="crm-reports"] .crp-empty__icon { width: 40px; height: 40px; }
+}
+@media (max-width: 400px) {
+  /* Smallest phones: icon above the text, so each label keeps whole words. */
+  [data-page="crm-reports"] .crp-stat { flex-direction: column; gap: 8px; }
+}
