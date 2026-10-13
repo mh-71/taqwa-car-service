@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="../css/components.css">
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
+  <link rel="stylesheet" href="../css/crm-follow-up.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -36,18 +37,109 @@
 
   <div id="page-content">
 
-    <p class="page-subtitle">Customers who may need a follow-up call or message.</p>
+    <!-- UI ONLY. This page shows the layout of Customer Follow-up and nothing
+         else: it reads no records, calculates nothing, records no contact and
+         makes no requests of its own. Every value is a placeholder and every
+         control is disabled until follow-ups are connected in a later release. -->
 
-    <!-- UI only: this Customer CRM page is a placeholder. It reads no records,
-         has no forms and makes no requests of its own. -->
-    <section class="card" aria-labelledby="crmSoonTitle">
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
-          <h3 id="crmSoonTitle">Customer follow-up is coming soon</h3>
-          <p>This page will list customers to follow up and let staff record the outcome. It will be activated in a future release. No follow-ups are tracked or sent yet.</p>
-          <span class="badge badge--info">Coming soon</span>
+    <div class="crf-head">
+      <div class="crf-head__text">
+        <h2 class="crf-head__title">Customer Follow-up</h2>
+        <p class="crf-head__desc">Manage customer follow-ups and contact outcomes.</p>
+      </div>
+      <span class="badge badge--neutral crf-head__status">Coming soon &#183; not yet connected</span>
+    </div>
+
+    <section class="stats-grid crf-stats" aria-label="Follow-up summary (not yet connected)">
+      <div class="stat crf-stat">
+        <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Total Follow-ups</div>
+          <div class="crf-pending">Not yet connected</div>
         </div>
+      </div>
+      <div class="stat crf-stat">
+        <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm-7-8h5v5h-5v-5z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Due Today</div>
+          <div class="crf-pending">Not yet connected</div>
+        </div>
+      </div>
+      <div class="stat crf-stat">
+        <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Contacted</div>
+          <div class="crf-pending">Not yet connected</div>
+        </div>
+      </div>
+      <div class="stat crf-stat">
+        <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div>
+        <div>
+          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__label">Overdue</div>
+          <div class="crf-pending">Not yet connected</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="toolbar crf-toolbar" role="search" aria-describedby="crfToolbarNote">
+      <input type="search" class="input toolbar__search" id="crfSearch" disabled
+             placeholder="Search customer, phone or vehicle…" aria-label="Search follow-ups by customer name, phone number, vehicle registration, brand or model">
+      <select class="select" id="crfStatus" disabled aria-label="Filter by follow-up status">
+        <option>All statuses</option>
+        <option>Pending</option>
+        <option>Due Today</option>
+        <option>Overdue</option>
+        <option>Completed</option>
+      </select>
+      <label class="crf-date">
+        <span>Follow-up by</span>
+        <input type="date" class="input" id="crfDueBy" disabled aria-label="Next follow-up by">
+      </label>
+      <span class="spacer"></span>
+      <span class="toolbar__count crf-toolbar__note" id="crfToolbarNote">Search and filters will work once follow-ups are connected.</span>
+    </div>
+
+    <section class="card crf-list" aria-labelledby="crfListTitle">
+      <div class="card__head crf-list__head">
+        <h2 id="crfListTitle">Follow-up list</h2>
+        <span class="spacer"></span>
+        <ul class="crf-legend" aria-label="Status colours">
+          <li><span class="badge badge--info">Pending</span></li>
+          <li><span class="badge badge--warn">Due Today</span></li>
+          <li><span class="badge badge--bad">Overdue</span></li>
+          <li><span class="badge badge--good">Completed</span></li>
+        </ul>
+      </div>
+      <div class="table-wrap">
+        <table class="table crf-table">
+          <thead>
+            <tr>
+              <th scope="col">Customer</th><th scope="col">Vehicle</th><th scope="col">Follow-up Reason</th>
+              <th scope="col">Last Contact</th><th scope="col">Next Follow-up</th><th scope="col">Status</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="crf-empty-row">
+              <td colspan="7">
+                <div class="crf-empty">
+                  <span class="crf-empty__icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg></span>
+                  <div class="crf-empty__text">
+                    <h3>Customer follow-up data will appear here</h3>
+                    <p>Customers to call back after a service, an estimate or a missed appointment will be listed here with their vehicle, the reason for the follow-up and the last and next contact. It will be activated in a future release; no follow-ups are tracked, recorded or sent yet.</p>
+                    <p class="crf-planned"><span class="crf-planned__label">Planned actions:</span>
+                      <span class="crf-chip">View customer details</span><span class="crf-chip">Vehicle &amp; service history</span><span class="crf-chip">Record contact outcome</span><span class="crf-chip">Reschedule follow-up</span><span class="crf-chip">Mark completed</span></p>
+                  </div>
+                  <span class="badge badge--neutral crf-empty__status">Not yet connected</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
