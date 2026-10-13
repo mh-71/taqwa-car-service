@@ -1,0 +1,122 @@
+/* crm-ui — the Customer CRM is visual only in this release.
+
+   What must hold until the CRM is built:
+     1. The sidebar has a "Customer CRM" group after Expenses and before
+        Reports, with five entries that link to real pages, mark the current
+        one as active and open the group on a CRM page.
+     2. The Dashboard's CRM Overview shows four cards with a "—" placeholder
+        and "Coming soon" -- never a number, and nothing in dashboard.js
+        calculates one.
+     3. The five placeholder pages share the app's <head> (so the CSP hash
+        still covers them), say "Coming soon", and carry no data, forms,
+        actions or page script of their own.
+
+   Drives the REAL js/app.js through the shared harness. */
+const fs = require('fs'), path = require('path');
+const { boot, check, ok, summary } = require('../lib/harness.cjs');
+const ROOT = path.resolve(__dirname, '..', '..');
+const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+
+const ENTRIES = [
+  ['crm-reminders', 'Service Reminders', 'pages/crm-reminders.html'],
+  ['crm-follow-up', 'Customer Follow-up', 'pages/crm-follow-up.html'],
+  ['crm-history', 'Service History', 'pages/crm-history.html'],
+  ['crm-tasks', 'Follow-up Tasks', 'pages/crm-tasks.html'],
+  ['crm-reports', 'CRM Reports', 'pages/crm-reports.html'],
+];
+
+/** Render the shell for one page; return the sidebar HTML the shell wrote. */
+function shellFor(page, root = '', sessionHint = null) {
+  const session = new Map(sessionHint ? [['taqwa_nav_crm_open', sessionHint]] : []);
+  const h = boot({
+    modules: ['js/app.js'],
+    beforeModules(doc, ctx) {
+      doc.body.dataset.page = page;
+      doc.body.dataset.root = root;
+      ctx.sessionStorage = { getItem: k => (session.has(k) ? session.get(k) : null), setItem: (k, v) => session.set(k, String(v)) };
+    },
+  });
+  h.fireReady();
+  return h.ctx.document.body._lastShellHtml || '';
+}
+const crmBlock = html => (html.match(/<details class="nav__group[^"]*" id="navCrm"[\s\S]*?<\/details>/) || [''])[0];
+
+console.log('=== crm-ui: Customer CRM, visual only ===\n');
+
+/* ---------- 1. sidebar ---------- */
+console.log('-- 1. sidebar --');
+{
+  const html = shellFor('dashboard');
+  const block = crmBlock(html);
+  ok('the sidebar has a Customer CRM group', /<span>Customer CRM<\/span>/.test(block), block.slice(0, 200));
+  const iExp = html.indexOf('pages/expenses.html'), iCrm = html.indexOf('id="navCrm"'), iRep = html.indexOf('pages/reports.html');
+  ok('   ...placed after Expenses and before Reports', iExp > -1 && iExp < iCrm && iCrm < iRep, JSON.stringify({ iExp, iCrm, iRep }));
+  const links = [...block.matchAll(/<a class="nav__sub[^"]*" href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)<\/span><\/a>/g)].map(m => [m[1], m[2]]);
+  check('   ...with the five entries, in order', links, ENTRIES.map(([, label, href]) => [href, label]));
+  ok('   ...each linking to a page that exists', ENTRIES.every(([, , href]) => fs.existsSync(path.join(ROOT, href))), '');
+  ok('   ...a native <details>, so it opens from the keyboard', /^<details[\s\S]*<summary class="nav__summary">/.test(block), '');
+  ok('   ...with an expand/collapse chevron', /<svg class="nav__chevron"/.test(block), '');
+  ok('   ...closed by default on a non-CRM page, with nothing marked active',
+    !/ open>/.test(block.slice(0, block.indexOf('>') + 1) + '>') && !/is-active|aria-current|has-active/.test(block), block.slice(0, 120));
+  ok('existing navigation is all still there (Dashboard ... Settings, Social Inbox)',
+    ['index.html', 'pages/customers.html', 'pages/vehicles.html', 'pages/appointments.html', 'pages/job-cards.html', 'pages/services.html',
+      'pages/mechanics.html', 'pages/inventory.html', 'pages/invoices.html', 'pages/payments.html', 'pages/expenses.html', 'pages/reports.html',
+      'pages/settings.html'].every(h => html.includes(`href="${h}"`)) && /id="navInbox"/.test(html), '');
+}
+{
+  const block = crmBlock(shellFor('dashboard', '', '1'));
+  ok('a group the user left open stays open on the next page', /^<details class="nav__group" id="navCrm" open>/.test(block), block.slice(0, 80));
+}
+for (const [key, label, href] of ENTRIES) {
+  const html = shellFor(key, '../');
+  const block = crmBlock(html);
+  const active = [...block.matchAll(/<a class="nav__sub is-active" href="([^"]+)" aria-current="page">/g)].map(m => m[1]);
+  ok(`on ${label}: the group is open and marked, and only its entry is active`,
+    /^<details class="nav__group has-active" id="navCrm" open>/.test(block) && active.length === 1 && active[0] === `../${href}`,
+    JSON.stringify({ head: block.slice(0, 70), active }));
+  ok(`   ...and the header title reads "${label}"`, html.includes(`<h1>${label}</h1>`), '');
+  ok('   ...while no top-level link claims to be active', !/class="nav__link is-active"/.test(html), '');
+}
+
+/* ---------- 2. dashboard overview ---------- */
+console.log('\n-- 2. dashboard CRM overview --');
+const index = read('index.html');
+const overview = (index.match(/<section class="card crm-overview"[\s\S]*?<\/section>/) || [''])[0];
+ok('the Dashboard has a Customer CRM Overview section', /<h2 id="crmOverviewTitle">Customer CRM Overview<\/h2>/.test(overview), '');
+ok('   ...between the KPI cards and Revenue Overview',
+  index.indexOf('id="statsGrid"') < index.indexOf('crm-overview') && index.indexOf('crm-overview') < index.indexOf('Revenue Overview'), '');
+const cards = [...overview.matchAll(/<a class="crm-card crm-card--\w+" href="([^"]+)">[\s\S]*?<span class="crm-card__title">([^<]+)<\/span>[\s\S]*?<span class="crm-card__value">([\s\S]*?)<\/span><span class="crm-card__soon">([^<]+)<\/span>/g)]
+  .map(m => ({ href: m[1], title: m[2], value: m[3], soon: m[4] }));
+check('   ...with the four cards', cards.map(c => c.title), ['Upcoming Reminders', 'Overdue Services', 'Customers to Follow Up', 'Vehicles Due for Service']);
+ok('   ...each showing a "—" placeholder and "Coming soon", never a number',
+  cards.length === 4 && cards.every(c => c.value === '<span aria-hidden="true">—</span>' && c.soon === 'Coming soon'), JSON.stringify(cards));
+ok('   ...with no digit anywhere in the section\'s visible text',
+  !/\d/.test(overview.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ')), '');
+ok('   ...each card opening a CRM page that exists', cards.every(c => fs.existsSync(path.join(ROOT, c.href))), JSON.stringify(cards.map(c => c.href)));
+ok('   ...and saying nothing is calculated or sent yet', /Nothing is calculated or sent yet\./.test(overview), '');
+const dash = read('js/dashboard.js');
+ok('dashboard.js does not compute anything for the CRM (untouched)', !/crm|nextServiceDate|follow/i.test(dash), '');
+ok('the existing Dashboard sections are all still there',
+  ['id="statsGrid"', 'Revenue Overview', 'id="revChart"', "Today's Appointments", 'id="apptList"', 'Recent Service Jobs', 'id="recentJobsBody"']
+    .every(s => index.includes(s)), '');
+
+/* ---------- 3. placeholder pages ---------- */
+console.log('\n-- 3. placeholder pages --');
+const head = s => s.slice(0, s.indexOf('</head>'));
+const settingsHead = head(read('pages/settings.html'));
+for (const [key, label, href] of ENTRIES) {
+  const html = read(href);
+  const body = html.slice(html.indexOf('<body data-page='));   // not the '<body>' named in a head comment
+  check(`${label}: <head> is the Settings head with only the title changed`, head(html),
+    settingsHead.replace('<title>Settings — ', `<title>${label} — `));
+  ok('   ...declares its own page key', body.startsWith(`<body data-page="${key}" data-root="../">`), body.slice(0, 60));
+  ok('   ...says "Coming soon" and that it arrives in a future release',
+    body.includes('Coming soon') && /activated in a future release/.test(body), '');
+  ok('   ...has no form, input, button, table or inline handler', !/<form|<input|<select|<textarea|<button|<table|\son[a-z]+=/i.test(body), '');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  check('   ...loads only the shared shell scripts (no page module, no requests of its own)', scripts,
+    ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js']);
+  ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
+}
+
+process.exit(summary('CRM UI unit') === 0 ? 0 : 1);

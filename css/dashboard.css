@@ -444,6 +444,121 @@
 [data-page="dashboard"] #apptList .empty p,
 [data-page="dashboard"] #recentJobsBody .empty p { margin: 0; font-size: .8rem; }
 
+/* ---------- Customer CRM overview (UI only) ----------
+   Static markup in index.html; dashboard.js does not touch it. Every
+   value is a placeholder until the CRM is built. */
+[data-page="dashboard"] .crm-overview {
+  margin-bottom: 16px;
+  padding: 18px 20px 20px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--info) 6%, var(--surface)) 0%, var(--surface) 60%);
+}
+[data-page="dashboard"] .crm-overview__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+[data-page="dashboard"] .crm-overview__head .spacer { margin-left: auto; }
+[data-page="dashboard"] .crm-overview__icon {
+  width: 44px; height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--info-soft);
+  color: var(--info);
+}
+[data-page="dashboard"] .crm-overview__title { min-width: 0; }
+[data-page="dashboard"] .crm-overview__title h2 { font-size: 1.05rem; font-weight: 700; }
+[data-page="dashboard"] .crm-overview__title p {
+  margin: 2px 0 0;
+  font-size: .8rem;
+  color: var(--text-2);
+}
+[data-page="dashboard"] .crm-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+[data-page="dashboard"] .crm-card {
+  --tone: var(--info);
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 16px 14px;
+  border: 1px solid color-mix(in srgb, var(--tone) 22%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--tone) 6%, var(--surface));
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+[data-page="dashboard"] .crm-card:hover {
+  text-decoration: none;
+  border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
+  box-shadow: var(--shadow);
+}
+[data-page="dashboard"] .crm-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+[data-page="dashboard"] .crm-card--amber { --tone: var(--amber); }
+[data-page="dashboard"] .crm-card--bad   { --tone: var(--bad); }
+[data-page="dashboard"] .crm-card--good  { --tone: var(--good); }
+[data-page="dashboard"] .crm-card--info  { --tone: var(--info); }
+[data-page="dashboard"] .crm-card__icon {
+  width: 44px; height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--tone);
+  color: #fff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--tone) 30%, transparent);
+}
+[data-page="dashboard"] .crm-card--amber .crm-card__icon { color: #241a05; }
+[data-page="dashboard"] .crm-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+[data-page="dashboard"] .crm-card__title { font-size: .84rem; font-weight: 600; line-height: 1.3; }
+[data-page="dashboard"] .crm-card__value {
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-3);
+}
+[data-page="dashboard"] .crm-card__sub { font-size: .75rem; color: var(--text-3); }
+[data-page="dashboard"] .crm-card__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+[data-page="dashboard"] .crm-card__soon {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: .66rem;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+@media (max-width: 1359px) {
+  [data-page="dashboard"] .crm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  [data-page="dashboard"] .crm-overview { padding: 14px 16px 16px; }
+  [data-page="dashboard"] .crm-overview__head { flex-wrap: wrap; gap: 10px; }
+  [data-page="dashboard"] .crm-overview__icon { width: 36px; height: 36px; border-radius: 9px; }
+  [data-page="dashboard"] .crm-cards { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  [data-page="dashboard"] .crm-card { padding: 12px; }
+  [data-page="dashboard"] .crm-card__icon { width: 36px; height: 36px; border-radius: 9px; }
+  [data-page="dashboard"] .crm-card__value { font-size: 1.3rem; }
+}
+
 /* ---------- responsive (dashboard only) ----------
    These sit here rather than in responsive.css because the
    scoped rules above out-rank its generic .stats-grid ones. */
