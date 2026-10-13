@@ -26,7 +26,7 @@ const ENTRIES = [
 ];
 
 // Pages with a stylesheet of their own (loaded after responsive.css).
-const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css' };
+const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css', 'crm-history': 'crm-history.css' };
 
 /* The CRM pages that show their (not yet connected) layout rather than a
    "Coming soon" card, and exactly what that layout must contain. */
@@ -42,6 +42,13 @@ const LAYOUTS = {
     options: ['All statuses', 'Pending', 'Due Today', 'Overdue', 'Completed'],
     cols: ['Customer', 'Vehicle', 'Follow-up Reason', 'Last Contact', 'Next Follow-up', 'Status', 'Actions'],
     cards: ['Total Follow-ups', 'Due Today', 'Contacted', 'Overdue'],
+  },
+  'crm-history': {
+    prefix: 'crh', noun: 'service records', dates: 2, compact: true,   // a From / To date range; compact below 1200px
+    options: ['All Statuses', 'Completed', 'Pending', 'Cancelled'],
+    cols: ['Service Date', 'Customer', 'Vehicle', 'Registration Number', 'Job Card', 'Services Performed',
+      'Mileage', 'Total Cost', 'Status', 'Actions'],
+    cards: ['Total Service Visits', 'Completed Services', 'Pending Services', 'Total Service Cost'],
   },
 };
 
@@ -127,7 +134,7 @@ const settingsHead = head(read('pages/settings.html'));
 for (const [key, label, href] of ENTRIES) {
   const html = read(href);
   const body = html.slice(html.indexOf('<body data-page='));   // not the '<body>' named in a head comment
-  // Service Reminders and Customer Follow-up have their own page stylesheet,
+  // The CRM pages with a layout have their own page stylesheet,
   // added after responsive.css exactly as Profile and Account Settings add theirs.
   const ownCss = PAGE_CSS[key]
     ? `\n  <link rel="stylesheet" href="../css/${PAGE_CSS[key]}">` : '';
@@ -144,9 +151,11 @@ for (const [key, label, href] of ENTRIES) {
     // yet: every control is disabled, the table holds only its empty state,
     // and no value is a number.
     const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
-    ok('   ...shows a search box, a status filter and a date filter, ALL disabled',
-      controls.length === 3 && controls.every(c => /\sdisabled\b/.test(c))
-        && /type="search"/.test(controls[0]) && controls[1].startsWith('<select') && /type="date"/.test(controls[2]), JSON.stringify(controls));
+    const dates = L.dates || 1;
+    ok(`   ...shows a search box, a status filter and ${dates === 1 ? 'a date filter' : `${dates} date fields`}, ALL disabled`,
+      controls.length === 2 + dates && controls.every(c => /\sdisabled\b/.test(c))
+        && /type="search"/.test(controls[0]) && controls[1].startsWith('<select')
+        && controls.slice(2).every(c => /type="date"/.test(c)), JSON.stringify(controls));
     ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
     check(`   ...the status filter offers exactly ${L.options.slice(1).join(' / ')}`,
       [...body.matchAll(/<option>([^<]+)<\/option>/g)].map(m => m[1]), L.options);
@@ -156,6 +165,13 @@ for (const [key, label, href] of ENTRIES) {
     ok('   ...and no data rows -- only the one empty-state row',
       rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1
         && new RegExp(`<tr class="${L.prefix}-empty-row">\\s*<td colspan="${L.cols.length}">`).test(rows[0]), '');
+    if (L.compact) {
+      // Too many columns for a narrow card: below its breakpoint the page hides
+      // the heading row and the empty state names every column instead.
+      const fields = ((body.match(new RegExp(`<p class="${L.prefix}-fields">([\\s\\S]*?)<\\/p>`)) || [])[1] || '').replace(/<[^>]+>/g, ' ').toLowerCase();
+      ok('   ...and, for narrow screens, an empty state that names every column',
+        L.cols.every(c => fields.includes(c.toLowerCase())), fields);
+    }
     ok('   ...whose empty state says "Not yet connected"',
       new RegExp(`<span class="badge badge--neutral ${L.prefix}-empty__status">Not yet connected</span>`).test(body), '');
     const stats = [...body.matchAll(new RegExp(`<div class="stat__value">([\\s\\S]*?)<\\/div>\\s*<div class="stat__label">([^<]+)<\\/div>\\s*<div class="${L.prefix}-pending">([^<]+)<\\/div>`, 'g'))]
