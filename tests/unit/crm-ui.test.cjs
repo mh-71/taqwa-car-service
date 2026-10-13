@@ -26,7 +26,7 @@ const ENTRIES = [
 ];
 
 // Pages with a stylesheet of their own (loaded after responsive.css).
-const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css', 'crm-history': 'crm-history.css' };
+const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css', 'crm-history': 'crm-history.css', 'crm-tasks': 'crm-tasks.css' };
 
 /* The CRM pages that show their (not yet connected) layout rather than a
    "Coming soon" card, and exactly what that layout must contain. */
@@ -49,6 +49,18 @@ const LAYOUTS = {
     cols: ['Service Date', 'Customer', 'Vehicle', 'Registration Number', 'Job Card', 'Services Performed',
       'Mileage', 'Total Cost', 'Status', 'Actions'],
     cards: ['Total Service Visits', 'Completed Services', 'Pending Services', 'Total Service Cost'],
+  },
+  'crm-tasks': {
+    prefix: 'ctk', noun: 'task', selects: 3,   // status, priority, assigned staff (no staff names: none are invented)
+    options: ['All Statuses', 'Pending', 'In Progress', 'Completed', 'Overdue',
+      'All Priorities', 'Low', 'Medium', 'High', 'Urgent',
+      'All Staff'],
+    cols: ['Task', 'Customer / Vehicle', 'Assigned To', 'Priority', 'Due Date', 'Status', 'Actions'],
+    cards: ['Total Tasks', 'Due Today', 'Overdue Tasks', 'Completed Tasks'],
+    legends: {
+      'Status colours': [['neutral', 'Pending'], ['info', 'In Progress'], ['good', 'Completed'], ['bad', 'Overdue']],
+      'Priority colours': [['neutral', 'Low'], ['info', 'Medium'], ['warn', 'High'], ['bad', 'Urgent']],
+    },
   },
 };
 
@@ -151,13 +163,13 @@ for (const [key, label, href] of ENTRIES) {
     // yet: every control is disabled, the table holds only its empty state,
     // and no value is a number.
     const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
-    const dates = L.dates || 1;
-    ok(`   ...shows a search box, a status filter and ${dates === 1 ? 'a date filter' : `${dates} date fields`}, ALL disabled`,
-      controls.length === 2 + dates && controls.every(c => /\sdisabled\b/.test(c))
-        && /type="search"/.test(controls[0]) && controls[1].startsWith('<select')
-        && controls.slice(2).every(c => /type="date"/.test(c)), JSON.stringify(controls));
+    const dates = L.dates || 1, selects = L.selects || 1;
+    ok(`   ...shows a search box, ${selects === 1 ? 'a status filter' : `${selects} filters`} and ${dates === 1 ? 'a date filter' : `${dates} date fields`}, ALL disabled`,
+      controls.length === 1 + selects + dates && controls.every(c => /\sdisabled\b/.test(c))
+        && /type="search"/.test(controls[0]) && controls.slice(1, 1 + selects).every(c => c.startsWith('<select'))
+        && controls.slice(1 + selects).every(c => /type="date"/.test(c)), JSON.stringify(controls));
     ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
-    check(`   ...the status filter offers exactly ${L.options.slice(1).join(' / ')}`,
+    check(`   ...the ${selects === 1 ? 'status filter offers' : 'filters offer'} exactly ${L.options.slice(1).join(' / ')}`,
       [...body.matchAll(/<option>([^<]+)<\/option>/g)].map(m => m[1]), L.options);
     const cols = [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]);
     check(`   ...the ${L.noun} table has the planned columns`, cols, L.cols);
@@ -171,6 +183,11 @@ for (const [key, label, href] of ENTRIES) {
       const fields = ((body.match(new RegExp(`<p class="${L.prefix}-fields">([\\s\\S]*?)<\\/p>`)) || [])[1] || '').replace(/<[^>]+>/g, ' ').toLowerCase();
       ok('   ...and, for narrow screens, an empty state that names every column',
         L.cols.every(c => fields.includes(c.toLowerCase())), fields);
+    }
+    for (const [name, keys] of Object.entries(L.legends || {})) {
+      const list = (body.match(new RegExp(`<ul class="${L.prefix}-legend" aria-label="${name}">([\\s\\S]*?)<\\/ul>`)) || [])[1] || '';
+      check(`   ...a ${name.toLowerCase()} key in the app's tones`,
+        [...list.matchAll(/<span class="badge badge--(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], m[2]]), keys);
     }
     ok('   ...whose empty state says "Not yet connected"',
       new RegExp(`<span class="badge badge--neutral ${L.prefix}-empty__status">Not yet connected</span>`).test(body), '');
