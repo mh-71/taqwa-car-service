@@ -1,15 +1,20 @@
-/* crm-ui — the Customer CRM is visual only in this release.
+/* crm-ui — the Customer CRM: one page connected, four still visual only.
 
-   What must hold until the CRM is built:
+   What must hold:
      1. The sidebar has a "Customer CRM" group after Expenses and before
         Reports, with five entries that link to real pages, mark the current
         one as active and open the group on a CRM page.
      2. The Dashboard's CRM Overview shows four cards with a "—" placeholder
         and "Coming soon" -- never a number, and nothing in dashboard.js
-        calculates one.
-     3. The five placeholder pages share the app's <head> (so the CSP hash
-        still covers them), say "Coming soon", and carry no data, forms,
-        actions or page script of their own.
+        calculates one. (Service Reminders being connected does not change
+        the Dashboard.)
+     3. The four placeholder pages (Follow-up, History, Tasks, Reports) share
+        the app's <head> (so the CSP hash still covers them), say "Coming
+        soon", and carry no data, forms, actions or page script of their own.
+     4. Service Reminders shares the same <head>, keeps its layout, starts in
+        a loading state with every control disabled, and loads exactly one
+        page script of its own. Its behaviour is tested in
+        crm-reminders.test.cjs.
 
    Drives the REAL js/app.js through the shared harness. */
 const fs = require('fs'), path = require('path');
@@ -31,13 +36,14 @@ const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-f
 
 /* The CRM pages that show their (not yet connected) layout rather than a
    "Coming soon" card, and exactly what that layout must contain. */
+const REMINDERS = {
+  options: [['all', 'All statuses'], ['Upcoming', 'Upcoming'], ['Due Today', 'Due Today'], ['Overdue', 'Overdue']],
+  cols: ['Customer', 'Vehicle', 'Registration Number', 'Last Service', 'Next Service Due', 'Status', 'Actions'],
+  cards: ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up'],
+};
+const PLACEHOLDERS = ENTRIES.filter(([key]) => key !== 'crm-reminders');
+
 const LAYOUTS = {
-  'crm-reminders': {
-    prefix: 'crr', noun: 'reminder',
-    options: ['All statuses', 'Upcoming', 'Due Today', 'Overdue'],
-    cols: ['Customer', 'Vehicle', 'Registration Number', 'Last Service', 'Next Service Due', 'Status', 'Actions'],
-    cards: ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up'],
-  },
   'crm-follow-up': {
     prefix: 'crf', noun: 'follow-up',
     options: ['All statuses', 'Pending', 'Due Today', 'Overdue', 'Completed'],
@@ -157,7 +163,7 @@ ok('the existing Dashboard sections are all still there',
 console.log('\n-- 3. placeholder pages --');
 const head = s => s.slice(0, s.indexOf('</head>'));
 const settingsHead = head(read('pages/settings.html'));
-for (const [key, label, href] of ENTRIES) {
+for (const [key, label, href] of PLACEHOLDERS) {
   const html = read(href);
   const body = html.slice(html.indexOf('<body data-page='));   // not the '<body>' named in a head comment
   // The CRM pages with a layout have their own page stylesheet,
@@ -276,6 +282,59 @@ for (const [key, label, href] of ENTRIES) {
   check('   ...loads only the shared shell scripts (no page module, no requests of its own)', scripts,
     ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js']);
   ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
+}
+
+/* ---------- 4. Service Reminders (connected) ---------- */
+console.log('\n-- 4. Service Reminders --');
+{
+  const html = read('pages/crm-reminders.html');
+  const body = html.slice(html.indexOf('<body data-page='));
+  check('Service Reminders: <head> is the Settings head with only the title and its stylesheet changed', head(html),
+    settingsHead.replace('<title>Settings — ', '<title>Service Reminders — ')
+      .replace('<link rel="stylesheet" href="../css/responsive.css">',
+        '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/crm-reminders.css">'));
+  ok('   ...declares its own page key', body.startsWith('<body data-page="crm-reminders" data-root="../">'), body.slice(0, 60));
+  ok('   ...no longer claims to be "Coming soon"', !/Coming soon|activated in a future release/.test(body), '');
+  ok('   ...has no form, textarea, static button or inline handler (actions are rendered from data)',
+    !/<form|<textarea|<button|\son[a-z]+=/i.test(body), '');
+  const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
+  ok('   ...a search box, a status filter and a due-by date, all disabled until the reminders load',
+    controls.length === 3 && /type="search"/.test(controls[0]) && controls[1].startsWith('<select') && /type="date"/.test(controls[2])
+      && controls.every(c => /\sdisabled\b/.test(c)), JSON.stringify(controls));
+  ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
+  check('   ...the status filter offers All / Upcoming / Due Today / Overdue, by value',
+    [...body.matchAll(/<option value="([^"]*)">([^<]+)<\/option>/g)].map(m => [m[1], m[2]]), REMINDERS.options);
+  ok('   ...with no option pre-selected', !/<option[^>]*\sselected/.test(body), '');
+  check('   ...the reminder table keeps its columns', [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]), REMINDERS.cols);
+  const rows = [...body.matchAll(/<tbody id="crrBody">([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
+  ok('   ...and starts with one loading row, no data rows',
+    rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1
+      && /<tr class="crr-empty-row">\s*<td colspan="7">/.test(rows[0]) && /Loading service reminders/.test(rows[0]), '');
+  const stats = [...body.matchAll(/<div class="stat__value"( id="\w+")?>([\s\S]*?)<\/div>\s*<div class="stat__label">([^<]+)<\/div>\s*<div class="(crr-sub|crr-pending)"( id="\w+")?>([^<]+)<\/div>/g)]
+    .map(m => ({ id: (m[1] || '').trim(), value: m[2], label: m[3], kind: m[4], note: m[6] }));
+  check('   ...four summary cards', stats.map(x => x.label), REMINDERS.cards);
+  check('   ...the first three wired by id', stats.slice(0, 3).map(x => x.id), ['id="crrUpcoming"', 'id="crrDueToday"', 'id="crrOverdue"']);
+  ok('   ...all four start as a "—", never a number',
+    stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>'), JSON.stringify(stats));
+  ok('   ...and "Customers Requiring Follow-up" stays "Not yet connected" (no follow-up data exists)',
+    stats[3] && stats[3].kind === 'crr-pending' && stats[3].note === 'Not yet connected'
+      && /<div class="stat crr-stat crr-stat--pending">/.test(body), JSON.stringify(stats[3]));
+  ok('   ...with no digit anywhere in the static visible text',
+    !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
+      .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  check('   ...loads the shared shell scripts plus its own page module, last', scripts,
+    ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js', '../js/crm-reminders.js']);
+  ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
+  ok('   ...whose stylesheet is scoped to this page alone',
+    read('css/crm-reminders.css').replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
+      .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith('[data-page="crm-reminders"]'))), '');
+  const js = read('js/crm-reminders.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  ok('the page module reads no browser storage and makes no requests of its own',
+    !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest/.test(js), '');
+  ok('   ...writes nothing: no Storage write, seed or reset call',
+    !/Storage\.(create|update|remove|action|addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings)\b/.test(js), '');
+  ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
 }
 
 process.exit(summary('CRM UI unit') === 0 ? 0 : 1);

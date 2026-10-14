@@ -37,45 +37,44 @@
 
   <div id="page-content">
 
-    <!-- UI ONLY. This page shows the layout of Service Reminders and nothing
-         else: it reads no records, calculates nothing and makes no requests of
-         its own. Every value is a placeholder and every control is disabled
-         until reminders are connected in a later release. -->
+    <!-- Service Reminders, filled in by js/crm-reminders.js from the workshop
+         database only (vehicles, customers, job cards). Until the data has
+         loaded -- or if it cannot be -- the cards show a dash and the controls
+         stay disabled; nothing from browser storage is ever shown here. -->
 
     <div class="crr-head">
       <div class="crr-head__text">
         <h2 class="crr-head__title">Service Reminders</h2>
         <p class="crr-head__desc">Manage upcoming, due, and overdue vehicle services.</p>
       </div>
-      <span class="badge badge--neutral crr-head__status">Coming soon &#183; not yet connected</span>
     </div>
 
-    <section class="stats-grid crr-stats" aria-label="Service reminder summary (not yet connected)">
+    <section class="stats-grid crr-stats" aria-label="Service reminder summary">
       <div class="stat crr-stat">
         <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="crrUpcoming"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Upcoming Services</div>
-          <div class="crr-pending">Not yet connected</div>
+          <div class="crr-sub" id="crrUpcomingSub">Loading&#8230;</div>
         </div>
       </div>
       <div class="stat crr-stat">
         <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm-7-8h5v5h-5v-5z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="crrDueToday"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Due Today</div>
-          <div class="crr-pending">Not yet connected</div>
+          <div class="crr-sub" id="crrDueTodaySub">Loading&#8230;</div>
         </div>
       </div>
       <div class="stat crr-stat">
         <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="crrOverdue"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Overdue Services</div>
-          <div class="crr-pending">Not yet connected</div>
+          <div class="crr-sub" id="crrOverdueSub">Loading&#8230;</div>
         </div>
       </div>
-      <div class="stat crr-stat">
+      <div class="stat crr-stat crr-stat--pending">
         <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg></div>
         <div>
           <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
@@ -89,17 +88,17 @@
       <input type="search" class="input toolbar__search" id="crrSearch" disabled
              placeholder="Search customer, registration, brand or model…" aria-label="Search service reminders">
       <select class="select" id="crrStatus" disabled aria-label="Filter by reminder status">
-        <option>All statuses</option>
-        <option>Upcoming</option>
-        <option>Due Today</option>
-        <option>Overdue</option>
+        <option value="all">All statuses</option>
+        <option value="Upcoming">Upcoming</option>
+        <option value="Due Today">Due Today</option>
+        <option value="Overdue">Overdue</option>
       </select>
       <label class="crr-date">
         <span>Due by</span>
-        <input type="date" class="input" id="crrDueBy" disabled aria-label="Next service due by">
+        <input type="date" class="input" id="crrDueBy" disabled aria-label="Next service due on or before">
       </label>
       <span class="spacer"></span>
-      <span class="toolbar__count crr-toolbar__note" id="crrToolbarNote">Search and filters will work once reminders are connected.</span>
+      <span class="toolbar__count crr-toolbar__note" id="crrToolbarNote" aria-live="polite">Loading reminders&#8230;</span>
     </div>
 
     <section class="card crr-list" aria-labelledby="crrListTitle">
@@ -113,7 +112,7 @@
         </ul>
       </div>
       <div class="table-wrap">
-        <table class="table crr-table">
+        <table class="table crr-table" id="crrTable">
           <thead>
             <tr>
               <th scope="col">Customer</th><th scope="col">Vehicle</th><th scope="col">Registration Number</th>
@@ -121,22 +120,19 @@
               <th scope="col">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            <tr class="crr-empty-row">
-              <td colspan="7">
-                <div class="crr-empty">
-                  <span class="crr-empty__icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M18.9 6c-.2-.6-.8-1-1.4-1H6.5c-.6 0-1.2.4-1.4 1L3 12v8c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-1h12v1c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-8l-2.1-6zM6.5 15c-.8 0-1.5-.7-1.5-1.5S5.7 12 6.5 12s1.5.7 1.5 1.5S7.3 15 6.5 15zm11 0c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5zM5 10l1.5-4.5h11L19 10H5z"/></svg></span>
-                  <div class="crr-empty__text">
-                    <h3>Service reminder data will appear here when the feature is connected</h3>
-                    <p>Vehicles that are coming due, due today or overdue for a service will be listed with their customer, registration and service dates. It will be activated in a future release; no reminders are calculated or sent yet.</p>
-                    <p class="crr-planned"><span class="crr-planned__label">Planned actions:</span>
-                      <span class="crr-chip">View vehicle</span><span class="crr-chip">Service history</span><span class="crr-chip">Create follow-up task</span><span class="crr-chip">Contact customer</span></p>
-                  </div>
-                  <span class="badge badge--neutral crr-empty__status">Not yet connected</span>
+          <tbody id="crrBody">
+          <tr class="crr-empty-row">
+            <td colspan="7">
+              <div class="crr-empty">
+                <span class="crr-empty__icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M18.9 6c-.2-.6-.8-1-1.4-1H6.5c-.6 0-1.2.4-1.4 1L3 12v8c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-1h12v1c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-8l-2.1-6zM6.5 15c-.8 0-1.5-.7-1.5-1.5S5.7 12 6.5 12s1.5.7 1.5 1.5S7.3 15 6.5 15zm11 0c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5zM5 10l1.5-4.5h11L19 10H5z"/></svg></span>
+                <div class="crr-empty__text">
+                  <h3>Loading service reminders&#8230;</h3>
+                  <p>Reading vehicles, customers and job cards from the workshop database.</p>
                 </div>
-              </td>
-            </tr>
-          </tbody>
+              </div>
+            </td>
+          </tr>
+        </tbody>
         </table>
       </div>
     </section>
@@ -148,6 +144,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
+  <script src="../js/crm-reminders.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>
