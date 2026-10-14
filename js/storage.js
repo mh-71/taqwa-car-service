@@ -73,8 +73,27 @@ const Storage = (() => {
     jobCards: 'job-cards', services: 'services', mechanics: 'mechanics',
     parts: 'parts', invoices: 'invoices', payments: 'payments',
     expenses: 'expenses', inventoryTransactions: 'inventory-transactions',
-    invoiceAdjustments: 'invoice-adjustments'
+    invoiceAdjustments: 'invoice-adjustments',
+    followUps: 'follow-ups', followUpContacts: 'follow-up-contacts'
   };
+
+  /**
+   * Collections that exist ONLY in the database and are read on demand by the
+   * one page that needs them (Customer Follow-up), never during hydration.
+   *
+   * Deliberately not in COLLECTIONS: hydration reads every entry there and
+   * falls back to browser storage if any one fails, so a missing table here
+   * (code deployed before its migration) would take every other page with
+   * it. Loaded with load(), they can fail on their own page alone.
+   *
+   * Outside 'api' mode they read as empty and refuse every write: there is no
+   * browser-storage copy of them, demo or otherwise, to show or to change.
+   */
+  const API_ONLY = ['followUps', 'followUpContacts'];
+  const isApiOnly = c => API_ONLY.includes(c);
+  const apiOnlyRefusal = () => ({
+    ok: false, code: 'no_api', message: 'This needs the workshop database, which this page is not connected to.',
+  });
 
   /* ---------- mode ---------- */
 
@@ -119,13 +138,14 @@ const Storage = (() => {
   /** Get all records of a collection (always returns an array). */
   function getData(collection) {
     if (isApi()) return cache[collection] || [];
+    if (isApiOnly(collection)) return [];
     if (usesBrowserStore()) return read(collection) || [];
     return [];                      // locked: nothing has been read, so nothing is shown
   }
 
   /** Overwrite an entire collection. localStorage only -- see seedIfEmpty. */
   function saveData(collection, records) {
-    if (!usesBrowserStore()) return false;
+    if (!usesBrowserStore() || isApiOnly(collection)) return false;
     return write(collection, records);
   }
 
@@ -224,6 +244,7 @@ const Storage = (() => {
    */
   async function create(collection, record) {
     if (isLocked()) return lockedRefusal();
+    if (!isApi() && isApiOnly(collection)) return apiOnlyRefusal();
     if (!isApi()) {
       const saved = addData(collection, record);
       return { ok: true, record: saved };
@@ -237,6 +258,7 @@ const Storage = (() => {
 
   async function update(collection, id, changes) {
     if (isLocked()) return lockedRefusal();
+    if (!isApi() && isApiOnly(collection)) return apiOnlyRefusal();
     if (!isApi()) {
       const saved = updateData(collection, id, changes);
       return saved
@@ -250,6 +272,7 @@ const Storage = (() => {
 
   async function remove(collection, id) {
     if (isLocked()) return lockedRefusal();
+    if (!isApi() && isApiOnly(collection)) return apiOnlyRefusal();
     if (!isApi()) {
       const gone = deleteData(collection, id);
       return gone
@@ -268,6 +291,10 @@ const Storage = (() => {
    * linking a payment. These move several tables in one transaction, so the
    * server's answer is the only thing that knows what changed; `refresh`
    * names the collections to re-read afterwards.
+   *
+   * `meta` carries whatever else the response held beside `data` (e.g. the
+   * contact a follow-up's contact action created, or `replayed`), exactly as
+   * create() already passes it on. Callers that do not read it are unaffected.
    */
   async function action(collection, id, name, body = {}, refresh = []) {
     if (isLocked()) return lockedRefusal();
@@ -278,7 +305,7 @@ const Storage = (() => {
     if (!res.ok) return res;
     if (res.data && res.data.id) cachePut(collection, res.data);
     const stale = await refreshAll(...refresh);
-    return { ok: true, record: res.data, ...(stale.length ? { stale } : {}) };
+    return { ok: true, record: res.data, meta: res.meta || {}, ...(stale.length ? { stale } : {}) };
   }
 
   /* ---------- id generation ---------- */
@@ -510,6 +537,19 @@ const Storage = (() => {
     return stale;
   }
 
+  /**
+   * Read one API_ONLY collection, on demand, into the cache. Never part of
+   * hydration, and refused outside 'api' mode -- so a failure here is this
+   * page's to report and cannot change the mode any other page runs in.
+   */
+  async function load(collection) {
+    if (!isApiOnly(collection)) {
+      return { ok: false, code: 'not_on_demand', message: `${collection} is loaded with the other collections.` };
+    }
+    if (!isApi()) return apiOnlyRefusal();
+    return reload(collection);
+  }
+
   /** Re-read one collection from the server. Used after a transaction. */
   async function reload(collection) {
     if (!isApi()) return { ok: false, code: 'no_api' };
@@ -650,6 +690,7 @@ const Storage = (() => {
         : { ok: false, code: who.code || 'network_error', message: 'The sign-out could not be confirmed with the server.' };
     }
     COLLECTIONS.forEach(c => { delete cache[c]; });
+    API_ONLY.forEach(c => { delete cache[c]; });
     cachedSettings = null;
     mode = 'locked';
     hydration = null;
@@ -710,7 +751,7 @@ const Storage = (() => {
   return {
     COLLECTIONS,
     getData, saveData, getById, addData, updateData, deleteData,
-    create, update, remove, action, reload, refreshAll,
+    create, update, remove, action, reload, refreshAll, load,
     generateId, getSettings, saveSettings, putSettings, getTheme, saveTheme,
     seedIfEmpty, resetToSeedData,
     hydrate, whenReady, ready, signIn, signOut,

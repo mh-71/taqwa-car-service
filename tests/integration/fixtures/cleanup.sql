@@ -24,6 +24,10 @@
 -- run.sh refuses to start unless all of these tables are empty, so anything
 -- present here was created by this run and is safe to remove. Order follows
 -- the foreign keys.
+-- 0005: follow-up contacts reference follow-ups, and follow-ups reference
+-- customers and vehicles (all RESTRICT), so they go first of all.
+DELETE FROM follow_up_contacts;
+DELETE FROM follow_ups;
 -- 0002: write-offs hold RESTRICT references to invoices and customers, so
 -- they go before either.
 DELETE FROM invoice_adjustments;

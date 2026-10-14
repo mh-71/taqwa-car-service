@@ -355,7 +355,7 @@ console.log('\n-- 11. Route registration --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db })).json()).data.routes;
-  check('health advertises 67 routes', routes.length, 67);
+  check('health advertises 77 routes', routes.length, 77);
   ok_('advertises the ledger list', routes.includes('GET /api/inventory-transactions'));
   ok_('advertises the ledger detail', routes.includes('GET /api/inventory-transactions/:id'));
   // C-4 gave the ledger POST and nothing else: a movement is recorded and
@@ -399,12 +399,12 @@ console.log('\n-- 12. The eleven collections are all now reachable --');
   const routes = (await (await call('/api/health', { DB: db })).json()).data.routes;
   for (const name of ['customers', 'vehicles', 'services', 'mechanics', 'parts',
     'appointments', 'job-cards', 'invoices', 'payments', 'invoice-adjustments', 'expenses',
-    'inventory-transactions']) {
+    'inventory-transactions', 'follow-ups', 'follow-up-contacts']) {
     ok_(`${name} has both routes`,
       routes.includes(`GET /api/${name}`) && routes.includes(`GET /api/${name}/:id`));
   }
-  ok_('12 collections x 2 GET, plus health, settings and session, is 27 GETs',
-    routes.filter((r) => r.startsWith('GET ')).length === 12 * 2 + 3,
+  ok_('14 collections x 2 GET, plus health, settings and session, is 31 GETs',
+    routes.filter((r) => r.startsWith('GET ')).length === 14 * 2 + 3,
     `${routes.filter((r) => r.startsWith('GET ')).length}`);
 }
 

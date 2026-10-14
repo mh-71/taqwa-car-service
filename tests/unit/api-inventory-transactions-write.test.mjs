@@ -420,7 +420,7 @@ console.log('\n-- 12. Routing, and the GET route is unchanged --');
     },
   };
   const routes = (await (await call('/api/health', { DB: db }, 'GET')).json()).data.routes;
-  check('the registry advertises 67 routes', routes.length, 67);
+  check('the registry advertises 77 routes', routes.length, 77);
   ok_('advertises POST /api/inventory-transactions', routes.includes('POST /api/inventory-transactions'));
   ok_('advertises no PUT for the ledger', !routes.includes('PUT /api/inventory-transactions/:id'));
   ok_('advertises no DELETE for the ledger', !routes.includes('DELETE /api/inventory-transactions/:id'));
@@ -429,7 +429,7 @@ console.log('\n-- 12. Routing, and the GET route is unchanged --');
 
   const byMethod = {};
   routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-  check('27 GET, 18 POST, 11 PUT, 11 DELETE', byMethod, { GET: 27, POST: 18, PUT: 11, DELETE: 11 });
+  check('31 GET, 23 POST, 12 PUT, 11 DELETE (0005 added follow-ups)', byMethod, { GET: 31, POST: 23, PUT: 12, DELETE: 11 });
 
   // The read route must not have gained any stock arithmetic.
   const readDb = stubDB({});
