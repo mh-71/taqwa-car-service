@@ -1,4 +1,4 @@
-/* crm-ui — the Customer CRM: one page connected, four still visual only.
+/* crm-ui — the Customer CRM: two pages connected, three still visual only.
 
    What must hold:
      1. The sidebar has a "Customer CRM" group after Expenses and before
@@ -8,13 +8,18 @@
         and "Coming soon" -- never a number, and nothing in dashboard.js
         calculates one. (Service Reminders being connected does not change
         the Dashboard.)
-     3. The four placeholder pages (Follow-up, History, Tasks, Reports) share
-        the app's <head> (so the CSP hash still covers them), say "Coming
-        soon", and carry no data, forms, actions or page script of their own.
+     3. The three placeholder pages (History, Tasks, Reports) share the
+        app's <head> (so the CSP hash still covers them), say "Coming soon",
+        and carry no data, forms, actions or page script of their own.
      4. Service Reminders shares the same <head>, keeps its layout, starts in
         a loading state with every control disabled, and loads exactly one
         page script of its own. Its behaviour is tested in
         crm-reminders.test.cjs.
+     5. Customer Follow-up shares the same <head>, starts in a loading state
+        with every control (and its one static button) disabled, loads
+        exactly one page script of its own, and that script reads no browser
+        storage and writes only follow-ups through the database. Its
+        behaviour is tested in crm-follow-up.test.cjs.
 
    Drives the REAL js/app.js through the shared harness. */
 const fs = require('fs'), path = require('path');
@@ -41,15 +46,11 @@ const REMINDERS = {
   cols: ['Customer', 'Vehicle', 'Registration Number', 'Last Service', 'Next Service Due', 'Status', 'Actions'],
   cards: ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up'],
 };
-const PLACEHOLDERS = ENTRIES.filter(([key]) => key !== 'crm-reminders');
+// Pages that are connected to the database and tested on their own below.
+const CONNECTED = ['crm-reminders', 'crm-follow-up'];
+const PLACEHOLDERS = ENTRIES.filter(([key]) => !CONNECTED.includes(key));
 
 const LAYOUTS = {
-  'crm-follow-up': {
-    prefix: 'crf', noun: 'follow-up',
-    options: ['All statuses', 'Pending', 'Due Today', 'Overdue', 'Completed'],
-    cols: ['Customer', 'Vehicle', 'Follow-up Reason', 'Last Contact', 'Next Follow-up', 'Status', 'Actions'],
-    cards: ['Total Follow-ups', 'Due Today', 'Contacted', 'Overdue'],
-  },
   'crm-history': {
     prefix: 'crh', noun: 'service records', dates: 2, compact: true,   // a From / To date range; compact below 1200px
     options: ['All Statuses', 'Completed', 'Pending', 'Cancelled'],
@@ -334,6 +335,70 @@ console.log('\n-- 4. Service Reminders --');
     !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest/.test(js), '');
   ok('   ...writes nothing: no Storage write, seed or reset call',
     !/Storage\.(create|update|remove|action|addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings)\b/.test(js), '');
+  ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
+}
+
+/* ---------- 5. Customer Follow-up (connected) ---------- */
+console.log('\n-- 5. Customer Follow-up --');
+{
+  const html = read('pages/crm-follow-up.html');
+  const body = html.slice(html.indexOf('<body data-page='));
+  check('Customer Follow-up: <head> is the Settings head with only the title and its stylesheet changed', head(html),
+    settingsHead.replace('<title>Settings — ', '<title>Customer Follow-up — ')
+      .replace('<link rel="stylesheet" href="../css/responsive.css">',
+        '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/crm-follow-up.css">'));
+  ok('   ...declares its own page key', body.startsWith('<body data-page="crm-follow-up" data-root="../">'), body.slice(0, 60));
+  ok('   ...no longer claims to be "Coming soon" or "not yet connected"', !/Coming soon|future release|not yet connected/i.test(body), '');
+  ok('   ...has no form, textarea or inline handler (dialogs are rendered by the page module)',
+    !/<form|<textarea|\son[a-z]+=/i.test(body), '');
+  const buttons = body.match(/<button\b[^>]*>/g) || [];
+  ok('   ...exactly one static button, "New Follow-up", type="button" and disabled until the data loads',
+    buttons.length === 1 && /id="crfNew"/.test(buttons[0]) && /type="button"/.test(buttons[0]) && /\sdisabled\b/.test(buttons[0]),
+    JSON.stringify(buttons));
+  const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
+  ok('   ...a search box and three filters (status, due date, priority), all disabled until the data loads',
+    controls.length === 4 && /type="search"/.test(controls[0]) && controls.slice(1).every(c => c.startsWith('<select'))
+      && controls.every(c => /\sdisabled\b/.test(c)), JSON.stringify(controls));
+  ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
+  const selects = [...body.matchAll(/<select[^>]*id="(\w+)"[^>]*>([\s\S]*?)<\/select>/g)]
+    .map(m => [m[1], [...m[2].matchAll(/<option value="([^"]*)">([^<]+)<\/option>/g)].map(o => [o[1], o[2]])]);
+  check('   ...the filters offer exactly these values', selects, [
+    ['crfStatus', [['open', 'Open'], ['all', 'All statuses'], ['Completed', 'Completed'], ['Cancelled', 'Cancelled']]],
+    ['crfDue', [['any', 'Any due date'], ['today', 'Due today'], ['overdue', 'Overdue']]],
+    ['crfPriority', [['all', 'All priorities'], ['high', 'High'], ['normal', 'Normal']]],
+  ]);
+  ok('   ...with no option pre-selected (Open is first, so it is the default)', !/<option[^>]*\sselected/.test(body), '');
+  check('   ...the follow-up table has its columns', [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]),
+    ['Customer', 'Vehicle', 'Follow-up Reason', 'Priority', 'Due Date', 'Status', 'Last Contact', 'Actions']);
+  const rows = [...body.matchAll(/<tbody id="crfBody">([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
+  ok('   ...and starts with one loading row, no data rows',
+    rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1
+      && /<tr class="crf-empty-row">\s*<td colspan="8">/.test(rows[0]) && /Loading follow-ups/.test(rows[0]), '');
+  const stats = [...body.matchAll(/<div class="stat__value" id="(\w+)">([\s\S]*?)<\/div>\s*<div class="stat__label">([^<]+)<\/div>/g)]
+    .map(m => ({ id: m[1], value: m[2], label: m[3] }));
+  check('   ...four summary cards, labelled as Open counts and wired by id', stats.map(x => [x.id, x.label]),
+    [['crfTotal', 'Open Follow-ups'], ['crfDueToday', 'Due Today'], ['crfContacted', 'Contacted'], ['crfOverdue', 'Overdue']]);
+  ok('   ...all four start as a "—", never a number',
+    stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>'), JSON.stringify(stats));
+  ok('   ...with no digit anywhere in the static visible text',
+    !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
+      .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  check('   ...loads the shared shell scripts plus its own page module, last', scripts,
+    ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js', '../js/crm-follow-up.js']);
+  ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
+  ok('   ...whose stylesheet is scoped to this page alone',
+    read('css/crm-follow-up.css').replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
+      .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith('[data-page="crm-follow-up"]'))), '');
+  const js = read('js/crm-follow-up.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  ok('the page module reads no browser storage and makes no requests of its own',
+    !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest/.test(js), '');
+  ok('   ...never seeds, resets or writes browser storage',
+    !/Storage\.(addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings|remove)\b/.test(js), '');
+  const writes = [...js.matchAll(/Storage\.(create|update|action)\('(\w+)'/g)].map(m => m[2]);
+  ok('   ...and writes only follow-ups and their contacts, through the database',
+    writes.length > 0 && writes.every(c => c === 'followUps' || c === 'followUpContacts'), JSON.stringify(writes));
+  ok('   ...never makes a key with Math.random', !/Math\.random/.test(js), '');
   ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
 }
 

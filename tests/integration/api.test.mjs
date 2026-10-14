@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 67 routes', routes.length === 67, routes);
+  t('advertises 77 routes', routes.length === 77, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('27 GET, 18 POST, 11 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 27, POST: 18, PUT: 11, DELETE: 11 }), byMethod);
+    t('31 GET, 23 POST, 12 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 31, POST: 23, PUT: 12, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -85,7 +85,9 @@ sec('1. Health');
     JSON.stringify(routes.filter((r2) => /\/:id\/[a-z-]+$/.test(r2)))
       === JSON.stringify(['POST /api/job-cards/:id/status', 'POST /api/invoices/:id/void',
         'POST /api/payments/:id/void', 'POST /api/payments/:id/link',
-        'POST /api/invoice-adjustments/:id/void']), routes);
+        'POST /api/invoice-adjustments/:id/void',
+        'POST /api/follow-ups/:id/complete', 'POST /api/follow-ups/:id/cancel',
+        'POST /api/follow-ups/:id/contact', 'POST /api/follow-up-contacts/:id/void']), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -5153,6 +5155,122 @@ sec('24. Write-offs (0002): a waived balance is not a payment, against real D1')
   }
 
   // cleanup.sql removes these rows (write-offs first) and resets the counters.
+}
+
+sec('25. Customer follow-ups (0005): idempotent creates, append-only contacts, against real D1');
+{
+  const cust = await send('POST', '/api/customers', { name: '0005 Follow-up Customer', phone: '01933-000501' });
+  const C = cust.body?.data?.id;
+  const other = await send('POST', '/api/customers', { name: '0005 Other Customer', phone: '01933-000502' });
+  const C2 = other.body?.data?.id;
+  const veh = await send('POST', '/api/vehicles', { customerId: C, regNo: 'DHAKA-FU-0005', brand: 'Toyota', model: 'Premio' });
+  const V = veh.body?.data?.id;
+  const vehOther = await send('POST', '/api/vehicles', { customerId: C2, regNo: 'DHAKA-FU-0006', brand: 'Honda', model: 'Grace' });
+  const V2 = vehOther.body?.data?.id;
+  const vehOff = await send('POST', '/api/vehicles', { customerId: C, regNo: 'DHAKA-FU-0007', brand: 'Kia', model: 'Rio', status: 'Inactive' });
+  const V3 = vehOff.body?.data?.id;
+  t('the section has its own customers and vehicles', [C, C2, V, V2, V3].every(Boolean),
+    { cust: cust.body, other: other.body, veh: veh.body, vehOther: vehOther.body, vehOff: vehOff.body });
+
+  let seq = 0;
+  const key = () => `integration-0005-${Date.now()}-${++seq}`;
+  const body = (extra = {}) => ({ customerId: C, vehicleId: V, reason: 'Ask about the brake squeal', priority: 'high',
+    dueDate: '2026-10-20', idempotencyKey: key(), ...extra });
+
+  // 25a. create, duplicates allowed, idempotent replay
+  const a = await send('POST', '/api/follow-ups', body());
+  t('25a create -> 201 Open', a.status === 201 && a.body?.data?.status === 'Open', a);
+  const F = a.body?.data?.id;
+  const dup = await send('POST', '/api/follow-ups', body());
+  t('   ...the same customer + vehicle + reason with a new key -> 201 (several Open allowed)', dup.status === 201, dup);
+  const fixed = body();
+  const r1 = await send('POST', '/api/follow-ups', fixed);
+  const r2 = await send('POST', '/api/follow-ups', fixed);
+  t('   ...same key + same payload -> 201 then 200 replayed, same id',
+    r1.status === 201 && r2.status === 200 && r2.body?.replayed === true && r2.body?.data?.id === r1.body?.data?.id, [r1.status, r2.status, r2.body]);
+  const r3 = await send('POST', '/api/follow-ups', { ...fixed, reason: 'Something else' });
+  t('   ...same key + different payload -> 409 idempotency_key_reused', r3.status === 409 && r3.body?.error?.reason === 'idempotency_key_reused', r3);
+  t('   ...past and far-future due dates are accepted',
+    (await send('POST', '/api/follow-ups', body({ dueDate: '1999-01-01' }))).status === 201
+      && (await send('POST', '/api/follow-ups', body({ dueDate: '2099-12-31' }))).status === 201);
+  const imp = await send('POST', '/api/follow-ups', body({ dueDate: '2026-02-30' }));
+  t('   ...an impossible date -> 422', imp.status === 422 && 'dueDate' in (imp.body?.error?.fields ?? {}), imp);
+  const extraKey = await send('POST', '/api/follow-ups', body({ status: 'Completed' }));
+  t('   ...an unlisted field -> 422', extraKey.status === 422 && 'status' in (extraKey.body?.error?.fields ?? {}), extraKey);
+  const own = await send('POST', '/api/follow-ups', body({ vehicleId: V2 }));
+  t("   ...another customer's vehicle -> 422 fields.vehicleId", own.status === 422 && !!own.body?.error?.fields?.vehicleId, own);
+  const off = await send('POST', '/api/follow-ups', body({ vehicleId: V3 }));
+  t('   ...an Inactive vehicle -> 409 vehicle_inactive', off.status === 409 && off.body?.error?.reason === 'vehicle_inactive', off);
+
+  // 25b. truly parallel same-key requests against real D1
+  const parallel = body();
+  const burst = await Promise.all(Array.from({ length: 8 }, () => send('POST', '/api/follow-ups', parallel)));
+  const ids = new Set(burst.map((r) => r.body?.data?.id));
+  t('25b eight parallel creates with one key -> one follow-up', ids.size === 1 && burst.every((r) => r.status === 201 || r.status === 200),
+    burst.map((r) => [r.status, r.body?.data?.id, r.body?.error]));
+  t('   ...exactly one 201, the rest 200 replayed',
+    burst.filter((r) => r.status === 201).length === 1 && burst.filter((r) => r.status === 200).every((r) => r.body?.replayed === true),
+    burst.map((r) => r.status));
+
+  // 25c. contacts: batch, cache, due date, parallel same key
+  const c1 = await send('POST', `/api/follow-ups/${F}/contact`, { idempotencyKey: key(), outcome: 'reached', note: 'Happy' });
+  t('25c contact -> 201, data = follow-up, contact = the new contact',
+    c1.status === 201 && c1.body?.data?.id === F && c1.body?.contact?.followUpId === F && c1.body?.data?.lastOutcome === 'reached', c1);
+  const c2 = await send('POST', `/api/follow-ups/${F}/contact`,
+    { idempotencyKey: key(), outcome: 'callback_requested', nextContactDate: '2025-12-01' });
+  t('   ...a past nextContactDate becomes the due date and the latest outcome',
+    c2.status === 201 && c2.body?.data?.dueDate === '2025-12-01' && c2.body?.data?.lastOutcome === 'callback_requested', c2);
+  const ck = { idempotencyKey: key(), outcome: 'unreachable', note: 'No answer' };
+  const cburst = await Promise.all(Array.from({ length: 8 }, () => send('POST', `/api/follow-ups/${F}/contact`, ck)));
+  t('   ...eight parallel contacts with one key -> one contact',
+    new Set(cburst.map((r) => r.body?.contact?.id)).size === 1 && cburst.filter((r) => r.status === 201).length === 1,
+    cburst.map((r) => [r.status, r.body?.contact?.id, r.body?.error]));
+  const twin1 = await send('POST', `/api/follow-ups/${F}/contact`, { idempotencyKey: key(), outcome: 'unreachable', note: 'No answer' });
+  const twin2 = await send('POST', `/api/follow-ups/${F}/contact`, { idempotencyKey: key(), outcome: 'unreachable', note: 'No answer' });
+  t('   ...two identical contacts with new keys are both recorded', twin1.status === 201 && twin2.status === 201
+    && twin1.body?.contact?.id !== twin2.body?.contact?.id, [twin1.status, twin2.status]);
+  const history = (await get('/api/follow-up-contacts?limit=1000')).body?.data?.filter((x) => x.followUpId === F) ?? [];
+  t('   ...the history holds 5 contacts for the follow-up', history.length === 5, history.length);
+
+  // 25d. void restores the previous Active outcome, leaves the due date
+  const lastThree = [twin2, twin1, cburst.find((r) => r.status === 201)].map((r) => r.body?.contact?.id);
+  for (const id of lastThree) {
+    const v = await send('POST', `/api/follow-up-contacts/${id}/void`, { reason: 'Logged twice', voidedBy: 'Integration' });
+    if (v.status !== 200) t('   ...void ' + id, false, v);
+  }
+  const fu = (await get(`/api/follow-ups/${F}`)).body?.data;
+  t('25d after voiding the three latest, the callback counts again; the due date is not restored',
+    fu?.lastOutcome === 'callback_requested' && fu?.dueDate === '2025-12-01', fu);
+  const vAgain = await send('POST', `/api/follow-up-contacts/${lastThree[0]}/void`, { reason: 'again' });
+  t('   ...voiding again -> 409 contact_void', vAgain.status === 409 && vAgain.body?.error?.reason === 'contact_void', vAgain);
+  const put = await send('PUT', `/api/follow-up-contacts/${lastThree[0]}`, { note: 'edit' });
+  const del = await send('DELETE', `/api/follow-up-contacts/${lastThree[0]}`);
+  const post = await send('POST', '/api/follow-up-contacts', { followUpId: F, outcome: 'reached' });
+  t('   ...the history cannot be edited, deleted or written directly (405)', [put.status, del.status, post.status].every((s) => s === 405),
+    [put.status, del.status, post.status]);
+
+  // 25e. lifecycle and deletion
+  const done = await send('POST', `/api/follow-ups/${F}/complete`, {});
+  const again = await send('POST', `/api/follow-ups/${F}/complete`, {});
+  t('25e complete -> 200; again -> 409 follow_up_closed, currentStatus Completed',
+    done.status === 200 && again.status === 409 && again.body?.error?.currentStatus === 'Completed', [done.status, again.body]);
+  const late = await send('POST', `/api/follow-ups/${F}/contact`, { idempotencyKey: key(), outcome: 'reached' });
+  t('   ...no contact on a closed follow-up', late.status === 409 && late.body?.error?.reason === 'follow_up_closed', late);
+  const cx = await send('POST', `/api/follow-ups/${dup.body?.data?.id}/cancel`, {});
+  t('   ...cancel needs a reason', cx.status === 422, cx);
+  const delV = await send('DELETE', `/api/vehicles/${V}`);
+  const delC = await send('DELETE', `/api/customers/${C}`);
+  t('   ...a customer and vehicle referenced by follow-ups cannot be deleted (409)', delV.status === 409 && delC.status === 409,
+    [delV.status, delC.status]);
+
+  // 25f. the gate
+  const anon = await sendAnon('POST', '/api/follow-ups', body());
+  const anonC = await sendAnon('POST', `/api/follow-ups/${F}/contact`, { idempotencyKey: key(), outcome: 'reached' });
+  const anonL = await sendAnon('GET', '/api/follow-up-contacts');
+  t('25f without credentials every follow-up route is 401', [anon.status, anonC.status, anonL.status].every((s) => s === 401),
+    [anon.status, anonC.status, anonL.status]);
+
+  // cleanup.sql removes these rows (contacts first) and resets the counters.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

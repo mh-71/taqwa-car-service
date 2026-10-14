@@ -67,6 +67,17 @@ import {
 import {
   listExpenses, getExpense, createExpense, updateExpense, deleteExpense,
 } from './routes/expenses.js';
+// Customer follow-ups (0005). Closing and recording a contact are actions,
+// not field changes, and there is no delete: a mistaken follow-up is
+// cancelled with a reason. The contact history is append-only -- read or
+// voided, never created, edited or removed through its own collection.
+import {
+  listFollowUps, getFollowUp, createFollowUp, updateFollowUp,
+  completeFollowUp, cancelFollowUp, recordContact,
+} from './routes/follow-ups.js';
+import {
+  listFollowUpContacts, getFollowUpContact, voidFollowUpContact,
+} from './routes/follow-up-contacts.js';
 import {
   listInventoryTransactions, getInventoryTransaction, createInventoryTransaction,
 } from './routes/inventory-transactions.js';
@@ -155,6 +166,15 @@ const COLLECTIONS = {
     list: listInventoryTransactions,
     detail: getInventoryTransaction,
     create: createInventoryTransaction,
+  },
+  'follow-ups': {
+    list: listFollowUps, detail: getFollowUp,
+    create: createFollowUp, update: updateFollowUp,
+    actions: { complete: completeFollowUp, cancel: cancelFollowUp, contact: recordContact },
+  },
+  'follow-up-contacts': {
+    list: listFollowUpContacts, detail: getFollowUpContact,
+    actions: { void: voidFollowUpContact },
   },
 };
 

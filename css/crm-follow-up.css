@@ -1,10 +1,12 @@
 /* ============================================================
-   crm-follow-up.css — Customer CRM › Customer Follow-up (UI only)
+   crm-follow-up.css — Customer CRM › Customer Follow-up
    ------------------------------------------------------------
    Loaded only by pages/crm-follow-up.html, and every rule is also
    scoped to [data-page="crm-follow-up"], so nothing here can reach
-   another page. The page is built from the shared components
-   (stats grid, toolbar, inputs, card, table, badges); this file only
+   another page. (The dialogs are appended to <body>, which carries
+   that attribute, so they are inside the scope too.) The page is
+   built from the shared components (stats grid, toolbar, inputs,
+   card, table, badges, modal, customer picker); this file only
    arranges them and styles the parts that exist on this page alone.
    ============================================================ */
 
@@ -19,29 +21,22 @@
 [data-page="crm-follow-up"] .crf-head__text { min-width: 0; }
 [data-page="crm-follow-up"] .crf-head__title { font-size: 1.2rem; font-weight: 700; letter-spacing: -.01em; }
 [data-page="crm-follow-up"] .crf-head__desc { margin: 2px 0 0; font-size: .86rem; color: var(--text-2); }
-[data-page="crm-follow-up"] .crf-head__status { flex: none; margin-top: 4px; }
+[data-page="crm-follow-up"] .crf-head__new { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+[data-page="crm-follow-up"] .crf-head__new:disabled { opacity: .55; cursor: not-allowed; }
 
-/* ---------- summary cards (shared .stat, placeholder values) ---------- */
+/* ---------- summary cards (shared .stat) ---------- */
 [data-page="crm-follow-up"] .crf-stats { margin-bottom: 18px; }
 [data-page="crm-follow-up"] .crf-stat { align-items: flex-start; }
-[data-page="crm-follow-up"] .crf-stat .stat__value { color: var(--text-3); }
 [data-page="crm-follow-up"] .crf-stat .stat__label { font-weight: 600; color: var(--text); }
-[data-page="crm-follow-up"] .crf-pending { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-sub { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
 
-/* ---------- toolbar (disabled until connected) ---------- */
+/* ---------- toolbar (disabled until the follow-ups have loaded) ---------- */
 [data-page="crm-follow-up"] .crf-toolbar .input:disabled,
 [data-page="crm-follow-up"] .crf-toolbar .select:disabled { cursor: not-allowed; }
-[data-page="crm-follow-up"] .crf-date {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: .8rem;
-  color: var(--text-3);
-}
-[data-page="crm-follow-up"] .crf-toolbar .toolbar__search { flex: 1 1 360px; max-width: 480px; }
+[data-page="crm-follow-up"] .crf-toolbar .toolbar__search { flex: 1 1 320px; max-width: 420px; }
 [data-page="crm-follow-up"] .crf-toolbar__note { white-space: normal; }
 
-/* ---------- reminder list ---------- */
+/* ---------- follow-up list ---------- */
 [data-page="crm-follow-up"] .crf-list__head { flex-wrap: wrap; gap: 10px; }
 [data-page="crm-follow-up"] .crf-legend {
   display: flex;
@@ -52,8 +47,16 @@
   list-style: none;
 }
 [data-page="crm-follow-up"] .crf-table tbody tr.crf-empty-row:hover { background: none; }
+[data-page="crm-follow-up"] .crf-reason { white-space: normal; overflow-wrap: anywhere; min-width: 160px; max-width: 320px; }
+[data-page="crm-follow-up"] .crf-unknown,
+[data-page="crm-follow-up"] .crf-muted { color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-unknown { font-style: italic; }
+/* Row actions that exist but cannot be used for this row. */
+[data-page="crm-follow-up"] .crf-act--off:disabled { opacity: .45; cursor: not-allowed; }
+[data-page="crm-follow-up"] .crf-empty--bad .crf-empty__icon { color: var(--bad); }
+[data-page="crm-follow-up"] .crf-retry { margin-top: 10px !important; }
 
-/* Compact empty state: icon, explanation and status side by side. */
+/* Compact empty / loading / unavailable state: icon, explanation and status side by side. */
 [data-page="crm-follow-up"] .crf-empty {
   display: flex;
   align-items: flex-start;
@@ -76,37 +79,62 @@
 [data-page="crm-follow-up"] .crf-empty__text h3 { font-size: .92rem; font-weight: 600; color: var(--text); }
 [data-page="crm-follow-up"] .crf-empty__text p { margin: 4px 0 0; font-size: .8rem; color: var(--text-3); }
 [data-page="crm-follow-up"] .crf-empty__status { flex: none; }
-[data-page="crm-follow-up"] .crf-planned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px !important; }
-[data-page="crm-follow-up"] .crf-planned__label { font-weight: 600; color: var(--text-2); }
-/* Plain text, not buttons: these actions do not exist yet. */
-[data-page="crm-follow-up"] .crf-chip {
-  padding: 2px 8px;
-  border: 1px dashed var(--line-strong, var(--line));
-  border-radius: 999px;
-  font-size: .72rem;
-  color: var(--text-3);
+
+/* ---------- dialogs ---------- */
+[data-page="crm-follow-up"] .crf-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
+[data-page="crm-follow-up"] .crf-fixed { margin: 0 0 10px; font-weight: 600; color: var(--text); }
+[data-page="crm-follow-up"] .crf-fixed .cell-sub { display: block; font-weight: 400; font-size: .78rem; color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: .82rem;
+  white-space: normal;
+}
+[data-page="crm-follow-up"] .crf-notice[hidden] { display: none; }
+[data-page="crm-follow-up"] .crf-notice--warn { background: var(--warn-soft); color: var(--warn); }
+[data-page="crm-follow-up"] .crf-notice--bad { background: var(--bad-soft); color: var(--bad); }
+[data-page="crm-follow-up"] .crf-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin-bottom: 18px;
+}
+[data-page="crm-follow-up"] .crf-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+[data-page="crm-follow-up"] .crf-fact--wide { grid-column: 1 / -1; }
+[data-page="crm-follow-up"] .crf-fact__label { font-size: .72rem; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
+[data-page="crm-follow-up"] .crf-fact__value { font-size: .88rem; color: var(--text); }
+[data-page="crm-follow-up"] .crf-fact__value .cell-sub { display: block; font-size: .74rem; color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-subhead { margin: 0 0 8px; font-size: .9rem; font-weight: 600; }
+[data-page="crm-follow-up"] .crf-history td { vertical-align: top; }
+[data-page="crm-follow-up"] .crf-history .cell-sub { display: block; font-size: .72rem; color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-voided td { color: var(--text-3); }
+[data-page="crm-follow-up"] .crf-voided .badge { opacity: .8; }
 
 /* ---------- tablet / phone ---------- */
-/* Narrower screens: let the column headers wrap so the table never grows
-   wider than its card (the empty state would be cut off inside the scroll
-   area), and stack the empty state instead of squeezing it beside the icon. */
 @media (max-width: 1100px) {
   [data-page="crm-follow-up"] .crf-table th { white-space: normal; }
 }
 @media (max-width: 900px) {
   [data-page="crm-follow-up"] .crf-empty { flex-direction: column; align-items: flex-start; gap: 10px; }
+  [data-page="crm-follow-up"] .crf-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
-  [data-page="crm-follow-up"] .crf-head { flex-direction: column; gap: 8px; }
-  [data-page="crm-follow-up"] .crf-head__status { margin-top: 0; }
+  [data-page="crm-follow-up"] .crf-head { flex-direction: column; gap: 10px; }
+  [data-page="crm-follow-up"] .crf-head__new { width: 100%; justify-content: center; }
   [data-page="crm-follow-up"] .crf-toolbar .toolbar__search { max-width: none; }
-  [data-page="crm-follow-up"] .crf-toolbar .select,
-  [data-page="crm-follow-up"] .crf-date { flex: 1 1 100%; }
-  [data-page="crm-follow-up"] .crf-date .input { flex: 1; }
+  [data-page="crm-follow-up"] .crf-toolbar .select { flex: 1 1 100%; }
   /* With no rows, the header row alone is wider than a phone; hide it so the
-     empty state fits instead of scrolling sideways. */
-  [data-page="crm-follow-up"] .crf-table thead { display: none; }
+     empty state fits instead of scrolling sideways. With rows, keep it: the
+     table scrolls inside its card and the columns need their names. */
+  [data-page="crm-follow-up"] .crf-table:not(.crf-table--rows) thead { display: none; }
   [data-page="crm-follow-up"] .crf-empty { padding: 16px 4px; gap: 12px; }
   [data-page="crm-follow-up"] .crf-empty__icon { width: 40px; height: 40px; }
+  [data-page="crm-follow-up"] .crf-facts { grid-template-columns: minmax(0, 1fr); }
 }
