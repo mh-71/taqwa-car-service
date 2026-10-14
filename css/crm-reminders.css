@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-reminders.css — Customer CRM › Service Reminders (UI only)
+   crm-reminders.css — Customer CRM › Service Reminders
    ------------------------------------------------------------
    Loaded only by pages/crm-reminders.html, and every rule is also
    scoped to [data-page="crm-reminders"], so nothing here can reach
@@ -21,14 +21,16 @@
 [data-page="crm-reminders"] .crr-head__desc { margin: 2px 0 0; font-size: .86rem; color: var(--text-2); }
 [data-page="crm-reminders"] .crr-head__status { flex: none; margin-top: 4px; }
 
-/* ---------- summary cards (shared .stat, placeholder values) ---------- */
+/* ---------- summary cards (shared .stat) ---------- */
 [data-page="crm-reminders"] .crr-stats { margin-bottom: 18px; }
 [data-page="crm-reminders"] .crr-stat { align-items: flex-start; }
-[data-page="crm-reminders"] .crr-stat .stat__value { color: var(--text-3); }
+/* Only the card with no data source yet keeps the muted placeholder value. */
+[data-page="crm-reminders"] .crr-stat--pending .stat__value { color: var(--text-3); }
 [data-page="crm-reminders"] .crr-stat .stat__label { font-weight: 600; color: var(--text); }
-[data-page="crm-reminders"] .crr-pending { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
+[data-page="crm-reminders"] .crr-pending,
+[data-page="crm-reminders"] .crr-sub { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
 
-/* ---------- toolbar (disabled until connected) ---------- */
+/* ---------- toolbar (disabled until the reminders have loaded) ---------- */
 [data-page="crm-reminders"] .crr-toolbar .input:disabled,
 [data-page="crm-reminders"] .crr-toolbar .select:disabled { cursor: not-allowed; }
 [data-page="crm-reminders"] .crr-date {
@@ -52,6 +54,13 @@
   list-style: none;
 }
 [data-page="crm-reminders"] .crr-table tbody tr.crr-empty-row:hover { background: none; }
+[data-page="crm-reminders"] .crr-unknown,
+[data-page="crm-reminders"] .crr-muted { color: var(--text-3); }
+[data-page="crm-reminders"] .crr-unknown { font-style: italic; }
+/* Row actions that exist but cannot be used for this row (or not yet). */
+[data-page="crm-reminders"] .crr-act--off:disabled { opacity: .45; cursor: not-allowed; }
+[data-page="crm-reminders"] .crr-empty--bad .crr-empty__icon { color: var(--bad); }
+[data-page="crm-reminders"] .crr-retry { margin-top: 10px !important; }
 
 /* Compact empty state: icon, explanation and status side by side. */
 [data-page="crm-reminders"] .crr-empty {
@@ -105,8 +114,9 @@
   [data-page="crm-reminders"] .crr-date { flex: 1 1 100%; }
   [data-page="crm-reminders"] .crr-date .input { flex: 1; }
   /* With no rows, the header row alone is wider than a phone; hide it so the
-     empty state fits instead of scrolling sideways. */
-  [data-page="crm-reminders"] .crr-table thead { display: none; }
+     empty state fits instead of scrolling sideways. With rows, keep it: the
+     table scrolls inside its card and the columns need their names. */
+  [data-page="crm-reminders"] .crr-table:not(.crr-table--rows) thead { display: none; }
   [data-page="crm-reminders"] .crr-empty { padding: 16px 4px; gap: 12px; }
   [data-page="crm-reminders"] .crr-empty__icon { width: 40px; height: 40px; }
 }
