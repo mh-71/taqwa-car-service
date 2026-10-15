@@ -1,4 +1,4 @@
-/* crm-ui — the Customer CRM: two pages connected, three still visual only.
+/* crm-ui — the Customer CRM: three pages connected, two still visual only.
 
    What must hold:
      1. The sidebar has a "Customer CRM" group after Expenses and before
@@ -8,7 +8,7 @@
         and "Coming soon" -- never a number, and nothing in dashboard.js
         calculates one. (Service Reminders being connected does not change
         the Dashboard.)
-     3. The three placeholder pages (History, Tasks, Reports) share the
+     3. The two placeholder pages (Tasks, Reports) share the
         app's <head> (so the CSP hash still covers them), say "Coming soon",
         and carry no data, forms, actions or page script of their own.
      4. Service Reminders shares the same <head>, keeps its layout, starts in
@@ -20,6 +20,12 @@
         exactly one page script of its own, and that script reads no browser
         storage and writes only follow-ups through the database. Its
         behaviour is tested in crm-follow-up.test.cjs.
+     6. Service History shares the same <head>, keeps its layout (status
+        filter, From / To range, ten columns, four cards), starts in a
+        loading state with every control disabled, loads exactly one page
+        script of its own, and that script reads no browser storage, makes no
+        requests and writes nothing. Its behaviour is tested in
+        crm-history.test.cjs.
 
    Drives the REAL js/app.js through the shared harness. */
 const fs = require('fs'), path = require('path');
@@ -47,17 +53,19 @@ const REMINDERS = {
   cards: ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up'],
 };
 // Pages that are connected to the database and tested on their own below.
-const CONNECTED = ['crm-reminders', 'crm-follow-up'];
+const CONNECTED = ['crm-reminders', 'crm-follow-up', 'crm-history'];
 const PLACEHOLDERS = ENTRIES.filter(([key]) => !CONNECTED.includes(key));
 
+/* Service History is connected; its layout is checked in section 6. */
+const HISTORY = {
+  options: [['all', 'All Statuses'], ['completed', 'Completed'], ['pending', 'Pending'], ['cancelled', 'Cancelled']],
+  cols: ['Service Date', 'Customer', 'Vehicle', 'Registration Number', 'Job Card', 'Services Performed',
+    'Mileage', 'Total Cost', 'Status', 'Actions'],
+  cards: [['crhVisits', 'Total Service Visits'], ['crhCompleted', 'Completed Services'],
+    ['crhPending', 'Pending Services'], ['crhCost', 'Total Service Cost']],
+};
+
 const LAYOUTS = {
-  'crm-history': {
-    prefix: 'crh', noun: 'service records', dates: 2, compact: true,   // a From / To date range; compact below 1200px
-    options: ['All Statuses', 'Completed', 'Pending', 'Cancelled'],
-    cols: ['Service Date', 'Customer', 'Vehicle', 'Registration Number', 'Job Card', 'Services Performed',
-      'Mileage', 'Total Cost', 'Status', 'Actions'],
-    cards: ['Total Service Visits', 'Completed Services', 'Pending Services', 'Total Service Cost'],
-  },
   'crm-tasks': {
     prefix: 'ctk', noun: 'task', selects: 3,   // status, priority, assigned staff (no staff names: none are invented)
     options: ['All Statuses', 'Pending', 'In Progress', 'Completed', 'Overdue',
@@ -399,6 +407,65 @@ console.log('\n-- 5. Customer Follow-up --');
   ok('   ...and writes only follow-ups and their contacts, through the database',
     writes.length > 0 && writes.every(c => c === 'followUps' || c === 'followUpContacts'), JSON.stringify(writes));
   ok('   ...never makes a key with Math.random', !/Math\.random/.test(js), '');
+  ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
+}
+
+/* ---------- 6. Service History (connected) ---------- */
+console.log('\n-- 6. Service History --');
+{
+  const html = read('pages/crm-history.html');
+  const body = html.slice(html.indexOf('<body data-page='));
+  check('Service History: <head> is the Settings head with only the title and its stylesheet changed', head(html),
+    settingsHead.replace('<title>Settings — ', '<title>Service History — ')
+      .replace('<link rel="stylesheet" href="../css/responsive.css">',
+        '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/crm-history.css">'));
+  ok('   ...declares its own page key', body.startsWith('<body data-page="crm-history" data-root="../">'), body.slice(0, 60));
+  ok('   ...no longer claims to be "Coming soon" or "not yet connected"', !/Coming soon|future release|not yet connected/i.test(body), '');
+  ok('   ...has no form, textarea or inline handler (rows and messages are rendered by the page module)',
+    !/<form|<textarea|\son[a-z]+=/i.test(body), '');
+  const buttons = body.match(/<button\b[^>]*>/g) || [];
+  check('   ...three static buttons: Clear filters, Previous, Next', buttons.map(b => (b.match(/id="(\w+)"/) || [])[1]), ['crhClear', 'crhPrev', 'crhNext']);
+  ok('   ...each type="button" and disabled until the data loads',
+    buttons.every(b => /type="button"/.test(b) && /\sdisabled\b/.test(b)), JSON.stringify(buttons));
+  const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
+  ok('   ...a search box, a status filter and a From / To range, all disabled until the data loads',
+    controls.length === 4 && /type="search"/.test(controls[0]) && controls[1].startsWith('<select')
+      && controls.slice(2).every(c => /type="date"/.test(c)) && controls.every(c => /\sdisabled\b/.test(c)), JSON.stringify(controls));
+  ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
+  ok('   ...and the date range tied to its inline error message',
+    controls.slice(2).every(c => /aria-describedby="crhRangeError"/.test(c)) && /<p class="crh-range-error" id="crhRangeError" role="alert" hidden><\/p>/.test(body), '');
+  check('   ...the status filter offers All / Completed / Pending / Cancelled, by value',
+    [...body.matchAll(/<option value="([^"]*)">([^<]+)<\/option>/g)].map(m => [m[1], m[2]]), HISTORY.options);
+  ok('   ...with no option pre-selected', !/<option[^>]*\sselected/.test(body), '');
+  check('   ...the service records table keeps its ten columns', [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]), HISTORY.cols);
+  const rows = [...body.matchAll(/<tbody id="crhBody">([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
+  ok('   ...and starts with one loading row, no data rows',
+    rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1
+      && /<tr class="crh-empty-row">\s*<td colspan="10">/.test(rows[0]) && /Loading service history/.test(rows[0]), '');
+  const stats = [...body.matchAll(/<div class="stat__value" id="(\w+)">([\s\S]*?)<\/div>\s*<div class="stat__label">([^<]+)<\/div>\s*<div class="crh-sub" id="(\w+)">([^<]+)<\/div>/g)]
+    .map(m => ({ id: m[1], value: m[2], label: m[3], sub: m[4] }));
+  check('   ...four summary cards, wired by id', stats.map(x => [x.id, x.label]), HISTORY.cards);
+  ok('   ...each with its own note line', stats.every(x => x.sub === `${x.id}Sub`), JSON.stringify(stats));
+  ok('   ...all four start as a "—", never a number',
+    stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>'), JSON.stringify(stats));
+  ok('   ...a hidden, empty timeline panel and a hidden pager',
+    /<section class="card crh-timeline" id="crhTimeline" aria-labelledby="crhTimelineTitle" hidden><\/section>/.test(body)
+      && /<nav class="crh-pager" id="crhPager" aria-label="Service records pages" hidden>/.test(body), '');
+  ok('   ...with no digit anywhere in the static visible text',
+    !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
+      .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  check('   ...loads the shared shell scripts plus its own page module, last', scripts,
+    ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js', '../js/crm-history.js']);
+  ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
+  ok('   ...whose stylesheet is scoped to this page alone',
+    read('css/crm-history.css').replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
+      .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith('[data-page="crm-history"]'))), '');
+  const js = read('js/crm-history.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  ok('the page module reads no browser storage and makes no requests of its own',
+    !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest/.test(js), '');
+  ok('   ...writes nothing: no Storage write, seed or reset call',
+    !/Storage\.(create|update|remove|action|addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings)\b/.test(js), '');
   ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
 }
 
