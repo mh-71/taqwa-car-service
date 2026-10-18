@@ -1,4 +1,4 @@
-/* crm-ui — the Customer CRM: three pages connected, two still visual only.
+/* crm-ui — the Customer CRM: four pages connected, one still visual only.
 
    What must hold:
      1. The sidebar has a "Customer CRM" group after Expenses and before
@@ -8,9 +8,9 @@
         and "Coming soon" -- never a number, and nothing in dashboard.js
         calculates one. (Service Reminders being connected does not change
         the Dashboard.)
-     3. The two placeholder pages (Tasks, Reports) share the
-        app's <head> (so the CSP hash still covers them), say "Coming soon",
-        and carry no data, forms, actions or page script of their own.
+     3. The placeholder page (Reports) shares the app's <head> (so the CSP
+        hash still covers it), says "Coming soon", and carries no data,
+        forms, actions or page script of its own.
      4. Service Reminders shares the same <head>, keeps its layout, starts in
         a loading state with every control disabled, and loads exactly one
         page script of its own. Its behaviour is tested in
@@ -26,6 +26,12 @@
         script of its own, and that script reads no browser storage, makes no
         requests and writes nothing. Its behaviour is tested in
         crm-history.test.cjs.
+     7. Follow-up Tasks shares the same <head>, keeps its layout (status,
+        priority, staff and due-by filters, seven columns, four cards, two
+        colour keys), starts in a loading state with every control disabled,
+        loads exactly one page script of its own, and that script reads no
+        browser storage and writes only tasks through the database. Its
+        behaviour is tested in crm-tasks.test.cjs.
 
    Drives the REAL js/app.js through the shared harness. */
 const fs = require('fs'), path = require('path');
@@ -53,7 +59,7 @@ const REMINDERS = {
   cards: ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up'],
 };
 // Pages that are connected to the database and tested on their own below.
-const CONNECTED = ['crm-reminders', 'crm-follow-up', 'crm-history'];
+const CONNECTED = ['crm-reminders', 'crm-follow-up', 'crm-history', 'crm-tasks'];
 const PLACEHOLDERS = ENTRIES.filter(([key]) => !CONNECTED.includes(key));
 
 /* Service History is connected; its layout is checked in section 6. */
@@ -66,18 +72,6 @@ const HISTORY = {
 };
 
 const LAYOUTS = {
-  'crm-tasks': {
-    prefix: 'ctk', noun: 'task', selects: 3,   // status, priority, assigned staff (no staff names: none are invented)
-    options: ['All Statuses', 'Pending', 'In Progress', 'Completed', 'Overdue',
-      'All Priorities', 'Low', 'Medium', 'High', 'Urgent',
-      'All Staff'],
-    cols: ['Task', 'Customer / Vehicle', 'Assigned To', 'Priority', 'Due Date', 'Status', 'Actions'],
-    cards: ['Total Tasks', 'Due Today', 'Overdue Tasks', 'Completed Tasks'],
-    legends: {
-      'Status colours': [['neutral', 'Pending'], ['info', 'In Progress'], ['good', 'Completed'], ['bad', 'Overdue']],
-      'Priority colours': [['neutral', 'Low'], ['info', 'Medium'], ['warn', 'High'], ['bad', 'Urgent']],
-    },
-  },
   'crm-reports': {
     // No search box: a period select (Last 30 days pre-selected) and a From / To
     // range, plus ONE disabled Export CSV button -- nothing exists to export yet.
@@ -466,6 +460,81 @@ console.log('\n-- 6. Service History --');
     !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest/.test(js), '');
   ok('   ...writes nothing: no Storage write, seed or reset call',
     !/Storage\.(create|update|remove|action|addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings)\b/.test(js), '');
+  ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
+}
+
+/* ---------- 7. Follow-up Tasks (connected) ---------- */
+console.log('\n-- 7. Follow-up Tasks --');
+{
+  const html = read('pages/crm-tasks.html');
+  const body = html.slice(html.indexOf('<body data-page='));
+  check('Follow-up Tasks: <head> is the Settings head with only the title and its stylesheet changed', head(html),
+    settingsHead.replace('<title>Settings — ', '<title>Follow-up Tasks — ')
+      .replace('<link rel="stylesheet" href="../css/responsive.css">',
+        '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/crm-tasks.css">'));
+  ok('   ...declares its own page key', body.startsWith('<body data-page="crm-tasks" data-root="../">'), body.slice(0, 60));
+  ok('   ...no longer claims to be "Coming soon" or "not yet connected"', !/Coming soon|future release|not yet connected/i.test(body), '');
+  ok('   ...has no form, textarea or inline handler (rows and dialogs are rendered by the page module)',
+    !/<form|<textarea|\son[a-z]+=/i.test(body), '');
+  const buttons = body.match(/<button\b[^>]*>/g) || [];
+  check('   ...four static buttons: New Task, Clear filters, Previous, Next', buttons.map(b => (b.match(/id="(\w+)"/) || [])[1]),
+    ['ctkNew', 'ctkClear', 'ctkPrev', 'ctkNext']);
+  ok('   ...each type="button" and disabled until the data loads',
+    buttons.every(b => /type="button"/.test(b) && /\sdisabled\b/.test(b)), JSON.stringify(buttons));
+  const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
+  ok('   ...a search box, three filters (status, priority, staff) and a due-by date, all disabled until the data loads',
+    controls.length === 5 && /type="search"/.test(controls[0]) && controls.slice(1, 4).every(c => c.startsWith('<select'))
+      && /type="date"/.test(controls[4]) && controls.every(c => /\sdisabled\b/.test(c)), JSON.stringify(controls));
+  ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
+  const selects = [...body.matchAll(/<select[^>]*id="(\w+)"[^>]*>([\s\S]*?)<\/select>/g)]
+    .map(m => [m[1], [...m[2].matchAll(/<option value="([^"]*)">([^<]+)<\/option>/g)].map(o => [o[1], o[2]])]);
+  check('   ...the filters offer exactly these values (staff names are added from the database)', selects, [
+    ['ctkStatus', [['all', 'All Statuses'], ['Pending', 'Pending'], ['In Progress', 'In Progress'], ['Completed', 'Completed'], ['overdue', 'Overdue'], ['Cancelled', 'Cancelled']]],
+    ['ctkPriority', [['all', 'All Priorities'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['urgent', 'Urgent']]],
+    ['ctkStaff', [['all', 'All Staff'], ['none', 'Unassigned']]],
+  ]);
+  ok('   ...with no option pre-selected', !/<option[^>]*\sselected/.test(body), '');
+  check('   ...the task table keeps its seven columns', [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]),
+    ['Task', 'Customer / Vehicle', 'Assigned To', 'Priority', 'Due Date', 'Status', 'Actions']);
+  const rows = [...body.matchAll(/<tbody id="ctkBody">([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
+  ok('   ...and starts with one loading row, no data rows',
+    rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1
+      && /<tr class="ctk-empty-row">\s*<td colspan="7">/.test(rows[0]) && /Loading tasks/.test(rows[0]), '');
+  for (const [name, keys] of Object.entries({
+    'Status colours': [['neutral', 'Pending'], ['info', 'In Progress'], ['good', 'Completed'], ['bad', 'Overdue']],
+    'Priority colours': [['neutral', 'Low'], ['info', 'Medium'], ['warn', 'High'], ['bad', 'Urgent']],
+  })) {
+    const list = (body.match(new RegExp(`<ul class="ctk-legend" aria-label="${name}">([\\s\\S]*?)<\\/ul>`)) || [])[1] || '';
+    check(`   ...a ${name.toLowerCase()} key in the app's tones`,
+      [...list.matchAll(/<span class="badge badge--(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], m[2]]), keys);
+  }
+  const stats = [...body.matchAll(/<div class="stat__value" id="(\w+)">([\s\S]*?)<\/div>\s*<div class="stat__label">([^<]+)<\/div>\s*<div class="ctk-sub" id="(\w+)">([^<]+)<\/div>/g)]
+    .map(m => ({ id: m[1], value: m[2], label: m[3], sub: m[4] }));
+  check('   ...four summary cards, wired by id', stats.map(x => [x.id, x.label]),
+    [['ctkTotal', 'Total Tasks'], ['ctkDueToday', 'Due Today'], ['ctkOverdue', 'Overdue Tasks'], ['ctkCompleted', 'Completed Tasks']]);
+  ok('   ...each with its own note line', stats.every(x => x.sub === `${x.id}Sub`), JSON.stringify(stats));
+  ok('   ...all four start as a "—", never a number',
+    stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>'), JSON.stringify(stats));
+  ok('   ...and a hidden pager', /<nav class="ctk-pager" id="ctkPager" aria-label="Task list pages" hidden>/.test(body), '');
+  ok('   ...with no digit anywhere in the static visible text',
+    !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
+      .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  check('   ...loads the shared shell scripts plus its own page module, last', scripts,
+    ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js', '../js/crm-tasks.js']);
+  ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
+  ok('   ...whose stylesheet is scoped to this page alone',
+    read('css/crm-tasks.css').replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
+      .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith('[data-page="crm-tasks"]'))), '');
+  const js = read('js/crm-tasks.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  ok('the page module reads no browser storage and makes no requests of its own',
+    !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest/.test(js), '');
+  ok('   ...never seeds, resets or writes browser storage',
+    !/Storage\.(addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings|remove)\b/.test(js), '');
+  const writes = [...js.matchAll(/Storage\.(create|update|action)\('(\w+)'/g)].map(m => m[2]);
+  ok('   ...and writes only follow-up tasks, through the database',
+    writes.length > 0 && writes.every(c => c === 'followUpTasks'), JSON.stringify(writes));
+  ok('   ...never makes a key with Math.random', !/Math\.random/.test(js), '');
   ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
 }
 

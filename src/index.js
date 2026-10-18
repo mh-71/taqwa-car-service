@@ -78,6 +78,13 @@ import {
 import {
   listFollowUpContacts, getFollowUpContact, voidFollowUpContact,
 } from './routes/follow-up-contacts.js';
+// Follow-up tasks (0006). Starting, completing and cancelling are actions, not
+// field changes, and there is no delete: a mistaken task is cancelled with a
+// reason and kept.
+import {
+  listFollowUpTasks, getFollowUpTask, createFollowUpTask, updateFollowUpTask,
+  startFollowUpTask, completeFollowUpTask, cancelFollowUpTask,
+} from './routes/follow-up-tasks.js';
 import {
   listInventoryTransactions, getInventoryTransaction, createInventoryTransaction,
 } from './routes/inventory-transactions.js';
@@ -175,6 +182,11 @@ const COLLECTIONS = {
   'follow-up-contacts': {
     list: listFollowUpContacts, detail: getFollowUpContact,
     actions: { void: voidFollowUpContact },
+  },
+  'follow-up-tasks': {
+    list: listFollowUpTasks, detail: getFollowUpTask,
+    create: createFollowUpTask, update: updateFollowUpTask,
+    actions: { start: startFollowUpTask, complete: completeFollowUpTask, cancel: cancelFollowUpTask },
   },
 };
 

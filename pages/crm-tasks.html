@@ -37,50 +37,54 @@
 
   <div id="page-content">
 
-    <!-- UI ONLY. This page shows the layout of Follow-up Tasks and nothing
-         else: it reads no records, calculates nothing, creates or assigns no
-         task and makes no requests of its own. Every value is a placeholder and
-         every control is disabled until tasks are connected in a later release. -->
+    <!-- Follow-up Tasks, filled in by js/crm-tasks.js from the workshop
+         database only (tasks, with the customers, vehicles, job cards and
+         staff they name). Until the data has loaded -- or if it cannot be --
+         the cards show a dash and every control stays disabled; nothing from
+         browser storage is ever shown here. -->
 
     <div class="ctk-head">
       <div class="ctk-head__text">
         <h2 class="ctk-head__title">Follow-up Tasks</h2>
         <p class="ctk-head__desc">Manage workshop tasks, assignments and deadlines.</p>
       </div>
-      <span class="badge badge--neutral ctk-head__status">Coming soon &#183; not yet connected</span>
+      <button type="button" class="btn btn--primary ctk-head__new" id="ctkNew" disabled>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        New Task
+      </button>
     </div>
 
-    <section class="stats-grid ctk-stats" aria-label="Task summary (not yet connected)">
+    <section class="stats-grid ctk-stats" aria-label="Task summary">
       <div class="stat ctk-stat">
         <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="ctkTotal"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Total Tasks</div>
-          <div class="ctk-pending">Not yet connected</div>
+          <div class="ctk-sub" id="ctkTotalSub">Loading&#8230;</div>
         </div>
       </div>
       <div class="stat ctk-stat">
         <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M17 12c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm1.65 7.35L16.5 17.2V14h1v2.79l1.85 1.85-.7.71zM18 3h-3.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H6c-1.1 0-2 .9-2 2v15c0 1.1.9 2 2 2h6.11a6.743 6.743 0 0 1-1.42-2H6V5h2v3h8V5h2v5.08c.71.1 1.38.31 2 .6V5c0-1.1-.9-2-2-2zm-6 2c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="ctkDueToday"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Due Today</div>
-          <div class="ctk-pending">Not yet connected</div>
+          <div class="ctk-sub" id="ctkDueTodaySub">Loading&#8230;</div>
         </div>
       </div>
       <div class="stat ctk-stat">
         <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="ctkOverdue"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Overdue Tasks</div>
-          <div class="ctk-pending">Not yet connected</div>
+          <div class="ctk-sub" id="ctkOverdueSub">Loading&#8230;</div>
         </div>
       </div>
       <div class="stat ctk-stat">
         <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="ctkCompleted"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Completed Tasks</div>
-          <div class="ctk-pending">Not yet connected</div>
+          <div class="ctk-sub" id="ctkCompletedSub">Loading&#8230;</div>
         </div>
       </div>
     </section>
@@ -89,27 +93,31 @@
       <input type="search" class="input toolbar__search" id="ctkSearch" disabled
              placeholder="Search task, customer, vehicle or job card…" aria-label="Search tasks by task, customer, vehicle or job card">
       <select class="select" id="ctkStatus" disabled aria-label="Filter by task status">
-        <option>All Statuses</option>
-        <option>Pending</option>
-        <option>In Progress</option>
-        <option>Completed</option>
-        <option>Overdue</option>
+        <option value="all">All Statuses</option>
+        <option value="Pending">Pending</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Completed">Completed</option>
+        <option value="overdue">Overdue</option>
+        <option value="Cancelled">Cancelled</option>
       </select>
       <select class="select" id="ctkPriority" disabled aria-label="Filter by priority">
-        <option>All Priorities</option>
-        <option>Low</option>
-        <option>Medium</option>
-        <option>High</option>
-        <option>Urgent</option>
+        <option value="all">All Priorities</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="urgent">Urgent</option>
       </select>
       <select class="select" id="ctkStaff" disabled aria-label="Filter by assigned staff">
-        <option>All Staff</option>
+        <option value="all">All Staff</option>
+        <option value="none">Unassigned</option>
       </select>
       <label class="ctk-date">
-        <span>Due</span>
-        <input type="date" class="input" id="ctkDue" disabled aria-label="Due date">
+        <span>Due by</span>
+        <input type="date" class="input" id="ctkDue" disabled aria-label="Due on or before">
       </label>
-      <span class="toolbar__count ctk-toolbar__note" id="ctkToolbarNote">Search and filters will work when Follow-up Tasks is connected.</span>
+      <button type="button" class="btn btn--ghost btn--sm" id="ctkClear" disabled>Clear filters</button>
+      <span class="spacer"></span>
+      <span class="toolbar__count ctk-toolbar__note" id="ctkToolbarNote" aria-live="polite">Loading tasks&#8230;</span>
     </div>
 
     <section class="card ctk-list" aria-labelledby="ctkListTitle">
@@ -134,7 +142,7 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table class="table ctk-table">
+        <table class="table ctk-table" id="ctkTable">
           <thead>
             <tr>
               <th scope="col">Task</th><th scope="col">Customer / Vehicle</th><th scope="col">Assigned To</th>
@@ -142,24 +150,26 @@
               <th scope="col">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="ctkBody">
             <tr class="ctk-empty-row">
               <td colspan="7">
                 <div class="ctk-empty">
                   <span class="ctk-empty__icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-2 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg></span>
                   <div class="ctk-empty__text">
-                    <h3>Your tasks will appear here</h3>
-                    <p>Workshop follow-up tasks, staff assignments, priorities and due dates will appear here when the feature is connected. It will be activated in a future release; no tasks are created, assigned or stored yet.</p>
-                    <p class="ctk-planned"><span class="ctk-planned__label">Planned:</span>
-                      <span class="ctk-chip">Create task</span><span class="ctk-chip">Assign staff</span><span class="ctk-chip">Set priority &amp; due date</span><span class="ctk-chip">Mark completed</span></p>
+                    <h3>Loading tasks&#8230;</h3>
+                    <p>Reading follow-up tasks from the workshop database.</p>
                   </div>
-                  <span class="badge badge--neutral ctk-empty__status">Not yet connected</span>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <nav class="ctk-pager" id="ctkPager" aria-label="Task list pages" hidden>
+        <span class="ctk-pager__range" id="ctkRange" aria-live="polite"></span>
+        <button type="button" class="btn btn--ghost btn--sm" id="ctkPrev" disabled>Previous</button>
+        <button type="button" class="btn btn--ghost btn--sm" id="ctkNext" disabled>Next</button>
+      </nav>
     </section>
 
   </div>
@@ -169,6 +179,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
+  <script src="../js/crm-tasks.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>

@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 77 routes', routes.length === 77, routes);
+  t('advertises 84 routes', routes.length === 84, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('31 GET, 23 POST, 12 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 31, POST: 23, PUT: 12, DELETE: 11 }), byMethod);
+    t('33 GET, 27 POST, 13 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 33, POST: 27, PUT: 13, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -87,7 +87,9 @@ sec('1. Health');
         'POST /api/payments/:id/void', 'POST /api/payments/:id/link',
         'POST /api/invoice-adjustments/:id/void',
         'POST /api/follow-ups/:id/complete', 'POST /api/follow-ups/:id/cancel',
-        'POST /api/follow-ups/:id/contact', 'POST /api/follow-up-contacts/:id/void']), routes);
+        'POST /api/follow-ups/:id/contact', 'POST /api/follow-up-contacts/:id/void',
+        'POST /api/follow-up-tasks/:id/start', 'POST /api/follow-up-tasks/:id/complete',
+        'POST /api/follow-up-tasks/:id/cancel']), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -5271,6 +5273,132 @@ sec('25. Customer follow-ups (0005): idempotent creates, append-only contacts, a
     [anon.status, anonC.status, anonL.status]);
 
   // cleanup.sql removes these rows (contacts first) and resets the counters.
+}
+
+sec('26. Follow-up tasks (0006): references, assignment, idempotent creates and the status machine, against real D1');
+{
+  const cust = await send('POST', '/api/customers', { name: '0006 Task Customer', phone: '01933-000601' });
+  const C = cust.body?.data?.id;
+  const other = await send('POST', '/api/customers', { name: '0006 Other Customer', phone: '01933-000602' });
+  const C2 = other.body?.data?.id;
+  const veh = await send('POST', '/api/vehicles', { customerId: C, regNo: 'DHAKA-TK-0006', brand: 'Toyota', model: 'Axio' });
+  const V = veh.body?.data?.id;
+  const vehOther = await send('POST', '/api/vehicles', { customerId: C2, regNo: 'DHAKA-TK-0007', brand: 'Honda', model: 'Fit' });
+  const V2 = vehOther.body?.data?.id;
+  const mech = await send('POST', '/api/mechanics', { name: '0006 Task Mechanic', phone: '01933-000603', specialization: 'Brakes' });
+  const M = mech.body?.data?.id;
+  const mechOff = await send('POST', '/api/mechanics', { name: '0006 Retired Mechanic', phone: '01933-000604', specialization: 'Body', status: 'Inactive' });
+  const M2 = mechOff.body?.data?.id;
+  const svc = await send('POST', '/api/services', { name: '0006 Brake Check', category: 'Brakes', price: 500 });
+  const S = svc.body?.data?.id;
+  const job = await send('POST', '/api/job-cards', { customerId: C, vehicleId: V, mechanicId: M, date: '2026-10-10',
+    complaint: '0006: brake squeal', services: [{ serviceId: S, name: '0006 Brake Check', qty: 1, unitPrice: 500 }] });
+  const J = job.body?.data?.id;
+  t('the section has its own customers, vehicles, mechanics and job card', [C, C2, V, V2, M, M2, S, J].every(Boolean),
+    { cust: cust.body, veh: veh.body, mech: mech.body, mechOff: mechOff.body, job: job.body });
+
+  let seq = 0;
+  const key = () => `integration-0006-${Date.now()}-${++seq}`;
+  const body = (extra = {}) => ({ title: 'Call about the brake squeal', customerId: C, vehicleId: V, jobCardId: J,
+    assignedTo: M, priority: 'high', dueDate: '2026-10-20', createdBy: 'Integration', idempotencyKey: key(), ...extra });
+
+  // 26a. create, references, idempotent replay
+  const a = await send('POST', '/api/follow-up-tasks', body());
+  const T = a.body?.data?.id;
+  t('26a create -> 201 Pending, with its references and audit',
+    a.status === 201 && /^TSK-\d{4}$/.test(T || '') && a.body?.data?.status === 'Pending' && a.body?.data?.jobCardId === J
+      && a.body?.data?.assignedTo === M && a.body?.data?.createdBy === 'Integration' && !!a.body?.data?.createdAt, a);
+  t('   ...the idempotency key is never echoed', a.body?.data && !('idempotencyKey' in a.body.data), a.body?.data);
+  const bare = await send('POST', '/api/follow-up-tasks', { title: 'Restock brake fluid', dueDate: '2026-10-25', idempotencyKey: key() });
+  t('   ...a task needs no customer, staff or job card (priority defaults to medium)',
+    bare.status === 201 && bare.body?.data?.customerId === null && bare.body?.data?.priority === 'medium', bare);
+  const fixed = body();
+  const r1 = await send('POST', '/api/follow-up-tasks', fixed);
+  const r2 = await send('POST', '/api/follow-up-tasks', fixed);
+  t('   ...same key + same payload -> 201 then 200 replayed, same id',
+    r1.status === 201 && r2.status === 200 && r2.body?.replayed === true && r2.body?.data?.id === r1.body?.data?.id, [r1.status, r2.status, r2.body]);
+  const r3 = await send('POST', '/api/follow-up-tasks', { ...fixed, title: 'Something else' });
+  t('   ...same key + different payload -> 409 idempotency_key_reused', r3.status === 409 && r3.body?.error?.reason === 'idempotency_key_reused', r3);
+  const parallel = body();
+  const burst = await Promise.all(Array.from({ length: 8 }, () => send('POST', '/api/follow-up-tasks', parallel)));
+  t('   ...eight parallel creates with one key -> one task, exactly one 201',
+    new Set(burst.map((r) => r.body?.data?.id)).size === 1 && burst.filter((r) => r.status === 201).length === 1,
+    burst.map((r) => [r.status, r.body?.data?.id, r.body?.error]));
+
+  // 26b. validation and references, all refused by the Worker
+  const bad = async (extra) => send('POST', '/api/follow-up-tasks', body(extra));
+  const v1 = await bad({ title: '  ' });
+  const v2 = await bad({ dueDate: '2026-02-30' });
+  const v3 = await bad({ priority: 'normal' });
+  const v4 = await bad({ status: 'Completed' });
+  t('26b blank title, impossible date, unknown priority, server-owned field -> 422 each',
+    [v1, v2, v3, v4].every((r) => r.status === 422) && 'title' in (v1.body?.error?.fields ?? {}) && 'dueDate' in (v2.body?.error?.fields ?? {})
+      && 'priority' in (v3.body?.error?.fields ?? {}) && 'status' in (v4.body?.error?.fields ?? {}), [v1, v2, v3, v4].map((r) => r.body));
+  const v5 = await bad({ customerId: null });
+  t('   ...a vehicle or job card without a customer -> 422', v5.status === 422, v5);
+  const v6 = await bad({ vehicleId: V2, jobCardId: null });
+  t("   ...another customer's vehicle -> 422 fields.vehicleId", v6.status === 422 && !!v6.body?.error?.fields?.vehicleId, v6);
+  const v7 = await bad({ customerId: C2, vehicleId: V2 });
+  t("   ...a job card of another customer -> 422 fields.jobCardId", v7.status === 422 && !!v7.body?.error?.fields?.jobCardId, v7);
+  const v8 = await bad({ assignedTo: M2 });
+  const v9 = await bad({ assignedTo: 'MEC-7777' });
+  const v10 = await bad({ customerId: 'CUS-7777', vehicleId: null, jobCardId: null });
+  t('   ...inactive / unknown staff and an unknown customer -> 409 with a reason',
+    v8.body?.error?.reason === 'staff_inactive' && v9.body?.error?.reason === 'staff_not_found' && v10.body?.error?.reason === 'customer_not_found'
+      && [v8, v9, v10].every((r) => r.status === 409), [v8.body, v9.body, v10.body]);
+
+  // 26c. edit and assignment, with optimistic concurrency
+  const cur = (await get(`/api/follow-up-tasks/${T}`)).body?.data;
+  const e1 = await send('PUT', `/api/follow-up-tasks/${T}`, { assignedTo: null, priority: 'urgent', updatedBy: 'Integration', expectedUpdatedAt: cur?.updatedAt });
+  t('26c edit -> 200: unassigned, urgent, updatedBy recorded', e1.status === 200 && e1.body?.data?.assignedTo === null
+    && e1.body?.data?.priority === 'urgent' && e1.body?.data?.updatedBy === 'Integration', e1);
+  const stale = await send('PUT', `/api/follow-up-tasks/${T}`, { title: 'Stale edit', expectedUpdatedAt: cur?.updatedAt });
+  t('   ...an edit made from an older version -> 409 concurrent_modification',
+    e1.body?.data?.updatedAt === cur?.updatedAt || (stale.status === 409 && stale.body?.error?.reason === 'concurrent_modification'), [cur?.updatedAt, e1.body?.data?.updatedAt, stale.body]);
+  const e2 = await send('PUT', `/api/follow-up-tasks/${T}`, { assignedTo: M });
+  t('   ...reassigned to the active mechanic', e2.status === 200 && e2.body?.data?.assignedTo === M, e2);
+  const e3 = await send('PUT', `/api/follow-up-tasks/${T}`, { assignedTo: M2 });
+  t('   ...never to an inactive one (409 staff_inactive)', e3.status === 409 && e3.body?.error?.reason === 'staff_inactive', e3);
+
+  // 26d. the status machine
+  const s1 = await send('POST', `/api/follow-up-tasks/${T}/start`, {});
+  const s2 = await send('POST', `/api/follow-up-tasks/${T}/start`, {});
+  t('26d start -> 200 In Progress with startedAt; again -> 409 invalid_transition',
+    s1.status === 200 && s1.body?.data?.status === 'In Progress' && !!s1.body?.data?.startedAt
+      && s2.status === 409 && s2.body?.error?.reason === 'invalid_transition' && s2.body?.error?.currentStatus === 'In Progress', [s1.body, s2.body]);
+  const c1 = await send('POST', `/api/follow-up-tasks/${T}/complete`, { note: 'Called, all fine', by: 'Integration' });
+  t('   ...complete -> 200 with completedAt and the note', c1.status === 200 && c1.body?.data?.status === 'Completed'
+    && !!c1.body?.data?.completedAt && c1.body?.data?.completionNote === 'Called, all fine', c1);
+  const c2 = await send('POST', `/api/follow-up-tasks/${T}/cancel`, { reason: 'too late' });
+  const c3 = await send('PUT', `/api/follow-up-tasks/${T}`, { title: 'Edit after close' });
+  t('   ...a completed task cannot be cancelled or edited (409 task_closed)',
+    [c2, c3].every((r) => r.status === 409 && r.body?.error?.reason === 'task_closed'), [c2.body, c3.body]);
+  const B = bare.body?.data?.id;
+  const x1 = await send('POST', `/api/follow-up-tasks/${B}/cancel`, {});
+  const x2 = await send('POST', `/api/follow-up-tasks/${B}/cancel`, { reason: 'Not needed', by: 'Integration' });
+  t('   ...cancel needs a reason (422), then -> 200 Cancelled with the reason',
+    x1.status === 422 && x2.status === 200 && x2.body?.data?.status === 'Cancelled' && x2.body?.data?.cancelReason === 'Not needed', [x1.body, x2.body]);
+  const x3 = await send('POST', `/api/follow-up-tasks/${B}/start`, {});
+  t('   ...a cancelled task cannot be started', x3.status === 409, x3);
+
+  // 26e. listing, deletion and references that cannot go away
+  const list = (await get('/api/follow-up-tasks?limit=1000')).body?.data ?? [];
+  t('26e the list returns the tasks with their status', list.some((x) => x.id === T && x.status === 'Completed') && list.some((x) => x.id === B && x.status === 'Cancelled'),
+    list.length);
+  const del = await send('DELETE', `/api/follow-up-tasks/${T}`);
+  t('   ...tasks are never deleted (405)', del.status === 405, del);
+  const delM = await send('DELETE', `/api/mechanics/${M}`);
+  const delC = await send('DELETE', `/api/customers/${C}`);
+  t('   ...a mechanic and a customer referenced by tasks cannot be deleted (409)', delM.status === 409 && delC.status === 409, [delM.status, delC.status]);
+
+  // 26f. the gate
+  const anon = await sendAnon('POST', '/api/follow-up-tasks', body());
+  const anonL = await sendAnon('GET', '/api/follow-up-tasks');
+  const anonA = await sendAnon('POST', `/api/follow-up-tasks/${T}/start`, {});
+  t('26f without credentials every task route is 401', [anon.status, anonL.status, anonA.status].every((s) => s === 401),
+    [anon.status, anonL.status, anonA.status]);
+
+  // cleanup.sql removes these rows (tasks first) and resets the counters.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

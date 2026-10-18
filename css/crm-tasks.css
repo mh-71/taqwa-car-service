@@ -1,10 +1,12 @@
 /* ============================================================
-   crm-tasks.css — Customer CRM › Follow-up Tasks (UI only)
+   crm-tasks.css — Customer CRM › Follow-up Tasks
    ------------------------------------------------------------
    Loaded only by pages/crm-tasks.html, and every rule is also
    scoped to [data-page="crm-tasks"], so nothing here can reach
-   another page. The page is built from the shared components
-   (stats grid, toolbar, inputs, card, table, badges); this file only
+   another page. (The dialogs are appended to <body>, which carries
+   that attribute, so they are inside the scope too.) The page is
+   built from the shared components (stats grid, toolbar, inputs,
+   card, table, badges, modal, customer picker); this file only
    arranges them and styles the parts that exist on this page alone.
    ============================================================ */
 
@@ -19,18 +21,19 @@
 [data-page="crm-tasks"] .ctk-head__text { min-width: 0; }
 [data-page="crm-tasks"] .ctk-head__title { font-size: 1.2rem; font-weight: 700; letter-spacing: -.01em; }
 [data-page="crm-tasks"] .ctk-head__desc { margin: 2px 0 0; font-size: .86rem; color: var(--text-2); }
-[data-page="crm-tasks"] .ctk-head__status { flex: none; margin-top: 4px; }
+[data-page="crm-tasks"] .ctk-head__new { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+[data-page="crm-tasks"] .ctk-head__new:disabled { opacity: .55; cursor: not-allowed; }
 
-/* ---------- summary cards (shared .stat, placeholder values) ---------- */
+/* ---------- summary cards (shared .stat) ---------- */
 [data-page="crm-tasks"] .ctk-stats { margin-bottom: 18px; }
 [data-page="crm-tasks"] .ctk-stat { align-items: flex-start; }
-[data-page="crm-tasks"] .ctk-stat .stat__value { color: var(--text-3); }
 [data-page="crm-tasks"] .ctk-stat .stat__label { font-weight: 600; color: var(--text); }
-[data-page="crm-tasks"] .ctk-pending { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
+[data-page="crm-tasks"] .ctk-sub { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
 
-/* ---------- toolbar (disabled until connected) ---------- */
+/* ---------- toolbar (disabled until the tasks have loaded) ---------- */
 [data-page="crm-tasks"] .ctk-toolbar .input:disabled,
-[data-page="crm-tasks"] .ctk-toolbar .select:disabled { cursor: not-allowed; }
+[data-page="crm-tasks"] .ctk-toolbar .select:disabled,
+[data-page="crm-tasks"] .ctk-toolbar .btn:disabled { cursor: not-allowed; }
 [data-page="crm-tasks"] .ctk-date {
   display: inline-flex;
   align-items: center;
@@ -38,13 +41,10 @@
   font-size: .8rem;
   color: var(--text-3);
 }
-[data-page="crm-tasks"] .ctk-toolbar .toolbar__search { flex: 1 1 360px; max-width: 480px; }
-[data-page="crm-tasks"] .ctk-toolbar__note { white-space: normal; flex: 1 1 100%; }   /* own line under five controls */
-/* Not connected yet: the disabled controls read as unavailable at a glance. */
-[data-page="crm-tasks"] .ctk-toolbar .input:disabled,
-[data-page="crm-tasks"] .ctk-toolbar .select:disabled { opacity: .7; }
+[data-page="crm-tasks"] .ctk-toolbar .toolbar__search { flex: 1 1 320px; max-width: 420px; }
+[data-page="crm-tasks"] .ctk-toolbar__note { white-space: normal; }
 
-/* ---------- reminder list ---------- */
+/* ---------- task list ---------- */
 [data-page="crm-tasks"] .ctk-list__head { flex-wrap: wrap; gap: 10px; }
 /* Two colour keys (status, priority), each led by a small label. */
 [data-page="crm-tasks"] .ctk-keys { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 16px; }
@@ -65,8 +65,17 @@
   list-style: none;
 }
 [data-page="crm-tasks"] .ctk-table tbody tr.ctk-empty-row:hover { background: none; }
+[data-page="crm-tasks"] .ctk-title { white-space: normal; overflow-wrap: anywhere; min-width: 160px; max-width: 320px; }
+[data-page="crm-tasks"] .ctk-unknown,
+[data-page="crm-tasks"] .ctk-muted { color: var(--text-3); }
+[data-page="crm-tasks"] .ctk-unknown { font-style: italic; }
+[data-page="crm-tasks"] .ctk-late { color: var(--bad); font-weight: 600; }
+[data-page="crm-tasks"] .ctk-row--cancelled td { color: var(--text-3); }
+[data-page="crm-tasks"] .ctk-row--cancelled .badge { opacity: .8; }
+[data-page="crm-tasks"] .ctk-empty--bad .ctk-empty__icon { color: var(--bad); }
+[data-page="crm-tasks"] .ctk-actions { margin-top: 10px !important; }
 
-/* Compact empty state: icon, explanation and status side by side. */
+/* Compact empty / loading / unavailable state: icon, explanation and status side by side. */
 [data-page="crm-tasks"] .ctk-empty {
   display: flex;
   align-items: flex-start;
@@ -89,38 +98,97 @@
 [data-page="crm-tasks"] .ctk-empty__text h3 { font-size: .92rem; font-weight: 600; color: var(--text); }
 [data-page="crm-tasks"] .ctk-empty__text p { margin: 4px 0 0; font-size: .8rem; color: var(--text-3); }
 [data-page="crm-tasks"] .ctk-empty__status { flex: none; }
-[data-page="crm-tasks"] .ctk-planned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px !important; }
-[data-page="crm-tasks"] .ctk-planned__label { font-weight: 600; color: var(--text-2); }
-/* Plain text, not buttons: these actions do not exist yet. */
-[data-page="crm-tasks"] .ctk-chip {
-  padding: 2px 8px;
-  border: 1px dashed var(--line-strong, var(--line));
-  border-radius: 999px;
-  font-size: .72rem;
-  color: var(--text-3);
-}
 
-/* ---------- tablet / phone ---------- */
-/* Narrower screens: let the column headers wrap so the table never grows
-   wider than its card (the empty state would be cut off inside the scroll
-   area), and stack the empty state instead of squeezing it beside the icon. */
-@media (max-width: 1100px) {
-  [data-page="crm-tasks"] .ctk-table th { white-space: normal; }
+/* Pages of 25 tasks under the table. */
+[data-page="crm-tasks"] .ctk-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+[data-page="crm-tasks"] .ctk-pager[hidden] { display: none; }
+[data-page="crm-tasks"] .ctk-pager__range { margin-right: auto; font-size: .8rem; color: var(--text-3); }
+
+/* ---------- dialogs ---------- */
+[data-page="crm-tasks"] .ctk-fixed { margin: 0 0 10px; font-weight: 600; color: var(--text); }
+[data-page="crm-tasks"] .ctk-fixed .cell-sub { display: block; font-weight: 400; font-size: .78rem; color: var(--text-3); }
+[data-page="crm-tasks"] .ctk-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: .82rem;
+  white-space: normal;
+}
+[data-page="crm-tasks"] .ctk-notice[hidden] { display: none; }
+[data-page="crm-tasks"] .ctk-notice--warn { background: var(--warn-soft); color: var(--warn); }
+[data-page="crm-tasks"] .ctk-notice--bad { background: var(--bad-soft); color: var(--bad); }
+[data-page="crm-tasks"] .ctk-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin-bottom: 18px;
+}
+[data-page="crm-tasks"] .ctk-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+[data-page="crm-tasks"] .ctk-fact--wide { grid-column: 1 / -1; }
+[data-page="crm-tasks"] .ctk-fact__label { font-size: .72rem; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
+[data-page="crm-tasks"] .ctk-fact__value { font-size: .88rem; color: var(--text); }
+[data-page="crm-tasks"] .ctk-fact__value .cell-sub { display: block; font-size: .74rem; color: var(--text-3); }
+/* Free text keeps its line breaks and never widens the dialog. */
+[data-page="crm-tasks"] .ctk-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- compact (below 1100px) ---------- */
+/* Seven columns with two-line cells need about 900px of card. Below that the
+   heading row is hidden and each task becomes a card: every cell keeps its
+   value, its label (from data-label) and its actions, so nothing is lost on
+   a tablet or a phone. */
+@media (max-width: 1099px) {
+  [data-page="crm-tasks"] .ctk-table thead { display: none; }
+  [data-page="crm-tasks"] .ctk-table tbody tr:not(.ctk-empty-row) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: row dense;   /* the full-width cells leave no gaps beside them */
+    gap: 8px 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  [data-page="crm-tasks"] .ctk-table tbody tr:not(.ctk-empty-row) td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    max-width: none;
+    white-space: normal;
+  }
+  [data-page="crm-tasks"] .ctk-table tbody tr:not(.ctk-empty-row) td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: .68rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  [data-page="crm-tasks"] .ctk-table tbody tr:not(.ctk-empty-row) td[data-label="Task"],
+  [data-page="crm-tasks"] .ctk-table tbody tr:not(.ctk-empty-row) td[data-label="Actions"] { grid-column: 1 / -1; }
 }
 @media (max-width: 900px) {
   [data-page="crm-tasks"] .ctk-empty { flex-direction: column; align-items: flex-start; gap: 10px; }
+  [data-page="crm-tasks"] .ctk-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
-  [data-page="crm-tasks"] .ctk-head { flex-direction: column; gap: 8px; }
-  [data-page="crm-tasks"] .ctk-head__status { margin-top: 0; }
+  [data-page="crm-tasks"] .ctk-head { flex-direction: column; gap: 10px; }
+  [data-page="crm-tasks"] .ctk-head__new { width: 100%; justify-content: center; }
   [data-page="crm-tasks"] .ctk-keys { justify-content: flex-start; }
   [data-page="crm-tasks"] .ctk-toolbar .toolbar__search { max-width: none; }
   [data-page="crm-tasks"] .ctk-toolbar .select,
   [data-page="crm-tasks"] .ctk-date { flex: 1 1 100%; }
   [data-page="crm-tasks"] .ctk-date .input { flex: 1; }
-  /* With no rows, the header row alone is wider than a phone; hide it so the
-     empty state fits instead of scrolling sideways. */
-  [data-page="crm-tasks"] .ctk-table thead { display: none; }
+  [data-page="crm-tasks"] .ctk-table tbody tr:not(.ctk-empty-row) { grid-template-columns: minmax(0, 1fr); }
   [data-page="crm-tasks"] .ctk-empty { padding: 16px 4px; gap: 12px; }
   [data-page="crm-tasks"] .ctk-empty__icon { width: 40px; height: 40px; }
+  [data-page="crm-tasks"] .ctk-facts { grid-template-columns: minmax(0, 1fr); }
+  [data-page="crm-tasks"] .ctk-pager { flex-wrap: wrap; }
+  [data-page="crm-tasks"] .ctk-pager__range { flex: 1 1 100%; }
 }

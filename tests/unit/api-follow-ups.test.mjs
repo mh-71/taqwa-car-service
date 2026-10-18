@@ -625,7 +625,7 @@ console.log('\n-- J. routes and responses --');
   ];
   const health = await (await call('/api/health', h.env, 'GET')).json();
   check('health advertises exactly these ten follow-up routes',
-    health.data.routes.filter((r) => r.includes('/follow-up')), NEW_ROUTES);
+    health.data.routes.filter((r) => /\/api\/follow-up(s|-contacts)(\/|$)/.test(r)), NEW_ROUTES);
   const open = [];
   const before = h.n('follow_ups') + h.n('follow_up_contacts');
   for (const route of NEW_ROUTES) {

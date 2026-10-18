@@ -373,6 +373,9 @@ console.log('\n-- 11. Routing --');
     'GET /api/follow-ups', 'POST /api/follow-ups', 'GET /api/follow-ups/:id', 'PUT /api/follow-ups/:id',
     'POST /api/follow-ups/:id/complete', 'POST /api/follow-ups/:id/cancel', 'POST /api/follow-ups/:id/contact',
     'GET /api/follow-up-contacts', 'GET /api/follow-up-contacts/:id', 'POST /api/follow-up-contacts/:id/void',
+    // 0006: follow-up tasks have no DELETE either (cancel with a reason instead).
+    'GET /api/follow-up-tasks', 'POST /api/follow-up-tasks', 'GET /api/follow-up-tasks/:id', 'PUT /api/follow-up-tasks/:id',
+    'POST /api/follow-up-tasks/:id/start', 'POST /api/follow-up-tasks/:id/complete', 'POST /api/follow-up-tasks/:id/cancel',
     // Settings is a singleton: a read and a write, and no /:id — there is
     // no create or delete for a row that is permanently id 1.
     'GET /api/settings', 'PUT /api/settings',
@@ -383,7 +386,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 77);
+  check('404 advertises every route', body.error.available.length, 84);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);
