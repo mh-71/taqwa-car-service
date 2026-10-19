@@ -14,6 +14,7 @@ const App = (() => {
     { key: 'vehicles',     label: 'Vehicles',     href: 'pages/vehicles.html',   icon: 'M18.9 6c-.2-.6-.8-1-1.4-1H6.5c-.6 0-1.2.4-1.4 1L3 12v8c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-1h12v1c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-8l-2.1-6zM6.5 15c-.8 0-1.5-.7-1.5-1.5S5.7 12 6.5 12s1.5.7 1.5 1.5S7.3 15 6.5 15zm11 0c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5zM5 10l1.5-4.5h11L19 10H5z' },
     { key: 'appointments', label: 'Appointments', href: 'pages/appointments.html', icon: 'M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z' },
     { key: 'job-cards',    label: 'Job Cards',    href: 'pages/job-cards.html',  icon: 'M20 6h-4V4c0-1.1-.9-2-2-2h-4C8.9 2 8 2.9 8 4v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4z' },
+    { key: 'estimates',    label: 'Estimates & Quotations', href: 'pages/estimates.html', icon: 'M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm1 10h-4v1h3c.55 0 1 .45 1 1v3c0 .55-.45 1-1 1h-1v1h-2v-1H9v-2h4v-1h-3c-.55 0-1-.45-1-1v-3c0-.55.45-1 1-1h1V8h2v1h2v2zm-2-4V3.5L17.5 8H13z' },
     { key: 'services',     label: 'Services',     href: 'pages/services.html',   icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z' },
     { key: 'mechanics',    label: 'Mechanics',    href: 'pages/mechanics.html',  icon: 'M12 2L4 6v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V6l-8-4zm0 10.9c-1.6 0-2.9-1.3-2.9-2.9S10.4 7.1 12 7.1s2.9 1.3 2.9 2.9-1.3 2.9-2.9 2.9zm0 2c1.9 0 5.8.9 5.8 2.9v1.3c-1.4 1.9-3.5 3.3-5.8 3.8-2.3-.5-4.4-1.9-5.8-3.8v-1.3c0-2 3.9-2.9 5.8-2.9z' },
     { key: 'inventory',    label: 'Inventory',    href: 'pages/inventory.html',  icon: 'M20 2H4c-1 0-2 .9-2 2v3c0 .7.4 1.4 1 1.7V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.6-.3 1-1 1-1.7V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z' },
@@ -83,7 +84,7 @@ const App = (() => {
 
   const PAGE_TITLES = {
     dashboard: 'Dashboard', customers: 'Customers', vehicles: 'Vehicles',
-    appointments: 'Appointments', 'job-cards': 'Job Cards', services: 'Service Catalog',
+    appointments: 'Appointments', 'job-cards': 'Job Cards', estimates: 'Estimates & Quotations', services: 'Service Catalog',
     mechanics: 'Mechanics', inventory: 'Inventory', invoices: 'Invoices',
     payments: 'Payments', expenses: 'Expenses', reports: 'Reports', settings: 'Settings',
     profile: 'Profile',   // design prototype pages

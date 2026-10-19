@@ -62,7 +62,7 @@ console.log('-- 1. sidebar --');
 {
   const html = shellFor('dashboard');
   check('the top-level links, in order (Staff Management is a group, not a link)', topLinks(html).map(l => l.label),
-    ['Dashboard', 'Customers', 'Vehicles', 'Appointments', 'Job Cards', 'Services', 'Mechanics',
+    ['Dashboard', 'Customers', 'Vehicles', 'Appointments', 'Job Cards', 'Estimates & Quotations', 'Services', 'Mechanics',
       'Inventory', 'Invoices', 'Payments', 'Expenses', 'Reports', 'Settings']);
   const block = staffBlock(html);
   ok('the sidebar has a Staff Management group', /<summary class="nav__summary"><svg[^>]*><path d="M[^"]+"\/><\/svg><span>Staff Management<\/span>/.test(block), block.slice(0, 200));
