@@ -16,6 +16,7 @@ const App = (() => {
     { key: 'job-cards',    label: 'Job Cards',    href: 'pages/job-cards.html',  icon: 'M20 6h-4V4c0-1.1-.9-2-2-2h-4C8.9 2 8 2.9 8 4v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4z' },
     { key: 'services',     label: 'Services',     href: 'pages/services.html',   icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z' },
     { key: 'mechanics',    label: 'Mechanics',    href: 'pages/mechanics.html',  icon: 'M12 2L4 6v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V6l-8-4zm0 10.9c-1.6 0-2.9-1.3-2.9-2.9S10.4 7.1 12 7.1s2.9 1.3 2.9 2.9-1.3 2.9-2.9 2.9zm0 2c1.9 0 5.8.9 5.8 2.9v1.3c-1.4 1.9-3.5 3.3-5.8 3.8-2.3-.5-4.4-1.9-5.8-3.8v-1.3c0-2 3.9-2.9 5.8-2.9z' },
+    { key: 'staff-management', label: 'Staff Management', href: 'pages/staff-management.html', icon: 'M16.5 12c1.38 0 2.49-1.12 2.49-2.5S17.88 7 16.5 7C15.12 7 14 8.12 14 9.5s1.12 2.5 2.5 2.5zM9 11c1.66 0 2.99-1.34 2.99-3S10.66 5 9 5C7.34 5 6 6.34 6 8s1.34 3 3 3zm7.5 3c-1.83 0-5.5.92-5.5 2.75V19h11v-2.25c0-1.83-3.67-2.75-5.5-2.75zM9 13c-2.33 0-7 1.17-7 3.5V19h7v-2.25c0-.85.33-2.34 2.37-3.47C10.5 13.1 9.66 13 9 13z' },
     { key: 'inventory',    label: 'Inventory',    href: 'pages/inventory.html',  icon: 'M20 2H4c-1 0-2 .9-2 2v3c0 .7.4 1.4 1 1.7V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.6-.3 1-1 1-1.7V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z' },
     { key: 'invoices',     label: 'Invoices',     href: 'pages/invoices.html',   icon: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z' },
     { key: 'payments',     label: 'Payments',     href: 'pages/payments.html',   icon: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z' },
@@ -66,7 +67,7 @@ const App = (() => {
   const PAGE_TITLES = {
     dashboard: 'Dashboard', customers: 'Customers', vehicles: 'Vehicles',
     appointments: 'Appointments', 'job-cards': 'Job Cards', services: 'Service Catalog',
-    mechanics: 'Mechanics', inventory: 'Inventory', invoices: 'Invoices',
+    mechanics: 'Mechanics', 'staff-management': 'Staff Management', inventory: 'Inventory', invoices: 'Invoices',
     payments: 'Payments', expenses: 'Expenses', reports: 'Reports', settings: 'Settings',
     profile: 'Profile',   // design prototype pages
     'account-settings': 'Account Settings',
