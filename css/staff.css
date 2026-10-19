@@ -1,0 +1,249 @@
+/* ============================================================
+   staff.css — Staff Management pages (UI preview)
+   ------------------------------------------------------------
+   Loaded only by the six pages/staff-*.html pages, and every rule
+   is also scoped to [data-page^="staff-"], so nothing here can
+   reach another page. The pages are built from the shared
+   components (stats grid, cards, toolbar, inputs, buttons, table,
+   badges, form sections, empty state); this file only arranges
+   them and styles what exists on these pages alone: the preview
+   notice, breadcrumb, donut charts, avatars, role badges, the
+   permission matrix and the photo drop area.
+   ============================================================ */
+
+/* ---------- palette for roles and charts (built on the shared tokens) ---------- */
+[data-page^="staff-"] {
+  --stf-violet: #7c5cd6;
+  --stf-violet-soft: color-mix(in srgb, var(--stf-violet) 14%, var(--surface));
+  --stf-c1: var(--info);          /* Mechanic */
+  --stf-c2: var(--good);          /* Service Advisor */
+  --stf-c3: var(--warn);          /* Helper */
+  --stf-c4: var(--bad);           /* Accountant */
+  --stf-c5: var(--stf-violet);    /* Manager */
+  --stf-c6: var(--text-3);        /* Admin */
+  --stf-cactive: var(--good);
+  --stf-cinactive: var(--bad);
+}
+
+[data-page^="staff-"] .stf-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+/* A table's screen-reader-only text is absolutely positioned: without a positioned
+   wrapper it escapes the wrapper's horizontal scroll and widens the whole page. */
+[data-page^="staff-"] .table-wrap { position: relative; }
+
+/* The sidebar's Staff Management label is bold on these pages (the group holds the
+   current page) and needs two pixels more than the shared row spacing leaves. */
+[data-page^="staff-"] #navStaff > .nav__summary { gap: 10px; }
+[data-page^="staff-"] #navStaff > .nav__summary > span { white-space: nowrap; }
+[data-page^="staff-"] #navStaff .nav__sub.is-active > span { white-space: nowrap; }
+[data-page^="staff-"] .stf-muted { margin: 0; font-size: .78rem; color: var(--text-3); }
+[data-page^="staff-"] .stf-nowrap { white-space: nowrap; }
+[data-page^="staff-"] .stf-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; }
+
+/* ---------- breadcrumb, subtitle row ---------- */
+[data-page^="staff-"] .stf-crumbs ol {
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; padding: 0;
+  list-style: none; font-size: .78rem; color: var(--text-3);
+}
+[data-page^="staff-"] .stf-crumbs li + li::before { content: '\203A'; margin-right: 6px; color: var(--text-3); }
+[data-page^="staff-"] .stf-crumbs a { color: var(--text-2); text-decoration: none; }
+[data-page^="staff-"] .stf-crumbs a:hover { color: var(--amber-text); text-decoration: underline; }
+[data-page^="staff-"] .stf-crumbs [aria-current="page"] { color: var(--text); font-weight: 600; }
+
+[data-page^="staff-"] .stf-head {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 12px; margin-bottom: 12px;
+}
+[data-page^="staff-"] .stf-head .page-subtitle { margin: 0; }
+[data-page^="staff-"] .stf-head__actions { display: flex; gap: 8px; }
+[data-page^="staff-"] .btn svg { flex: none; }
+[data-page^="staff-"] a.btn { text-decoration: none; }
+
+/* ---------- the preview notice (on every page) ---------- */
+[data-page^="staff-"] .stf-preview {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 18px; padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line));
+  border-radius: var(--radius); background: var(--amber-soft);
+}
+[data-page^="staff-"] .stf-preview__icon { flex: none; display: grid; color: var(--amber-text); }
+[data-page^="staff-"] .stf-preview__text { flex: 1; margin: 0; font-size: .82rem; line-height: 1.45; color: var(--text); }
+[data-page^="staff-"] .stf-preview__toggle { flex: none; }
+
+/* ---------- summary cards (shared .stat) ---------- */
+[data-page^="staff-"] .stf-stats { margin-bottom: 18px; }
+[data-page^="staff-"] .stf-stat { align-items: flex-start; }
+[data-page^="staff-"] .stf-stat__body { flex: 1; min-width: 0; }
+[data-page^="staff-"] .stf-stat .stat__label { font-weight: 600; color: var(--text); }
+[data-page^="staff-"] .stf-stat__sub { margin-top: 2px; font-size: .74rem; color: var(--text-3); }
+[data-page^="staff-"] .stf-icon--violet { background: var(--stf-violet-soft); color: var(--stf-violet); }
+[data-page^="staff-"] .stf-icon--neutral { background: var(--paper); color: var(--text-2); border: 1px solid var(--line); }
+[data-page^="staff-"] .stf-bar { height: 6px; margin-top: 8px; border-radius: 999px; background: var(--paper); overflow: hidden; }
+[data-page^="staff-"] .stf-bar__fill { display: block; height: 100%; width: 0; border-radius: inherit; }
+[data-page^="staff-"] .stf-bar__fill--good { background: var(--good); }
+[data-page^="staff-"] .stf-bar__fill--bad { background: var(--bad); }
+[data-page^="staff-"] .stf-bar__fill--violet { background: var(--stf-violet); }
+
+/* ---------- cards ---------- */
+[data-page^="staff-"] .stf-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 18px; }
+[data-page^="staff-"] .stf-table-card { margin-bottom: 18px; }
+[data-page^="staff-"] .card__head { gap: 10px; }
+[data-page^="staff-"] .stf-card-icon { display: grid; color: var(--text-2); }
+[data-page^="staff-"] .stf-card-foot { padding-top: 12px; padding-bottom: 12px; border-top: 1px solid var(--line); }
+
+/* ---------- donut charts ---------- */
+[data-page^="staff-"] .stf-donut { display: flex; align-items: center; gap: 28px; }
+[data-page^="staff-"] .stf-donut__chart { flex: none; }
+[data-page^="staff-"] .stf-donut__ring {
+  display: grid; place-items: center; width: 168px; height: 168px; border-radius: 50%;
+}
+[data-page^="staff-"] .stf-donut__hole {
+  display: grid; place-items: center; align-content: center; width: 104px; height: 104px;
+  border-radius: 50%; background: var(--surface); text-align: center;
+}
+[data-page^="staff-"] .stf-donut__total { font-size: 1.6rem; line-height: 1.1; color: var(--text); }
+[data-page^="staff-"] .stf-donut__hole span { font-size: .78rem; color: var(--text-2); }
+[data-page^="staff-"] .stf-legend { flex: 1; min-width: 0; margin: 0; padding: 0; list-style: none; }
+[data-page^="staff-"] .stf-legend__row {
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 48px; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .85rem;
+}
+[data-page^="staff-"] .stf-legend__row:last-child { border-bottom: 0; }
+[data-page^="staff-"] .stf-legend__n { font-weight: 600; font-variant-numeric: tabular-nums; }
+[data-page^="staff-"] .stf-legend__pct { text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
+[data-page^="staff-"] .stf-dot { width: 12px; height: 12px; border-radius: 50%; }
+[data-page^="staff-"] .stf-dot--1 { background: var(--stf-c1); }
+[data-page^="staff-"] .stf-dot--2 { background: var(--stf-c2); }
+[data-page^="staff-"] .stf-dot--3 { background: var(--stf-c3); }
+[data-page^="staff-"] .stf-dot--4 { background: var(--stf-c4); }
+[data-page^="staff-"] .stf-dot--5 { background: var(--stf-c5); }
+[data-page^="staff-"] .stf-dot--6 { background: var(--stf-c6); }
+[data-page^="staff-"] .stf-dot--active { background: var(--stf-cactive); }
+[data-page^="staff-"] .stf-dot--inactive { background: var(--stf-cinactive); }
+
+/* ---------- tables: people, avatars, role badges ---------- */
+[data-page^="staff-"] .stf-table td { vertical-align: middle; }
+[data-page^="staff-"] .stf-desc { min-width: 240px; }
+[data-page^="staff-"] .stf-person { display: flex; align-items: center; gap: 10px; min-width: 150px; }
+[data-page^="staff-"] .stf-person__text { min-width: 0; }
+[data-page^="staff-"] .stf-avatar {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  font-size: .82rem; font-weight: 700;
+  background: color-mix(in srgb, var(--stf-avatar, var(--text-3)) 16%, var(--surface));
+  color: var(--stf-avatar, var(--text-2));
+}
+[data-page^="staff-"] .stf-role {
+  display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: .74rem; font-weight: 600; white-space: nowrap;
+  background: color-mix(in srgb, var(--stf-role, var(--text-3)) 13%, var(--surface));
+  color: var(--stf-role, var(--text-2));
+}
+[data-page^="staff-"] :is(.stf-avatar--1, .stf-role--1) { --stf-avatar: var(--stf-c1); --stf-role: var(--stf-c1); }
+[data-page^="staff-"] :is(.stf-avatar--2, .stf-role--2) { --stf-avatar: var(--stf-c2); --stf-role: var(--stf-c2); }
+[data-page^="staff-"] :is(.stf-avatar--3, .stf-role--3) { --stf-avatar: var(--stf-c3); --stf-role: var(--stf-c3); }
+[data-page^="staff-"] :is(.stf-avatar--4, .stf-role--4) { --stf-avatar: var(--stf-c4); --stf-role: var(--stf-c4); }
+[data-page^="staff-"] :is(.stf-avatar--5, .stf-role--5) { --stf-avatar: var(--stf-c5); --stf-role: var(--stf-c5); }
+[data-page^="staff-"] :is(.stf-avatar--6, .stf-role--6) { --stf-avatar: var(--stf-c6); --stf-role: var(--stf-c6); }
+[data-page^="staff-"] .stf-empty-row td { padding: 28px 16px; text-align: center; }
+[data-page^="staff-"] .stf-empty-row__box { display: grid; gap: 4px; justify-items: center; font-size: .85rem; color: var(--text-2); }
+[data-page^="staff-"] .stf-empty-row__box strong { color: var(--text); }
+
+/* ---------- toolbar and pager ---------- */
+[data-page^="staff-"] .stf-toolbar { flex-wrap: wrap; }
+[data-page^="staff-"] .stf-date { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--text-3); }
+[data-page^="staff-"] .stf-range-error { flex: 1 1 100%; margin: 0; font-size: .8rem; color: var(--bad); }
+[data-page^="staff-"] .stf-range-error[hidden] { display: none; }
+[data-page^="staff-"] .stf-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+[data-page^="staff-"] .stf-pager__range { font-size: .8rem; color: var(--text-3); }
+[data-page^="staff-"] .stf-pager__btns { display: flex; gap: 8px; }
+[data-page^="staff-"] .stf-pager .btn { display: inline-flex; align-items: center; gap: 4px; }
+[data-page^="staff-"] .stf-pager .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- Add Staff ---------- */
+[data-page^="staff-"] .stf-form-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; }
+[data-page^="staff-"] .stf-form-main { display: grid; gap: 16px; }
+[data-page^="staff-"] .stf-form-side { display: grid; gap: 16px; }
+[data-page^="staff-"] .stf-section .input:disabled { background: var(--paper); color: var(--text-3); cursor: not-allowed; }
+[data-page^="staff-"] .stf-photo__drop {
+  display: grid; justify-items: center; gap: 8px; padding: 20px 12px; margin-bottom: 10px;
+  border: 2px dashed var(--line-strong); border-radius: var(--radius); background: var(--paper); text-align: center;
+}
+[data-page^="staff-"] .stf-photo__avatar {
+  display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%;
+  background: var(--surface); color: var(--text-3); border: 1px solid var(--line);
+}
+[data-page^="staff-"] .stf-photo__hint { margin: 0; font-size: .76rem; color: var(--text-3); }
+[data-page^="staff-"] .stf-checklist { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: .82rem; color: var(--text-2); }
+[data-page^="staff-"] .stf-checklist .req { color: var(--bad); }
+[data-page^="staff-"] .stf-form-actions {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
+  margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+[data-page^="staff-"] .stf-form-actions .stf-muted { margin-right: auto; }
+[data-page^="staff-"] .stf-form-actions .req { color: var(--bad); }
+
+/* ---------- Roles & Permissions ---------- */
+[data-page^="staff-"] .stf-roles { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }
+[data-page^="staff-"] .stf-rolelist { display: grid; gap: 8px; }
+[data-page^="staff-"] .stf-rolecard {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; text-align: left;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface);
+  color: var(--text); font: inherit; cursor: pointer;
+}
+[data-page^="staff-"] .stf-rolecard:hover { border-color: var(--line-strong); background: var(--paper); }
+[data-page^="staff-"] .stf-rolecard:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+[data-page^="staff-"] .stf-rolecard.is-active {
+  border-color: var(--amber); background: var(--amber-soft);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+[data-page^="staff-"] .stf-rolecard__text { display: grid; min-width: 0; }
+[data-page^="staff-"] .stf-rolecard__name { font-weight: 600; font-size: .88rem; }
+[data-page^="staff-"] .stf-rolecard__meta { font-size: .74rem; color: var(--text-3); }
+[data-page^="staff-"] .stf-role-head { align-items: flex-start; flex-wrap: wrap; }
+[data-page^="staff-"] .stf-role-head h2 { font-size: 1.05rem; }
+[data-page^="staff-"] .stf-role-head .btn { display: inline-flex; align-items: center; gap: 6px; }
+[data-page^="staff-"] .stf-rolenotes { display: grid; gap: 4px; margin: 0 0 14px; padding-left: 18px; font-size: .82rem; color: var(--text-2); }
+[data-page^="staff-"] .stf-matrix tbody th[scope="row"] {
+  font-size: .85rem; font-weight: 600; letter-spacing: normal; text-transform: none;
+  text-align: left; white-space: nowrap; color: var(--text); background: none;
+}
+[data-page^="staff-"] .stf-matrix thead th:not(:first-child),
+[data-page^="staff-"] .stf-matrix .stf-perm { text-align: center; width: 15%; }
+[data-page^="staff-"] .stf-perm__mark {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; vertical-align: middle;
+}
+[data-page^="staff-"] .stf-perm__mark.is-yes { background: var(--good-soft); color: var(--good); }
+[data-page^="staff-"] .stf-perm__mark.is-no { background: var(--paper); color: var(--text-3); }
+[data-page^="staff-"] .stf-matrix tbody tr:last-child th { border-bottom: 0; }
+[data-page^="staff-"] .stf-matrix__key { margin-top: 10px; }
+[data-page^="staff-"] .stf-matrix__key .stf-perm__mark { width: 12px; height: 12px; border-radius: 3px; }
+
+/* ---------- Activity Log details ---------- */
+[data-page^="staff-"] .stf-details { margin-bottom: 18px; }
+[data-page^="staff-"] .stf-dl { display: grid; gap: 0; margin: 0; }
+[data-page^="staff-"] .stf-dl__row { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
+[data-page^="staff-"] .stf-dl__row:last-child { border-bottom: 0; }
+[data-page^="staff-"] .stf-dl dt { color: var(--text-3); }
+[data-page^="staff-"] .stf-dl dd { margin: 0; color: var(--text); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  [data-page^="staff-"] .stf-grid-2,
+  [data-page^="staff-"] .stf-roles,
+  [data-page^="staff-"] .stf-form-layout { grid-template-columns: minmax(0, 1fr); }
+  [data-page^="staff-"] .stf-rolelist { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+}
+@media (max-width: 640px) {
+  [data-page^="staff-"] .stf-preview { flex-wrap: wrap; }
+  [data-page^="staff-"] .stf-donut { flex-direction: column; align-items: stretch; gap: 16px; }
+  [data-page^="staff-"] .stf-donut__chart { align-self: center; }
+  [data-page^="staff-"] .stf-toolbar .input,
+  [data-page^="staff-"] .stf-toolbar .select { width: 100%; min-width: 0; }
+  [data-page^="staff-"] .stf-date { width: 100%; }
+  [data-page^="staff-"] .stf-head__actions,
+  [data-page^="staff-"] .stf-head__actions .btn { width: 100%; justify-content: center; }
+  [data-page^="staff-"] .stf-form-actions .btn { flex: 1; justify-content: center; }
+  [data-page^="staff-"] .stf-form-actions .stf-muted { flex-basis: 100%; }
+  [data-page^="staff-"] .stf-dl__row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}

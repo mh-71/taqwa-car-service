@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Activity Log — Taqwa Automobile Service Center</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+  <link rel="stylesheet" href="../css/staff.css">
+  <!-- Hold the first paint until app.js has drawn the shell (marker at the end
+       of <body>), so a page change never shows a frame without the sidebar
+       and header. The browser keeps the previous page on screen meanwhile.
+       Chromium releases the hold as soon as app.js inserts the shell (it
+       contains images) and then logs "Did not find element expected to be
+       parsed" -- a harmless warning; the marker must stay AFTER the scripts,
+       because placed before app.js a frame can slip out before the shell. -->
+  <link rel="expect" href="#shell-drawn" blocking="render">
+  <!-- The sidebar logo and the header's avatar are drawn by app.js; fetch them
+       alongside the scripts so they are ready in that first frame instead of
+       popping in after it. -->
+  <link rel="preload" href="../assets/logo/logo-white.png" as="image">
+  <link rel="preload" href="../assets/avatar/admin.webp" as="image">
+</head>
+<body data-page="staff-activity-log" data-root="../">
+
+  <div id="page-content">
+
+    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
+         writes the workshop database or browser storage, and no button saves or sends anything. -->
+
+    <nav class="stf-crumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="staff-management.html">Staff Management</a></li>
+        <li aria-current="page">Activity Log</li>
+      </ol>
+    </nav>
+    <div class="stf-head">
+      <p class="page-subtitle">Who did what, and when.</p>
+    </div>
+    <div class="stf-preview" role="note">
+      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
+      <p class="stf-preview__text"><strong>Preview: demo data, not real staff records.</strong> Nothing on this page is saved or sent. Activity logging is not active yet: these entries are examples, not a record of what happened.</p>
+      <button type="button" class="btn btn--ghost btn--sm stf-preview__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
+    </div>
+    <section class="stats-grid stf-stats" aria-label="Activity summary (demo data)">
+      <div class="stat stf-stat">
+        <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Total Entries</div>
+          <div class="stat__value" id="stfActTotal"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Latest Day</div>
+          <div class="stat__value" id="stfActToday"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Entries on the latest day</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stf-icon--neutral"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11 7L9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Sign-ins</div>
+          <div class="stat__value" id="stfActSignins"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M3 17.2V21h3.8l11-11.1-3.7-3.7L3 17.2zM20.7 7c.4-.4.4-1 0-1.4l-2.3-2.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.7 3.7L20.7 7z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Changes</div>
+          <div class="stat__value" id="stfActChanges"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Create, update, delete, payment</div>
+        </div>
+      </div>
+    </section>
+    <div class="toolbar stf-toolbar" role="search" aria-label="Find activity">
+      <input type="search" class="input toolbar__search" id="stfActSearch" placeholder="Search user, action or description&#8230;" aria-label="Search activity" autocomplete="off">
+      <label class="stf-date"><span>From</span><input type="date" class="input" id="stfActFrom" aria-label="From date" aria-describedby="stfActRangeError"></label>
+      <label class="stf-date"><span>To</span><input type="date" class="input" id="stfActTo" aria-label="To date" aria-describedby="stfActRangeError"></label>
+      <select class="select" id="stfActUser" aria-label="Filter by user"><option value="all">All users</option></select>
+      <select class="select" id="stfActAction" aria-label="Filter by action type"><option value="all">All actions</option></select>
+      <button type="button" class="btn btn--ghost btn--sm" id="stfActClear">Clear filters</button>
+      <span class="toolbar__count" id="stfActCount"></span>
+      <p class="stf-range-error" id="stfActRangeError" role="alert" hidden>"From" must be on or before "To".</p>
+    </div>
+    <section class="card stf-table-card" id="stfActCard" aria-labelledby="stfActTitle">
+      <div class="card__head">
+        <h2 id="stfActTitle">Activity</h2>
+        <span class="badge badge--neutral">Demo</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table stf-table">
+          <thead>
+            <tr><th>Date &amp; Time</th><th>User</th><th>Action</th><th>Module</th><th>Description</th><th>Details</th></tr>
+          </thead>
+          <tbody id="stfActBody"></tbody>
+        </table>
+      </div>
+      <div class="card__body stf-card-foot">
+        <div class="stf-pager" role="navigation" aria-label="Activity log pages">
+          <span class="stf-pager__range" id="stfActRange" aria-live="polite"></span>
+          <div class="stf-pager__btns">
+            <button type="button" class="btn btn--ghost btn--sm" id="stfActPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="stfActNext"><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="card stf-details" id="stfActDetails" aria-labelledby="stfActDetailsTitle" hidden>
+      <div class="card__head">
+        <h2 id="stfActDetailsTitle">Entry details</h2>
+        <span class="badge badge--neutral">Demo</span>
+        <span class="spacer"></span>
+        <button type="button" class="icon-btn icon-btn--sm" id="stfActDetailsClose" aria-label="Close the details"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+      </div>
+      <div class="card__body">
+        <dl class="stf-dl" id="stfActDetailsList"></dl>
+      </div>
+    </section>
+    <section class="card" id="stfActEmpty" aria-labelledby="stfActEmptyTitle" hidden>
+      <div class="card__body">
+        <div class="empty">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z"/></svg>
+          <h3 id="stfActEmptyTitle">No activity yet</h3>
+          <p>Actions taken by staff will be listed here once activity logging is available.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/staff-ui.js"></script>
+  <span id="shell-drawn" hidden></span>
+</body>
+</html>
