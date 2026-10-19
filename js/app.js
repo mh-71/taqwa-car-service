@@ -16,7 +16,6 @@ const App = (() => {
     { key: 'job-cards',    label: 'Job Cards',    href: 'pages/job-cards.html',  icon: 'M20 6h-4V4c0-1.1-.9-2-2-2h-4C8.9 2 8 2.9 8 4v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4z' },
     { key: 'services',     label: 'Services',     href: 'pages/services.html',   icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z' },
     { key: 'mechanics',    label: 'Mechanics',    href: 'pages/mechanics.html',  icon: 'M12 2L4 6v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V6l-8-4zm0 10.9c-1.6 0-2.9-1.3-2.9-2.9S10.4 7.1 12 7.1s2.9 1.3 2.9 2.9-1.3 2.9-2.9 2.9zm0 2c1.9 0 5.8.9 5.8 2.9v1.3c-1.4 1.9-3.5 3.3-5.8 3.8-2.3-.5-4.4-1.9-5.8-3.8v-1.3c0-2 3.9-2.9 5.8-2.9z' },
-    { key: 'staff-management', label: 'Staff Management', href: 'pages/staff-management.html', icon: 'M16.5 12c1.38 0 2.49-1.12 2.49-2.5S17.88 7 16.5 7C15.12 7 14 8.12 14 9.5s1.12 2.5 2.5 2.5zM9 11c1.66 0 2.99-1.34 2.99-3S10.66 5 9 5C7.34 5 6 6.34 6 8s1.34 3 3 3zm7.5 3c-1.83 0-5.5.92-5.5 2.75V19h11v-2.25c0-1.83-3.67-2.75-5.5-2.75zM9 13c-2.33 0-7 1.17-7 3.5V19h7v-2.25c0-.85.33-2.34 2.37-3.47C10.5 13.1 9.66 13 9 13z' },
     { key: 'inventory',    label: 'Inventory',    href: 'pages/inventory.html',  icon: 'M20 2H4c-1 0-2 .9-2 2v3c0 .7.4 1.4 1 1.7V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.6-.3 1-1 1-1.7V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z' },
     { key: 'invoices',     label: 'Invoices',     href: 'pages/invoices.html',   icon: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z' },
     { key: 'payments',     label: 'Payments',     href: 'pages/payments.html',   icon: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z' },
@@ -64,15 +63,35 @@ const App = (() => {
   // On a CRM page the group is always open, so the current entry is visible.
   const CRM_OPEN_KEY = 'taqwa_nav_crm_open';
 
+  /* Staff Management, shown after Mechanics. UI PREVIEW ONLY: every page shows
+     demo data that is labelled as such; nothing is read from or saved to the
+     database, and no account, permission or log exists behind them yet. Built
+     like Customer CRM: each page is its own document, its key drives the
+     active state, and the group opens on a Staff page. */
+  const STAFF_AFTER = 'mechanics';
+  const STAFF_ICON = 'M16.5 12c1.38 0 2.49-1.12 2.49-2.5S17.88 7 16.5 7C15.12 7 14 8.12 14 9.5s1.12 2.5 2.5 2.5zM9 11c1.66 0 2.99-1.34 2.99-3S10.66 5 9 5C7.34 5 6 6.34 6 8s1.34 3 3 3zm7.5 3c-1.83 0-5.5.92-5.5 2.75V19h11v-2.25c0-1.83-3.67-2.75-5.5-2.75zM9 13c-2.33 0-7 1.17-7 3.5V19h7v-2.25c0-.85.33-2.34 2.37-3.47C10.5 13.1 9.66 13 9 13z';
+  const STAFF = [
+    { key: 'staff-management',   label: 'Overview',            href: 'pages/staff-management.html',   icon: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z' },
+    { key: 'staff-list',         label: 'Staff List',          href: 'pages/staff-list.html',         icon: 'M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z' },
+    { key: 'staff-add',          label: 'Add Staff',           href: 'pages/staff-add.html',          icon: 'M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' },
+    { key: 'staff-accounts',     label: 'User Accounts',       href: 'pages/staff-accounts.html',     icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z' },
+    { key: 'staff-roles',        label: 'Roles & Permissions', href: 'pages/staff-roles.html',        icon: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z' },
+    { key: 'staff-activity-log', label: 'Activity Log',        href: 'pages/staff-activity-log.html', icon: 'M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z' },
+  ];
+  // Whether Staff Management was left open (display state only, like Customer CRM).
+  const STAFF_OPEN_KEY = 'taqwa_nav_staff_open';
+
   const PAGE_TITLES = {
     dashboard: 'Dashboard', customers: 'Customers', vehicles: 'Vehicles',
     appointments: 'Appointments', 'job-cards': 'Job Cards', services: 'Service Catalog',
-    mechanics: 'Mechanics', 'staff-management': 'Staff Management', inventory: 'Inventory', invoices: 'Invoices',
+    mechanics: 'Mechanics', inventory: 'Inventory', invoices: 'Invoices',
     payments: 'Payments', expenses: 'Expenses', reports: 'Reports', settings: 'Settings',
     profile: 'Profile',   // design prototype pages
     'account-settings': 'Account Settings',
     'crm-reminders': 'Service Reminders', 'crm-follow-up': 'Customer Follow-up',
-    'crm-history': 'Service History', 'crm-tasks': 'Follow-up Tasks', 'crm-reports': 'CRM Reports'
+    'crm-history': 'Service History', 'crm-tasks': 'Follow-up Tasks', 'crm-reports': 'CRM Reports',
+    'staff-management': 'Staff Management', 'staff-list': 'Staff List', 'staff-add': 'Add Staff',
+    'staff-accounts': 'User Accounts', 'staff-roles': 'Roles & Permissions', 'staff-activity-log': 'Activity Log'
   };
 
   function icon(path) {
@@ -285,7 +304,22 @@ const App = (() => {
             <div class="nav__subs">${subs}</div>
           </details>`;
     };
+    const staffHtml = () => {
+      const here = STAFF.some(s => s.key === page);
+      let open = here;
+      if (!here) { try { open = sessionStorage.getItem(STAFF_OPEN_KEY) === '1'; } catch (e) { /* no hint */ } }
+      const subs = STAFF.map(s => {
+        const active = s.key === page;
+        return `<a class="nav__sub${active ? ' is-active' : ''}" href="${root}${s.href}"${active ? ' aria-current="page"' : ''}>${icon(s.icon)}<span>${s.label}</span></a>`;
+      }).join('');
+      return `<details class="nav__group${here ? ' has-active' : ''}" id="navStaff"${open ? ' open' : ''}>
+            <summary class="nav__summary">${icon(STAFF_ICON)}<span>Staff Management</span>
+              <svg class="nav__chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="${CHEVRON_ICON}"/></svg></summary>
+            <div class="nav__subs">${subs}</div>
+          </details>`;
+    };
     const navHtml = NAV.map(item => linkHtml(item)
+      + (item.key === STAFF_AFTER ? staffHtml() : '')
       + (item.key === INBOX_AFTER ? inboxHtml() : '')
       + (item.key === CRM_AFTER ? crmHtml() : '')).join('');
 
@@ -397,6 +431,12 @@ const App = (() => {
     if (crm) {
       crm.addEventListener('toggle', () => {
         try { sessionStorage.setItem(CRM_OPEN_KEY, crm.open ? '1' : '0'); } catch (e) { /* private mode */ }
+      });
+    }
+    const staff = document.getElementById('navStaff');
+    if (staff) {
+      staff.addEventListener('toggle', () => {
+        try { sessionStorage.setItem(STAFF_OPEN_KEY, staff.open ? '1' : '0'); } catch (e) { /* private mode */ }
       });
     }
 
