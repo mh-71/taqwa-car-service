@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estimates &amp; Quotations — Taqwa Automobile Service Center</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+  <link rel="stylesheet" href="../css/estimates.css">
+  <!-- Hold the first paint until app.js has drawn the shell (marker at the end
+       of <body>), so a page change never shows a frame without the sidebar
+       and header. The browser keeps the previous page on screen meanwhile.
+       Chromium releases the hold as soon as app.js inserts the shell (it
+       contains images) and then logs "Did not find element expected to be
+       parsed" -- a harmless warning; the marker must stay AFTER the scripts,
+       because placed before app.js a frame can slip out before the shell. -->
+  <link rel="expect" href="#shell-drawn" blocking="render">
+  <!-- The sidebar logo and the header's avatar are drawn by app.js; fetch them
+       alongside the scripts so they are ready in that first frame instead of
+       popping in after it. -->
+  <link rel="preload" href="../assets/logo/logo-white.png" as="image">
+  <link rel="preload" href="../assets/avatar/admin.webp" as="image">
+</head>
+<body data-page="estimates" data-root="../">
+
+  <div id="page-content" data-est-view="overview">
+
+    <!-- DEMO ONLY. Filled in by js/estimates-demo.js from fictional records in that file. Nothing here reads
+         or writes the workshop database or browser storage, and no button saves, sends, approves,
+         creates a Job Card or Invoice, or changes Inventory. -->
+
+    <div class="est-head">
+      <p class="page-subtitle">Prepare repair cost estimates before work begins.</p>
+      <div class="est-head__actions"><a class="btn btn--primary" href="estimate-create.html"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>New Estimate</span></a></div>
+    </div>
+    <div class="est-demo" role="note">
+      <span class="est-demo__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
+      <p class="est-demo__text"><strong>DEMO ONLY &#8212; No real data is loaded or saved.</strong></p>
+      <button type="button" class="btn btn--ghost btn--sm est-demo__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
+    </div>
+    <section class="stats-grid est-stats" aria-label="Estimate summary (demo data)">
+      <div class="stat est-stat">
+        <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm1 10h-4v1h3c.55 0 1 .45 1 1v3c0 .55-.45 1-1 1h-1v1h-2v-1H9v-2h4v-1h-3c-.55 0-1-.45-1-1v-3c0-.55.45-1 1-1h1V8h2v1h2v2zm-2-4V3.5L17.5 8H13z"/></svg></div>
+        <div class="est-stat__body">
+          <div class="stat__label">Total Estimates</div>
+          <div class="stat__value" id="estTotal"><span aria-hidden="true">&#8212;</span></div>
+          <div class="est-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat est-stat">
+        <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg></div>
+        <div class="est-stat__body">
+          <div class="stat__label">Pending</div>
+          <div class="stat__value" id="estPending"><span aria-hidden="true">&#8212;</span></div>
+          <div class="est-stat__sub">Awaiting a decision</div>
+        </div>
+      </div>
+      <div class="stat est-stat">
+        <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
+        <div class="est-stat__body">
+          <div class="stat__label">Approved</div>
+          <div class="stat__value" id="estApproved"><span aria-hidden="true">&#8212;</span></div>
+          <div class="est-stat__sub">Ready for a Job Card</div>
+        </div>
+      </div>
+      <div class="stat est-stat">
+        <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z"/></svg></div>
+        <div class="est-stat__body">
+          <div class="stat__label">Rejected</div>
+          <div class="stat__value" id="estRejected"><span aria-hidden="true">&#8212;</span></div>
+          <div class="est-stat__sub">Declined by the customer</div>
+        </div>
+      </div>
+      <div class="stat est-stat">
+        <div class="stat__icon est-icon--neutral"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z"/></svg></div>
+        <div class="est-stat__body">
+          <div class="stat__label">Expired</div>
+          <div class="stat__value" id="estExpired"><span aria-hidden="true">&#8212;</span></div>
+          <div class="est-stat__sub">Past the validity date</div>
+        </div>
+      </div>
+      <div class="stat est-stat">
+        <div class="stat__icon est-icon--amber"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11.8 10.9c-2.3-.6-3-1.2-3-2.1 0-1.1 1-1.9 2.7-1.9 1.8 0 2.4.8 2.5 2.1h2.2c-.1-1.8-1.2-3.4-3.3-3.9V3h-3v2.1c-1.9.4-3.5 1.7-3.5 3.6 0 2.3 1.9 3.5 4.7 4.1 2.5.6 3 1.5 3 2.4 0 .7-.5 1.8-2.7 1.8-2.1 0-2.9-.9-3-2.1H8.1c.1 2.3 1.9 3.6 3.9 4v2.1h3v-2.1c1.9-.4 3.5-1.5 3.5-3.7 0-2.8-2.4-3.7-4.7-4.3z"/></svg></div>
+        <div class="est-stat__body">
+          <div class="stat__label">Pending Value</div>
+          <div class="stat__value" id="estPendingValue"><span aria-hidden="true">&#8212;</span></div>
+          <div class="est-stat__sub">Total of pending estimates</div>
+        </div>
+      </div>
+    </section>
+    <div class="toolbar est-toolbar" role="search" aria-label="Find estimates">
+      <input type="search" class="input toolbar__search" id="estSearch" placeholder="Search estimate no., customer, vehicle or work&#8230;" aria-label="Search estimates" autocomplete="off">
+      <select class="select" id="estStatus" aria-label="Filter by status">
+        <option value="all">All statuses</option><option value="Pending">Pending</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Expired">Expired</option>
+      </select>
+      <label class="est-date"><span>From</span><input type="date" class="input" id="estFrom" aria-label="Estimate date from" aria-describedby="estRangeError"></label>
+      <label class="est-date"><span>To</span><input type="date" class="input" id="estTo" aria-label="Estimate date to" aria-describedby="estRangeError"></label>
+      <button type="button" class="btn btn--ghost btn--sm" id="estClear">Clear filters</button>
+      <span class="toolbar__count" id="estCount"></span>
+      <p class="est-range-error" id="estRangeError" role="alert" hidden>"From" must be on or before "To".</p>
+    </div>
+    <section class="card est-table-card" id="estListCard" aria-labelledby="estListTitle">
+      <div class="card__head">
+        <h2 id="estListTitle">Estimates</h2>
+        <span class="badge badge--neutral">Demo</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table table--compact est-table">
+          <thead>
+            <tr><th>Estimate No.</th><th>Date</th><th>Customer</th><th>Vehicle</th><th class="num">Parts</th><th class="num">Labour</th><th class="num">Total</th><th>Valid Until</th><th>Status</th><th><span class="est-sr-only">Actions</span></th></tr>
+          </thead>
+          <tbody id="estBody"></tbody>
+        </table>
+      </div>
+      <div class="card__body est-card-foot">
+        <div class="est-pager" role="navigation" aria-label="Estimate pages">
+          <span class="est-pager__range" id="estRange" aria-live="polite"></span>
+          <div class="est-pager__btns">
+            <button type="button" class="btn btn--ghost btn--sm" id="estPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="estNext"><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="card" id="estEmpty" aria-labelledby="estEmptyTitle" hidden>
+      <div class="card__body">
+        <div class="empty">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm1 10h-4v1h3c.55 0 1 .45 1 1v3c0 .55-.45 1-1 1h-1v1h-2v-1H9v-2h4v-1h-3c-.55 0-1-.45-1-1v-3c0-.55.45-1 1-1h1V8h2v1h2v2zm-2-4V3.5L17.5 8H13z"/></svg>
+          <h3 id="estEmptyTitle">No estimates yet</h3>
+          <p>Estimates you prepare for customers will be listed here.</p>
+          <a class="btn btn--primary" href="estimate-create.html"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>New Estimate</span></a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/estimates-demo.js"></script>
+  <span id="shell-drawn" hidden></span>
+</body>
+</html>

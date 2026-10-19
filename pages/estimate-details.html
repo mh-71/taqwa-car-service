@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estimate Details — Taqwa Automobile Service Center</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+  <link rel="stylesheet" href="../css/estimates.css">
+  <!-- Hold the first paint until app.js has drawn the shell (marker at the end
+       of <body>), so a page change never shows a frame without the sidebar
+       and header. The browser keeps the previous page on screen meanwhile.
+       Chromium releases the hold as soon as app.js inserts the shell (it
+       contains images) and then logs "Did not find element expected to be
+       parsed" -- a harmless warning; the marker must stay AFTER the scripts,
+       because placed before app.js a frame can slip out before the shell. -->
+  <link rel="expect" href="#shell-drawn" blocking="render">
+  <!-- The sidebar logo and the header's avatar are drawn by app.js; fetch them
+       alongside the scripts so they are ready in that first frame instead of
+       popping in after it. -->
+  <link rel="preload" href="../assets/logo/logo-white.png" as="image">
+  <link rel="preload" href="../assets/avatar/admin.webp" as="image">
+</head>
+<body data-page="estimates" data-root="../">
+
+  <div id="page-content" data-est-view="details">
+
+    <!-- DEMO ONLY. Filled in by js/estimates-demo.js from fictional records in that file. Nothing here reads
+         or writes the workshop database or browser storage, and no button saves, sends, approves,
+         creates a Job Card or Invoice, or changes Inventory. -->
+
+    <nav class="est-crumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="estimates.html">Estimates &amp; Quotations</a></li>
+        <li aria-current="page"><span id="estCrumb">Estimate</span></li>
+      </ol>
+    </nav>
+    <div class="est-demo" role="note">
+      <span class="est-demo__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
+      <p class="est-demo__text"><strong>DEMO ONLY &#8212; No real data is loaded or saved.</strong></p>
+    </div>
+    <div id="estDetail">
+      <section class="card est-detail-head" aria-labelledby="estDetailId">
+        <div class="card__body est-detail-head__body">
+          <div class="est-detail-head__id">
+            <h2 id="estDetailId"><span aria-hidden="true">&#8212;</span></h2>
+            <span id="estDetailStatus"></span>
+            <p class="est-muted" id="estDetailValidity"></p>
+          </div>
+          <div class="est-detail-head__actions">
+            <span id="estDetailActions" class="est-actions"></span>
+            <button type="button" class="btn btn--ghost btn--sm" id="estPrint"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg><span>Print</span></button>
+          </div>
+        </div>
+      </section>
+      <div class="est-detail-layout">
+        <article class="est-sheet" aria-label="Quotation sheet (demo)">
+          <span class="est-sheet__mark" aria-hidden="true">DEMO</span>
+          <header class="est-sheet__head">
+            <div class="est-sheet__brand">
+              <strong>TAQWA AUTOMOBILE</strong>
+              <span>Service Center</span>
+            </div>
+            <div class="est-sheet__title">
+              <h3>ESTIMATE / QUOTATION</h3>
+              <dl class="est-sheet__meta">
+                <div><dt>Estimate No.</dt><dd id="estShNo"></dd></div>
+                <div><dt>Date</dt><dd id="estShDate"></dd></div>
+                <div><dt>Valid until</dt><dd id="estShValid"></dd></div>
+                <div><dt>Status</dt><dd id="estShStatus"></dd></div>
+              </dl>
+            </div>
+          </header>
+          <div class="est-sheet__parties">
+            <div class="est-sheet__party"><span class="est-sheet__label">Customer</span><div id="estShCustomer"></div></div>
+            <div class="est-sheet__party"><span class="est-sheet__label">Vehicle</span><div id="estShVehicle"></div></div>
+          </div>
+          <div class="est-sheet__block"><span class="est-sheet__label">Repair description</span><p id="estShDesc"></p></div>
+          <table class="est-sheet__table">
+            <caption>Parts</caption>
+            <thead><tr><th class="num">#</th><th>Item</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead>
+            <tbody id="estShParts"></tbody>
+          </table>
+          <table class="est-sheet__table">
+            <caption>Labour</caption>
+            <thead><tr><th class="num">#</th><th>Description</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
+            <tbody id="estShLabour"></tbody>
+          </table>
+          <div class="est-sheet__bottom">
+            <div class="est-sheet__terms"><span class="est-sheet__label">Terms</span><ul id="estShTerms"></ul></div>
+            <table class="est-sheet__summary"><tbody id="estShSummary"></tbody></table>
+          </div>
+          <div class="est-sheet__sign">
+            <div><span></span>Customer approval</div>
+            <div><span></span>Authorised by</div>
+          </div>
+          <footer class="est-sheet__foot">DEMO ONLY &#8212; not a real quotation. This is an estimate, not a tax invoice.</footer>
+        </article>
+        <aside class="est-side">
+          <section class="card" aria-labelledby="estBdTitle">
+            <div class="card__head"><h2 id="estBdTitle">Cost Breakdown</h2><span class="spacer"></span><span class="badge badge--neutral">Demo</span></div>
+            <div class="card__body"><div class="est-bd" id="estBreakdown"></div></div>
+          </section>
+          <section class="card" aria-labelledby="estNextTitle">
+            <div class="card__head"><h2 id="estNextTitle">How this will work</h2></div>
+            <div class="card__body">
+              <ol class="est-steps">
+                <li>The customer approves or rejects the estimate.</li>
+                <li>An approved estimate is converted into a Job Card.</li>
+                <li>The finished Job Card is invoiced as usual.</li>
+              </ol>
+              <p class="est-muted">None of these steps is available in this preview.</p>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+    <section class="card" id="estNotFound" aria-labelledby="estNotFoundTitle" hidden>
+      <div class="card__body">
+        <div class="empty">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm1 10h-4v1h3c.55 0 1 .45 1 1v3c0 .55-.45 1-1 1h-1v1h-2v-1H9v-2h4v-1h-3c-.55 0-1-.45-1-1v-3c0-.55.45-1 1-1h1V8h2v1h2v2zm-2-4V3.5L17.5 8H13z"/></svg>
+          <h3 id="estNotFoundTitle">Estimate not found</h3>
+          <p>There is no demo estimate <strong id="estNotFoundId"></strong>.</p>
+          <a class="btn btn--primary" href="estimates.html">Back to Estimates</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/estimates-demo.js"></script>
+  <span id="shell-drawn" hidden></span>
+</body>
+</html>
