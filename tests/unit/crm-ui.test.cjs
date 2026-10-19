@@ -1,4 +1,4 @@
-/* crm-ui — the Customer CRM: four pages connected, one still visual only.
+/* crm-ui — the Customer CRM: all five pages connected.
 
    What must hold:
      1. The sidebar has a "Customer CRM" group after Expenses and before
@@ -8,9 +8,8 @@
         and "Coming soon" -- never a number, and nothing in dashboard.js
         calculates one. (Service Reminders being connected does not change
         the Dashboard.)
-     3. The placeholder page (Reports) shares the app's <head> (so the CSP
-        hash still covers it), says "Coming soon", and carries no data,
-        forms, actions or page script of its own.
+     3. No CRM page is still a placeholder: every sidebar entry is one of
+        the connected pages checked below.
      4. Service Reminders shares the same <head>, keeps its layout, starts in
         a loading state with every control disabled, and loads exactly one
         page script of its own. Its behaviour is tested in
@@ -32,6 +31,13 @@
         loads exactly one page script of its own, and that script reads no
         browser storage and writes only tasks through the database. Its
         behaviour is tested in crm-tasks.test.cjs.
+     8. CRM Reports shares the same <head>, keeps its layout (period select,
+        From / To range, four cards, the chart and the details list with its
+        two tabs), starts in a loading state with every control disabled,
+        loads exactly one page script of its own, and that script reads no
+        browser storage, makes no requests of its own (follow-ups only through
+        Storage.load) and writes nothing. Its behaviour is tested in
+        crm-reports.test.cjs.
 
    Drives the REAL js/app.js through the shared harness. */
 const fs = require('fs'), path = require('path');
@@ -47,19 +53,14 @@ const ENTRIES = [
   ['crm-reports', 'CRM Reports', 'pages/crm-reports.html'],
 ];
 
-// Pages with a stylesheet of their own (loaded after responsive.css).
-const PAGE_CSS = { 'crm-reminders': 'crm-reminders.css', 'crm-follow-up': 'crm-follow-up.css', 'crm-history': 'crm-history.css', 'crm-tasks': 'crm-tasks.css',
-  'crm-reports': 'crm-reports.css' };
-
-/* The CRM pages that show their (not yet connected) layout rather than a
-   "Coming soon" card, and exactly what that layout must contain. */
+/* Service Reminders is connected; its layout is checked in section 4. */
 const REMINDERS = {
   options: [['all', 'All statuses'], ['Upcoming', 'Upcoming'], ['Due Today', 'Due Today'], ['Overdue', 'Overdue']],
   cols: ['Customer', 'Vehicle', 'Registration Number', 'Last Service', 'Next Service Due', 'Status', 'Actions'],
   cards: ['Upcoming Services', 'Due Today', 'Overdue Services', 'Customers Requiring Follow-up'],
 };
 // Pages that are connected to the database and tested on their own below.
-const CONNECTED = ['crm-reminders', 'crm-follow-up', 'crm-history', 'crm-tasks'];
+const CONNECTED = ['crm-reminders', 'crm-follow-up', 'crm-history', 'crm-tasks', 'crm-reports'];
 const PLACEHOLDERS = ENTRIES.filter(([key]) => !CONNECTED.includes(key));
 
 /* Service History is connected; its layout is checked in section 6. */
@@ -71,21 +72,6 @@ const HISTORY = {
     ['crhPending', 'Pending Services'], ['crhCost', 'Total Service Cost']],
 };
 
-const LAYOUTS = {
-  'crm-reports': {
-    // No search box: a period select (Last 30 days pre-selected) and a From / To
-    // range, plus ONE disabled Export CSV button -- nothing exists to export yet.
-    prefix: 'crp', noun: 'CRM activity', search: false, dates: 2,
-    options: ['Last 7 days', 'Last 30 days', 'This month', 'Custom range'], selected: 'Last 30 days',
-    // The only digits allowed on the page: these period names, and only as the
-    // select's options and the "Selected period" label (never as a figure).
-    periods: ['Last 7 days', 'Last 30 days'],
-    button: 'Export CSV',
-    cols: ['Customer', 'Vehicle', 'Service Date', 'Follow-up Status', 'Assigned Staff'],
-    cards: ['Service Reminders Due', 'Pending Follow-ups', 'Completed Follow-ups', 'Returning Customers'],
-    chart: ['Reminders due', 'Pending follow-ups', 'Completed follow-ups', 'Returning customers'],   // planned series only
-  },
-};
 
 /** Render the shell for one page; return the sidebar HTML the shell wrote. */
 function shellFor(page, root = '', sessionHint = null) {
@@ -103,7 +89,7 @@ function shellFor(page, root = '', sessionHint = null) {
 }
 const crmBlock = html => (html.match(/<details class="nav__group[^"]*" id="navCrm"[\s\S]*?<\/details>/) || [''])[0];
 
-console.log('=== crm-ui: Customer CRM, visual only ===\n');
+console.log('=== crm-ui: Customer CRM ===\n');
 
 /* ---------- 1. sidebar ---------- */
 console.log('-- 1. sidebar --');
@@ -163,129 +149,10 @@ ok('the existing Dashboard sections are all still there',
     .every(s => index.includes(s)), '');
 
 /* ---------- 3. placeholder pages ---------- */
-console.log('\n-- 3. placeholder pages --');
+console.log('\n-- 3. no placeholder pages left --');
 const head = s => s.slice(0, s.indexOf('</head>'));
 const settingsHead = head(read('pages/settings.html'));
-for (const [key, label, href] of PLACEHOLDERS) {
-  const html = read(href);
-  const body = html.slice(html.indexOf('<body data-page='));   // not the '<body>' named in a head comment
-  // The CRM pages with a layout have their own page stylesheet,
-  // added after responsive.css exactly as Profile and Account Settings add theirs.
-  const ownCss = PAGE_CSS[key]
-    ? `\n  <link rel="stylesheet" href="../css/${PAGE_CSS[key]}">` : '';
-  check(`${label}: <head> is the Settings head with only the title${ownCss ? ' and its stylesheet' : ''} changed`, head(html),
-    settingsHead.replace('<title>Settings — ', `<title>${label} — `)
-      .replace('<link rel="stylesheet" href="../css/responsive.css">', `<link rel="stylesheet" href="../css/responsive.css">${ownCss}`));
-  ok('   ...declares its own page key', body.startsWith(`<body data-page="${key}" data-root="../">`), body.slice(0, 60));
-  ok('   ...says "Coming soon" and that it arrives in a future release',
-    body.includes('Coming soon') && /activated in a future release/.test(body), '');
-  const L = LAYOUTS[key];
-  let rest = body;
-  if (L && L.button) {
-    // Exactly one button, and it cannot do anything: type="button", disabled,
-    // no handler, explained by a note. Everything else is checked as on the
-    // other pages, with that one button taken out.
-    const buttons = body.match(/<button\b[\s\S]*?<\/button>/g) || [];
-    const b = buttons[0] || '', tag = (b.match(/^<button\b[^>]*>/) || [''])[0];
-    const note = (tag.match(/\saria-describedby="([^"]+)"/) || [])[1];
-    ok(`   ...has exactly one button, "${L.button}", and it is disabled`,
-      buttons.length === 1 && (body.match(/<button\b/g) || []).length === 1 && /^<button type="button"/.test(tag) && /\sdisabled\b/.test(tag)
-        && b.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ').trim() === L.button, JSON.stringify(buttons));
-    // Taken out of the page-wide check below, so its own tag is checked here:
-    // no inline handler (onclick=...) and nothing that could submit or send it
-    // (form=, formaction=, formmethod=, formenctype=, formtarget=, formnovalidate).
-    ok('   ...with no inline event handler on that button', !!tag && !/\son[a-z]+\s*=/i.test(tag), tag);
-    ok('   ...and no form or submission attribute on it', !!tag && !/\sform[a-z]*(\s*=|[\s>])/i.test(tag), tag);
-    ok('   ...with a note saying why it is disabled and that no file is created',
-      !!note && new RegExp(`<span id="${note}">[^<]*disabled until there is real CRM data[^<]*no file is created[^<]*</span>`).test(body), String(note));
-    rest = body.replace(b, '');
-  }
-  ok('   ...has no form, button, textarea or inline handler', !/<form|<textarea|<button|\son[a-z]+=/i.test(rest), '');
-  if (L) {
-    // The layout shows its search, filters and table, but none of it works
-    // yet: every control is disabled, the table holds only its empty state,
-    // and no value is a number.
-    const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
-    const dates = L.dates || 1, selects = L.selects || 1, search = L.search === false ? 0 : 1;
-    ok(`   ...shows ${search ? 'a search box, ' : ''}${selects === 1 ? (L.selected ? 'a period select' : 'a status filter') : `${selects} filters`} and ${dates === 1 ? 'a date filter' : `${dates} date fields`}, ALL disabled`,
-      controls.length === search + selects + dates && controls.every(c => /\sdisabled\b/.test(c))
-        && (!search || /type="search"/.test(controls[0])) && controls.slice(search, search + selects).every(c => c.startsWith('<select'))
-        && controls.slice(search + selects).every(c => /type="date"/.test(c)), JSON.stringify(controls));
-    ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
-    const options = [...body.matchAll(/<option\b([^>]*)>([^<]+)<\/option>/g)];
-    if (L.selected) {
-      check(`   ...the period select offers exactly ${L.options.join(' / ')}`, options.map(m => m[2]), L.options);
-      check(`   ...with "${L.selected}" pre-selected, and no other option attributes`,
-        options.filter(m => m[1] !== '').map(m => [m[1], m[2]]), [[' selected', L.selected]]);
-      ok(`   ...and the label reads "Selected period: ${L.selected} · not yet connected" (no dates computed)`,
-        new RegExp(`<p class="${L.prefix}-period" id="\\w+">Selected period: <strong class="${L.prefix}-period__value">${L.selected}</strong> &#183; not yet connected</p>`).test(body), '');
-    } else {
-      check(`   ...the ${selects === 1 ? 'status filter offers' : 'filters offer'} exactly ${L.options.slice(1).join(' / ')}`,
-        options.map(m => m[2]), L.options);
-      ok('   ...with no option pre-selected', options.every(m => m[1] === ''), '');
-    }
-    const cols = [...body.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]);
-    check(`   ...the ${L.noun} table has the planned columns`, cols, L.cols);
-    const rows = [...body.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
-    ok('   ...and no data rows -- only the one empty-state row',
-      rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1
-        && new RegExp(`<tr class="${L.prefix}-empty-row">\\s*<td colspan="${L.cols.length}">`).test(rows[0]), '');
-    if (L.compact) {
-      // Too many columns for a narrow card: below its breakpoint the page hides
-      // the heading row and the empty state names every column instead.
-      const fields = ((body.match(new RegExp(`<p class="${L.prefix}-fields">([\\s\\S]*?)<\\/p>`)) || [])[1] || '').replace(/<[^>]+>/g, ' ').toLowerCase();
-      ok('   ...and, for narrow screens, an empty state that names every column',
-        L.cols.every(c => fields.includes(c.toLowerCase())), fields);
-    }
-    for (const [name, keys] of Object.entries(L.legends || {})) {
-      const list = (body.match(new RegExp(`<ul class="${L.prefix}-legend" aria-label="${name}">([\\s\\S]*?)<\\/ul>`)) || [])[1] || '';
-      check(`   ...a ${name.toLowerCase()} key in the app's tones`,
-        [...list.matchAll(/<span class="badge badge--(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], m[2]]), keys);
-    }
-    if (L.chart) {
-      // The trends chart is an empty CSS frame: a key of the planned series and
-      // an explanation, but no bars, points, axis values or data of any kind.
-      const trends = (body.match(new RegExp(`<section class="card ${L.prefix}-trends"[\\s\\S]*?<\\/section>`)) || [''])[0];
-      const frame = (trends.match(new RegExp(`<div class="${L.prefix}-chart">([\\s\\S]*)<\\/div>\\s*<\\/div>\\s*<\\/section>`)) || [])[1] || '';
-      check('   ...a trends chart whose key lists only the planned series',
-        [...trends.matchAll(new RegExp(`<li><span class="${L.prefix}-key__dot ${L.prefix}-key__dot--\\w+" aria-hidden="true"><\\/span>([^<]+)<\\/li>`, 'g'))].map(m => m[1]), L.chart);
-      const classes = [...frame.matchAll(/class="([^"]+)"/g)].map(m => m[1]);
-      ok('   ...and an empty frame: only its explanation, no bars, values, canvas or table',
-        /<h3>No activity to chart yet<\/h3>/.test(frame) && /No chart data is generated\./.test(frame)
-          && classes.every(c => /__(empty|icon)$/.test(c)) && !/<(canvas|table|img|li)\b|\sstyle=/.test(frame)
-          && !/\d/.test(frame.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ')),
-        JSON.stringify(classes));
-    }
-    ok('   ...whose empty state says "Not yet connected"',
-      new RegExp(`<span class="badge badge--neutral ${L.prefix}-empty__status">Not yet connected</span>`).test(body), '');
-    const stats = [...body.matchAll(new RegExp(`<div class="stat__value">([\\s\\S]*?)<\\/div>\\s*<div class="stat__label">([^<]+)<\\/div>\\s*<div class="${L.prefix}-pending">([^<]+)<\\/div>`, 'g'))]
-      .map(m => ({ value: m[1], label: m[2], pending: m[3] }));
-    check('   ...four summary cards', stats.map(x => x.label), L.cards);
-    ok('   ...each with a "—" placeholder marked "Not yet connected", never a number',
-      stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>' && x.pending === 'Not yet connected'), JSON.stringify(stats));
-    // Period names ("Last 30 days") are removed only where they are allowed:
-    // as an option of the period select and as the "Selected period" label.
-    let visible = body;
-    for (const name of L.periods || []) {
-      visible = visible.split(`<option>${name}</option>`).join('').split(`<option selected>${name}</option>`).join('')
-        .split(`<strong class="${L.prefix}-period__value">${name}</strong>`).join('');
-    }
-    ok(`   ...with no digit anywhere in the page's visible text${L.periods ? ' (other than the period names)' : ''}`,
-      !/\d/.test(visible.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
-        .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
-    ok('   ...and planned actions shown as plain text, not as links or buttons',
-      new RegExp(`class="${L.prefix}-planned"`).test(body) && !/<a\b/.test(body), '');
-    ok('   ...whose stylesheet is scoped to this page alone',
-      read(`css/${PAGE_CSS[key]}`).replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
-        .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith(`[data-page="${key}"]`))), '');
-  } else {
-    ok('   ...has no input, select or table', !/<input|<select|<table/i.test(body), '');
-  }
-  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
-  check('   ...loads only the shared shell scripts (no page module, no requests of its own)', scripts,
-    ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js']);
-  ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
-}
+check('no CRM page is still a placeholder', PLACEHOLDERS.map(([key]) => key), []);
 
 /* ---------- 4. Service Reminders (connected) ---------- */
 console.log('\n-- 4. Service Reminders --');
@@ -535,6 +402,66 @@ console.log('\n-- 7. Follow-up Tasks --');
   ok('   ...and writes only follow-up tasks, through the database',
     writes.length > 0 && writes.every(c => c === 'followUpTasks'), JSON.stringify(writes));
   ok('   ...never makes a key with Math.random', !/Math\.random/.test(js), '');
+  ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
+}
+
+/* ---------- 8. CRM Reports (connected) ---------- */
+console.log('\n-- 8. CRM Reports --');
+{
+  const html = read('pages/crm-reports.html');
+  const body = html.slice(html.indexOf('<body data-page='));
+  check('CRM Reports: <head> is the Settings head with only the title and its stylesheet changed', head(html),
+    settingsHead.replace('<title>Settings — ', '<title>CRM Reports — ')
+      .replace('<link rel="stylesheet" href="../css/responsive.css">',
+        '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/crm-reports.css">'));
+  ok('   ...declares its own page key', body.startsWith('<body data-page="crm-reports" data-root="../">'), body.slice(0, 60));
+  ok('   ...no longer claims to be "Coming soon" or "not yet connected"', !/Coming soon|future release|not yet connected/i.test(body), '');
+  ok('   ...has no form, textarea or inline handler (rows are rendered by the page module)', !/<form|<textarea|\son[a-z]+=/i.test(body), '');
+  const buttons = body.match(/<button\b[^>]*>/g) || [];
+  check('   ...six static buttons: the two tabs, Clear filters, Export CSV, Previous, Next', buttons.map(b => (b.match(/id="(\w+)"/) || [])[1]),
+    ['crpTabVisits', 'crpTabFollowUps', 'crpClear', 'crpExport', 'crpPrev', 'crpNext']);
+  ok('   ...each type="button" and disabled until the data loads', buttons.every(b => /type="button"/.test(b) && /\sdisabled\b/.test(b)), JSON.stringify(buttons));
+  ok('   ...the tabs are a labelled tablist controlling one panel',
+    /<div class="crp-tabs" role="tablist" aria-label="Activity details">/.test(body) && (body.match(/role="tab" aria-selected="(true|false)" aria-controls="crpPanel"/g) || []).length === 2
+      && /id="crpPanel" role="tabpanel"/.test(body), '');
+  const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
+  ok('   ...a period select, a From / To range, a search box and a status filter, all disabled until the data loads',
+    controls.length === 5 && controls[0].startsWith('<select') && /type="date"/.test(controls[1]) && /type="date"/.test(controls[2])
+      && /type="search"/.test(controls[3]) && controls[4].startsWith('<select') && controls.every(c => /\sdisabled\b/.test(c)), JSON.stringify(controls));
+  ok('   ...each control with an accessible label', controls.every(c => /\saria-label="[^"]+"/.test(c)), JSON.stringify(controls));
+  ok('   ...the date range tied to its inline error message',
+    controls.slice(1, 3).every(c => /aria-describedby="crpRangeError"/.test(c)) && /<p class="crp-range-error" id="crpRangeError" role="alert" hidden><\/p>/.test(body), '');
+  const period = (body.match(/<select[^>]*id="crpPeriodKind"[^>]*>([\s\S]*?)<\/select>/) || [])[1] || '';
+  check('   ...the period select offers the four periods by value, Last 30 days pre-selected',
+    [...period.matchAll(/<option value="(\w+)"( selected)?>([^<]+)<\/option>/g)].map(m => [m[1], !!m[2], m[3]]),
+    [['last7', false, 'Last 7 days'], ['last30', true, 'Last 30 days'], ['month', false, 'This month'], ['custom', false, 'Custom range']]);
+  const stats = [...body.matchAll(/<div class="stat__value" id="(\w+)">([\s\S]*?)<\/div>\s*<div class="stat__label">([^<]+)<\/div>\s*<div class="crp-sub" id="(\w+)">([^<]+)<\/div>/g)]
+    .map(m => ({ id: m[1], value: m[2], label: m[3], sub: m[4] }));
+  check('   ...four summary cards, wired by id, with Open Follow-ups (not "Pending")', stats.map(x => [x.id, x.label]),
+    [['crpReminders', 'Service Reminders Due'], ['crpOpen', 'Open Follow-ups'], ['crpCompleted', 'Completed Follow-ups'], ['crpReturning', 'Returning Customers']]);
+  ok('   ...each with its own note line, all four starting as a "—"',
+    stats.length === 4 && stats.every(x => x.sub === `${x.id}Sub` && x.value === '<span aria-hidden="true">&#8212;</span>'), JSON.stringify(stats));
+  ok('   ...the chart key lists only series the data supports (no reminders series)',
+    !/Reminders due/.test((body.match(/<ul class="crp-key"[\s\S]*?<\/ul>/) || [''])[0]), '');
+  ok('   ...a hidden chart-as-table alternative and a hidden pager',
+    /<details class="crp-chart__data" id="crpChartData" hidden>/.test(body) && /<nav class="crp-pager" id="crpPager" aria-label="Activity details pages" hidden>/.test(body), '');
+  const rows = [...body.matchAll(/<tbody id="crpBody">([\s\S]*?)<\/tbody>/g)].map(m => m[1]);
+  ok('   ...the details table starts with one loading row, no data rows',
+    rows.length === 1 && (rows[0].match(/<tr\b/g) || []).length === 1 && /<tr class="crp-empty-row">\s*<td colspan="6">/.test(rows[0]) && /Loading CRM activity/.test(rows[0]), '');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  check('   ...loads the shared shell scripts plus its own page module, last', scripts,
+    ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js', '../js/crm-reports.js']);
+  ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
+  ok('   ...whose stylesheet is scoped to this page alone',
+    read('css/crm-reports.css').replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.trim()).filter(Boolean)
+      .every(r => r.replace(/^@media[^{]*\{/, '').trim().split('{')[0].split(',').every(sel => sel.trim().startsWith('[data-page="crm-reports"]'))), '');
+  const js = read('js/crm-reports.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  ok('the page module reads no browser storage and makes no requests of its own',
+    !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest|https?:/.test(js), '');
+  ok('   ...writes nothing: no Storage write, seed or reset call',
+    !/Storage\.(create|update|remove|action|addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings)\b/.test(js), '');
+  const loads = [...js.matchAll(/Storage\.load\('(\w+)'\)/g)].map(m => m[1]);
+  check('   ...and loads only the follow-ups on demand', loads, ['followUps']);
   ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
 }
 
