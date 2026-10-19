@@ -1,12 +1,12 @@
 /* ============================================================
-   crm-reports.css — Customer CRM › CRM Reports (UI only)
+   crm-reports.css — Customer CRM › CRM Reports
    ------------------------------------------------------------
    Loaded only by pages/crm-reports.html, and every rule is also
    scoped to [data-page="crm-reports"], so nothing here can reach
    another page. The page is built from the shared components
    (stats grid, toolbar, inputs, button, card, table, badges); this
    file only arranges them and styles the parts that exist on this
-   page alone (the period controls and the empty chart frame).
+   page alone (the period controls, the bar chart and the tabs).
    ============================================================ */
 
 /* ---------- page header ---------- */
@@ -20,11 +20,12 @@
 [data-page="crm-reports"] .crp-head__text { min-width: 0; }
 [data-page="crm-reports"] .crp-head__title { font-size: 1.2rem; font-weight: 700; letter-spacing: -.01em; }
 [data-page="crm-reports"] .crp-head__desc { margin: 2px 0 0; font-size: .86rem; color: var(--text-2); }
-[data-page="crm-reports"] .crp-head__status { flex: none; margin-top: 4px; }
 
-/* ---------- period toolbar (disabled until connected) ---------- */
+/* ---------- period toolbar (disabled until the data has loaded) ---------- */
 [data-page="crm-reports"] .crp-toolbar .input:disabled,
-[data-page="crm-reports"] .crp-toolbar .select:disabled { cursor: not-allowed; opacity: .7; }
+[data-page="crm-reports"] .crp-toolbar .select:disabled,
+[data-page="crm-reports"] .crp-list__toolbar .input:disabled,
+[data-page="crm-reports"] .crp-list__toolbar .select:disabled { cursor: not-allowed; opacity: .7; }
 [data-page="crm-reports"] .crp-field,
 [data-page="crm-reports"] .crp-date {
   display: inline-flex;
@@ -34,22 +35,24 @@
   color: var(--text-3);
 }
 [data-page="crm-reports"] .crp-range { display: inline-flex; flex-wrap: wrap; gap: 10px; }
-[data-page="crm-reports"] .crp-period { margin: 0; font-size: .8rem; color: var(--text-3); }
-[data-page="crm-reports"] .crp-period__value { font-weight: 600; color: var(--text-2); }
-/* Pushed to the right end of the row; disabled (shared .btn:disabled look). */
-[data-page="crm-reports"] .crp-export { margin-left: auto; }
-[data-page="crm-reports"] .crp-toolbar__note { white-space: normal; flex: 1 1 100%; }   /* own line under the controls */
+[data-page="crm-reports"] .crp-period { margin: 0; font-size: .8rem; font-weight: 600; color: var(--text-2); }
+[data-page="crm-reports"] .crp-range-error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: .8rem;
+  color: var(--bad);
+}
+[data-page="crm-reports"] .crp-range-error[hidden] { display: none; }
 
-/* ---------- summary cards (shared .stat, placeholder values) ---------- */
+/* ---------- summary cards (shared .stat) ---------- */
 [data-page="crm-reports"] .crp-stats { margin-bottom: 18px; }
 [data-page="crm-reports"] .crp-stat { align-items: flex-start; }
-[data-page="crm-reports"] .crp-stat .stat__value { color: var(--text-3); }
 [data-page="crm-reports"] .crp-stat .stat__label { font-weight: 600; color: var(--text); }
-[data-page="crm-reports"] .crp-pending { margin-top: 2px; font-size: .7rem; color: var(--text-3); }
+[data-page="crm-reports"] .crp-sub { margin-top: 2px; font-size: .7rem; line-height: 1.35; color: var(--text-3); }
 /* Returning Customers: a neutral navy tile -- a count of people is not a status. */
 [data-page="crm-reports"] .crp-icon--navy { background: var(--paper); color: var(--text); border: 1px solid var(--line); }
 
-/* ---------- activity trends: an empty chart frame ---------- */
+/* ---------- activity trends ---------- */
 [data-page="crm-reports"] .crp-trends { margin-bottom: 18px; }
 [data-page="crm-reports"] .crp-trends__head { flex-wrap: wrap; gap: 10px; }
 [data-page="crm-reports"] .crp-key {
@@ -63,18 +66,22 @@
   color: var(--text-2);
 }
 [data-page="crm-reports"] .crp-key li { display: inline-flex; align-items: center; gap: 6px; }
-[data-page="crm-reports"] .crp-key__dot { width: 10px; height: 10px; border-radius: 3px; opacity: .55; }
-[data-page="crm-reports"] .crp-key__dot--warn { background: var(--warn); }
-[data-page="crm-reports"] .crp-key__dot--info { background: var(--info); }
-[data-page="crm-reports"] .crp-key__dot--good { background: var(--good); }
-[data-page="crm-reports"] .crp-key__dot--navy { background: var(--text); }
-/* Faint horizontal grid lines and a baseline, nothing plotted on them. */
+[data-page="crm-reports"] .crp-key__dot { width: 10px; height: 10px; border-radius: 3px; }
+[data-page="crm-reports"] .crp-key__dot--info,
+[data-page="crm-reports"] .crp-bar--info { background: var(--info); }
+[data-page="crm-reports"] .crp-key__dot--good,
+[data-page="crm-reports"] .crp-bar--good { background: var(--good); }
+[data-page="crm-reports"] .crp-key__dot--navy,
+[data-page="crm-reports"] .crp-bar--navy { background: var(--text); }
+[data-page="crm-reports"] .crp-chart__caption { margin: 0 0 10px; font-size: .76rem; color: var(--text-3); }
+/* Faint horizontal grid lines and a baseline; bars scroll inside the card, never the page. */
 [data-page="crm-reports"] .crp-chart {
   position: relative;
   display: grid;
   place-items: center;
   min-height: 240px;
-  padding: 16px;
+  padding: 16px 8px 8px;
+  overflow-x: auto;
   border-left: 1px solid var(--line-strong, var(--line));
   border-bottom: 1px solid var(--line-strong, var(--line));
   background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%);
@@ -98,11 +105,84 @@
 }
 [data-page="crm-reports"] .crp-chart__empty h3 { font-size: .92rem; font-weight: 600; color: var(--text); }
 [data-page="crm-reports"] .crp-chart__empty p { margin: 4px 0 0; font-size: .8rem; color: var(--text-3); }
+[data-page="crm-reports"] .crp-bars {
+  align-self: stretch;
+  justify-self: stretch;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-height: 220px;
+}
+[data-page="crm-reports"] .crp-bars--dense { gap: 3px; }
+[data-page="crm-reports"] .crp-bars__group { flex: 1 0 34px; display: flex; flex-direction: column; min-width: 34px; }
+[data-page="crm-reports"] .crp-bars--dense .crp-bars__group { flex-basis: 22px; min-width: 22px; }
+[data-page="crm-reports"] .crp-bars__group--future { opacity: .35; }
+[data-page="crm-reports"] .crp-bars__plot { flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
+[data-page="crm-reports"] .crp-bar { flex: 1; max-width: 14px; min-height: 2px; border-radius: 3px 3px 0 0; }
+[data-page="crm-reports"] .crp-bar--none,
+[data-page="crm-reports"] .crp-bar--zero { min-height: 0; height: 0; }
+[data-page="crm-reports"] .crp-bars__label {
+  margin-top: 4px;
+  font-size: .64rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+[data-page="crm-reports"] .crp-bars--dense .crp-bars__label { writing-mode: vertical-rl; transform: rotate(180deg); margin-inline: auto; }
+[data-page="crm-reports"] .crp-chart__data { margin-top: 10px; font-size: .8rem; }
+[data-page="crm-reports"] .crp-chart__data[hidden] { display: none; }
+[data-page="crm-reports"] .crp-chart__data summary { cursor: pointer; color: var(--text-2); }
+[data-page="crm-reports"] .crp-chart-table th[scope="row"] { white-space: nowrap; font-weight: 500; }
 
 /* ---------- activity details ---------- */
+[data-page="crm-reports"] .crp-list__head { flex-wrap: wrap; gap: 10px; }
+[data-page="crm-reports"] .crp-tabs { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+[data-page="crm-reports"] .crp-tab {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+[data-page="crm-reports"] .crp-tab.is-active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+[data-page="crm-reports"] .crp-tab:disabled { cursor: not-allowed; opacity: .6; }
+[data-page="crm-reports"] .crp-tab:focus-visible { outline: 2px solid var(--info); outline-offset: 1px; }
+[data-page="crm-reports"] .crp-list__toolbar { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+[data-page="crm-reports"] .crp-list__toolbar .toolbar__search { flex: 1 1 280px; max-width: 380px; }
+[data-page="crm-reports"] .crp-list__note { white-space: normal; flex: 1 1 100%; }
+[data-page="crm-reports"] .crp-export { display: inline-flex; align-items: center; gap: 6px; }
+[data-page="crm-reports"] .crp-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 [data-page="crm-reports"] .crp-table tbody tr.crp-empty-row:hover { background: none; }
+[data-page="crm-reports"] .crp-unknown,
+[data-page="crm-reports"] .crp-muted { color: var(--text-3); }
+[data-page="crm-reports"] .crp-unknown { font-style: italic; }
+[data-page="crm-reports"] .crp-nowrap { white-space: nowrap; }
+[data-page="crm-reports"] .crp-reason { white-space: normal; overflow-wrap: anywhere; min-width: 140px; max-width: 300px; }
+[data-page="crm-reports"] .crp-empty--bad .crp-empty__icon { color: var(--bad); }
+[data-page="crm-reports"] .crp-actions { margin-top: 10px !important; }
+[data-page="crm-reports"] .crp-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+[data-page="crm-reports"] .crp-pager[hidden] { display: none; }
+[data-page="crm-reports"] .crp-pager__range { margin-right: auto; font-size: .8rem; color: var(--text-3); }
 
-/* Compact empty state: icon, explanation and status side by side. */
+/* Compact empty / loading / unavailable state: icon, explanation and status side by side. */
 [data-page="crm-reports"] .crp-empty {
   display: flex;
   align-items: flex-start;
@@ -125,30 +205,43 @@
 [data-page="crm-reports"] .crp-empty__text h3 { font-size: .92rem; font-weight: 600; color: var(--text); }
 [data-page="crm-reports"] .crp-empty__text p { margin: 4px 0 0; font-size: .8rem; color: var(--text-3); }
 [data-page="crm-reports"] .crp-empty__status { flex: none; }
-[data-page="crm-reports"] .crp-planned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px !important; }
-[data-page="crm-reports"] .crp-planned__label { font-weight: 600; color: var(--text-2); }
-/* Plain text, not buttons: these features do not exist yet. */
-[data-page="crm-reports"] .crp-chip {
-  padding: 2px 8px;
-  border: 1px dashed var(--line-strong, var(--line));
-  border-radius: 999px;
-  font-size: .72rem;
-  color: var(--text-3);
-}
 
-/* ---------- tablet / phone ---------- */
-/* Narrower screens: let the column headers wrap so the table never grows
-   wider than its card (the empty state would be cut off inside the scroll
-   area), and stack the empty state instead of squeezing it beside the icon. */
-@media (max-width: 1100px) {
-  [data-page="crm-reports"] .crp-table th { white-space: normal; }
+/* ---------- compact (below 1100px) ---------- */
+/* Below about 1100px of screen the heading row is hidden and each record
+   becomes a card: every cell keeps its value and its label (from
+   data-label), so nothing is lost on a tablet or a phone. */
+@media (max-width: 1099px) {
+  [data-page="crm-reports"] .crp-table thead { display: none; }
+  [data-page="crm-reports"] .crp-table tbody tr:not(.crp-empty-row) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  [data-page="crm-reports"] .crp-table tbody tr:not(.crp-empty-row) td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    max-width: none;
+    white-space: normal;
+  }
+  [data-page="crm-reports"] .crp-table tbody tr:not(.crp-empty-row) td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: .68rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
 }
 @media (max-width: 900px) {
   [data-page="crm-reports"] .crp-empty { flex-direction: column; align-items: flex-start; gap: 10px; }
 }
 @media (max-width: 640px) {
   [data-page="crm-reports"] .crp-head { flex-direction: column; gap: 8px; }
-  [data-page="crm-reports"] .crp-head__status { margin-top: 0; }
   /* Two columns that may shrink below their longest label (as the Dashboard
      does), so "Completed Follow-ups" wraps instead of widening a phone screen. */
   [data-page="crm-reports"] .crp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -162,13 +255,17 @@
   [data-page="crm-reports"] .crp-date .input { flex: 1; min-width: 0; }
   [data-page="crm-reports"] .crp-field > span,
   [data-page="crm-reports"] .crp-date > span { min-width: 3.2em; }   /* Period / From / To fields line up */
-  [data-page="crm-reports"] .crp-export { flex: 1 1 100%; justify-content: center; margin-left: 0; }
-  [data-page="crm-reports"] .crp-chart { min-height: 200px; padding: 12px 8px; }
-  /* With no rows, the header row alone is wider than a phone; hide it so the
-     empty state fits instead of scrolling sideways. */
-  [data-page="crm-reports"] .crp-table thead { display: none; }
+  [data-page="crm-reports"] .crp-chart { min-height: 200px; padding: 12px 6px 6px; }
+  [data-page="crm-reports"] .crp-tabs { flex: 1 1 100%; }
+  [data-page="crm-reports"] .crp-tab { flex: 1; }
+  [data-page="crm-reports"] .crp-list__toolbar .toolbar__search { max-width: none; flex: 1 1 100%; }
+  [data-page="crm-reports"] .crp-list__toolbar .select { flex: 1 1 100%; }
+  [data-page="crm-reports"] .crp-export { flex: 1 1 100%; justify-content: center; }
+  [data-page="crm-reports"] .crp-table tbody tr:not(.crp-empty-row) { grid-template-columns: minmax(0, 1fr); }
   [data-page="crm-reports"] .crp-empty { padding: 16px 4px; gap: 12px; }
   [data-page="crm-reports"] .crp-empty__icon { width: 40px; height: 40px; }
+  [data-page="crm-reports"] .crp-pager { flex-wrap: wrap; }
+  [data-page="crm-reports"] .crp-pager__range { flex: 1 1 100%; }
 }
 @media (max-width: 400px) {
   /* Smallest phones: icon above the text, so each label keeps whole words. */
