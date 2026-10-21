@@ -514,7 +514,7 @@ console.log('\n-- 12. Routing --');
     body.data.routes.includes('GET /api/expenses')
       && body.data.routes.includes('GET /api/expenses/:id'),
     JSON.stringify(body.data.routes));
-  check('the registry now advertises 84 routes', body.data.routes.length, 84);
+  check('the registry now advertises 93 routes', body.data.routes.length, 93);
 }
 {
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
