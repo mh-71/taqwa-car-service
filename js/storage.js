@@ -75,7 +75,8 @@ const Storage = (() => {
     expenses: 'expenses', inventoryTransactions: 'inventory-transactions',
     invoiceAdjustments: 'invoice-adjustments',
     followUps: 'follow-ups', followUpContacts: 'follow-up-contacts',
-    followUpTasks: 'follow-up-tasks'
+    followUpTasks: 'follow-up-tasks',
+    estimates: 'estimates'
   };
 
   /**
@@ -91,7 +92,7 @@ const Storage = (() => {
    * Outside 'api' mode they read as empty and refuse every write: there is no
    * browser-storage copy of them, demo or otherwise, to show or to change.
    */
-  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks'];
+  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates'];
   const isApiOnly = c => API_ONLY.includes(c);
   const apiOnlyRefusal = () => ({
     ok: false, code: 'no_api', message: 'This needs the workshop database, which this page is not connected to.',
@@ -552,6 +553,21 @@ const Storage = (() => {
     return reload(collection);
   }
 
+  /**
+   * Read ONE record of an API_ONLY collection, on demand -- the detail shape,
+   * which may carry more than the list does (an estimate's lines and history).
+   * Refused outside 'api' mode, like load(); the cache keeps the newer copy.
+   */
+  async function loadOne(collection, id) {
+    if (!isApiOnly(collection)) {
+      return { ok: false, code: 'not_on_demand', message: `${collection} is loaded with the other collections.` };
+    }
+    if (!isApi()) return apiOnlyRefusal();
+    const res = await Api.get(`/${API_PATHS[collection]}/${encodeURIComponent(id)}`);
+    if (!res.ok) return res;
+    return { ok: true, record: cachePut(collection, res.data) };
+  }
+
   /** Re-read one collection from the server. Used after a transaction. */
   async function reload(collection) {
     if (!isApi()) return { ok: false, code: 'no_api' };
@@ -753,7 +769,7 @@ const Storage = (() => {
   return {
     COLLECTIONS,
     getData, saveData, getById, addData, updateData, deleteData,
-    create, update, remove, action, reload, refreshAll, load,
+    create, update, remove, action, reload, refreshAll, load, loadOne,
     generateId, getSettings, saveSettings, putSettings, getTheme, saveTheme,
     seedIfEmpty, resetToSeedData,
     hydrate, whenReady, ready, signIn, signOut,

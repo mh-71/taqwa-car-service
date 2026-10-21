@@ -37,26 +37,20 @@
 
   <div id="page-content" data-est-view="overview">
 
-    <!-- DEMO ONLY. Filled in by js/estimates-demo.js from fictional records in that file. Nothing here reads
-         or writes the workshop database or browser storage, and no button saves, sends, approves,
-         creates a Job Card or Invoice, or changes Inventory. -->
+    <!-- Filled in by js/estimates.js from the workshop database (GET /api/estimates). Nothing on this page
+         is read from or written to browser storage; without the database it says so and shows no estimates. -->
 
     <div class="est-head">
       <p class="page-subtitle">Prepare repair cost estimates before work begins.</p>
-      <div class="est-head__actions"><a class="btn btn--primary" href="estimate-create.html"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>New Estimate</span></a></div>
+      <div class="est-head__actions"><a class="btn btn--primary" href="estimate-create.html" id="estNew"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>New Estimate</span></a></div>
     </div>
-    <div class="est-demo" role="note">
-      <span class="est-demo__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="est-demo__text"><strong>DEMO ONLY &#8212; No real data is loaded or saved.</strong></p>
-      <button type="button" class="btn btn--ghost btn--sm est-demo__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
-    </div>
-    <section class="stats-grid est-stats" aria-label="Estimate summary (demo data)">
+    <section class="stats-grid est-stats" aria-label="Estimate summary">
       <div class="stat est-stat">
         <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm1 10h-4v1h3c.55 0 1 .45 1 1v3c0 .55-.45 1-1 1h-1v1h-2v-1H9v-2h4v-1h-3c-.55 0-1-.45-1-1v-3c0-.55.45-1 1-1h1V8h2v1h2v2zm-2-4V3.5L17.5 8H13z"/></svg></div>
         <div class="est-stat__body">
           <div class="stat__label">Total Estimates</div>
           <div class="stat__value" id="estTotal"><span aria-hidden="true">&#8212;</span></div>
-          <div class="est-stat__sub">Demo</div>
+          <div class="est-stat__sub" id="estTotalSub">Excluding cancelled</div>
         </div>
       </div>
       <div class="stat est-stat">
@@ -64,7 +58,7 @@
         <div class="est-stat__body">
           <div class="stat__label">Pending</div>
           <div class="stat__value" id="estPending"><span aria-hidden="true">&#8212;</span></div>
-          <div class="est-stat__sub">Awaiting a decision</div>
+          <div class="est-stat__sub">Awaiting the customer's decision</div>
         </div>
       </div>
       <div class="stat est-stat">
@@ -72,7 +66,7 @@
         <div class="est-stat__body">
           <div class="stat__label">Approved</div>
           <div class="stat__value" id="estApproved"><span aria-hidden="true">&#8212;</span></div>
-          <div class="est-stat__sub">Ready for a Job Card</div>
+          <div class="est-stat__sub" id="estApprovedSub">Ready for a Job Card</div>
         </div>
       </div>
       <div class="stat est-stat">
@@ -88,7 +82,7 @@
         <div class="est-stat__body">
           <div class="stat__label">Expired</div>
           <div class="stat__value" id="estExpired"><span aria-hidden="true">&#8212;</span></div>
-          <div class="est-stat__sub">Past the validity date</div>
+          <div class="est-stat__sub">Pending, past the validity date</div>
         </div>
       </div>
       <div class="stat est-stat">
@@ -101,9 +95,9 @@
       </div>
     </section>
     <div class="toolbar est-toolbar" role="search" aria-label="Find estimates">
-      <input type="search" class="input toolbar__search" id="estSearch" placeholder="Search estimate no., customer, vehicle or work&#8230;" aria-label="Search estimates" autocomplete="off">
+      <input type="search" class="input toolbar__search" id="estSearch" placeholder="Search estimate no., customer, phone, vehicle or work&#8230;" aria-label="Search estimates" autocomplete="off">
       <select class="select" id="estStatus" aria-label="Filter by status">
-        <option value="all">All statuses</option><option value="Pending">Pending</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Expired">Expired</option>
+        <option value="all">All statuses</option><option value="Draft">Draft</option><option value="Pending">Pending</option><option value="Expired">Expired</option><option value="Approved">Approved</option><option value="Converted">Converted</option><option value="Rejected">Rejected</option><option value="Cancelled">Cancelled</option>
       </select>
       <label class="est-date"><span>From</span><input type="date" class="input" id="estFrom" aria-label="Estimate date from" aria-describedby="estRangeError"></label>
       <label class="est-date"><span>To</span><input type="date" class="input" id="estTo" aria-label="Estimate date to" aria-describedby="estRangeError"></label>
@@ -114,33 +108,24 @@
     <section class="card est-table-card" id="estListCard" aria-labelledby="estListTitle">
       <div class="card__head">
         <h2 id="estListTitle">Estimates</h2>
-        <span class="badge badge--neutral">Demo</span>
       </div>
       <div class="table-wrap">
         <table class="table table--compact est-table">
           <thead>
-            <tr><th>Estimate No.</th><th>Date</th><th>Customer</th><th>Vehicle</th><th class="num">Parts</th><th class="num">Labour</th><th class="num">Total</th><th>Valid Until</th><th>Status</th><th><span class="est-sr-only">Actions</span></th></tr>
+            <tr><th>Estimate No.</th><th>Date</th><th>Customer</th><th>Vehicle</th><th class="num">Parts</th><th class="num">Services &amp; Labour</th><th class="num">Total</th><th>Valid Until</th><th>Status</th><th><span class="est-sr-only">Actions</span></th></tr>
           </thead>
-          <tbody id="estBody"></tbody>
+          <tbody id="estBody">
+            <tr class="est-empty-row"><td colspan="10"><div class="est-empty-row__box"><strong>Loading estimates&#8230;</strong><span>Reading estimates from the workshop database.</span></div></td></tr>
+          </tbody>
         </table>
       </div>
       <div class="card__body est-card-foot">
         <div class="est-pager" role="navigation" aria-label="Estimate pages">
           <span class="est-pager__range" id="estRange" aria-live="polite"></span>
           <div class="est-pager__btns">
-            <button type="button" class="btn btn--ghost btn--sm" id="estPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
-            <button type="button" class="btn btn--ghost btn--sm" id="estNext"><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="estPrev" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="estNext" disabled><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
           </div>
-        </div>
-      </div>
-    </section>
-    <section class="card" id="estEmpty" aria-labelledby="estEmptyTitle" hidden>
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm1 10h-4v1h3c.55 0 1 .45 1 1v3c0 .55-.45 1-1 1h-1v1h-2v-1H9v-2h4v-1h-3c-.55 0-1-.45-1-1v-3c0-.55.45-1 1-1h1V8h2v1h2v2zm-2-4V3.5L17.5 8H13z"/></svg>
-          <h3 id="estEmptyTitle">No estimates yet</h3>
-          <p>Estimates you prepare for customers will be listed here.</p>
-          <a class="btn btn--primary" href="estimate-create.html"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>New Estimate</span></a>
         </div>
       </div>
     </section>
@@ -152,7 +137,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/estimates-demo.js"></script>
+  <script src="../js/estimates.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>
