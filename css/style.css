@@ -283,6 +283,29 @@ a.nav__sub:hover { background: rgba(255, 255, 255, .06); color: #fff; text-decor
 .nav__sub--off { color: #8592a3; cursor: default; }
 .nav__sub--off svg { opacity: .55; }
 
+/* Staff Management, to the approved reference: a rounded panel, amber outline group icon and bold
+   title, roomier rows with outline icons and no guide line. Scoped to #navStaff, so every other
+   link and group keeps the shared styles above; the sidebar is dark in both themes. */
+#navStaff { border-radius: 14px; background: var(--ink-900); }
+#navStaff > .nav__summary {
+  gap: 11px; min-height: 48px; padding: 0 14px 0 17px; border-radius: 12px;
+  color: #fff; font-size: .97rem; font-weight: 600;
+}
+#navStaff > .nav__summary > span,
+#navStaff .nav__sub > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#navStaff > .nav__summary > svg:first-child { color: var(--amber); opacity: 1; }
+#navStaff .nav__chevron { color: #c6d0dc; opacity: .9; }
+#navStaff > .nav__subs { gap: 1px; margin: 3px 0 6px; padding-left: 0; border-left: 0; }
+#navStaff .nav__sub {
+  gap: 13px; min-height: 44px; padding: 0 12px 0 34px; border-radius: 10px;
+  color: #d5dce5; font-size: .94rem;
+}
+#navStaff .nav__sub svg { color: #aab6c5; opacity: 1; }
+#navStaff a.nav__sub:hover { color: #fff; }
+#navStaff a.nav__sub:hover svg { color: #d5dce5; }
+#navStaff a.nav__sub.is-active { color: #fff; }
+#navStaff a.nav__sub.is-active svg { color: var(--amber); }
+
 .sidebar__foot {
   padding: 14px 18px;
   border-top: 1px solid rgba(255, 255, 255, .07);

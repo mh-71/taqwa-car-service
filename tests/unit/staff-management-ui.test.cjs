@@ -5,9 +5,12 @@
      1. The sidebar has a "Staff Management" group right after Mechanics and
         before Inventory, with nine entries that link to real pages, mark the
         current one as active and open the group on a Staff page. The original
-        six keep their order, URLs and icons; Attendance, Leave Management and
-        Performance sit between Roles & Permissions and Activity Log. It is no
-        longer a top-level link, and every other link keeps its order.
+        six keep their order and URLs; Attendance, Leave Management and
+        Performance sit between Roles & Permissions and Activity Log. The group
+        follows the approved reference design: outline icons (the group's own
+        and all nine entries') while every other link and group keeps its filled
+        icons, and its styling is scoped to #navStaff. It is no longer a
+        top-level link, and every other link keeps its order.
      2. On each Staff page only its own entry is active and the header title
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
@@ -42,14 +45,17 @@ const ENTRIES = [
   ['staff-performance', 'Performance', 'pages/staff-performance.html', 'Performance'],
   ['staff-activity-log', 'Activity Log', 'pages/staff-activity-log.html', 'Activity Log'],
 ];
-// The six entries that shipped first, with the icon each has always had: none of them may change.
-const ORIGINAL = [
-  ['staff-management', 'Overview', 'pages/staff-management.html', 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z'],
-  ['staff-list', 'Staff List', 'pages/staff-list.html', 'M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z'],
-  ['staff-add', 'Add Staff', 'pages/staff-add.html', 'M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'],
-  ['staff-accounts', 'User Accounts', 'pages/staff-accounts.html', 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'],
-  ['staff-roles', 'Roles & Permissions', 'pages/staff-roles.html', 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z'],
-  ['staff-activity-log', 'Activity Log', 'pages/staff-activity-log.html', 'M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z'],
+// The approved reference design: one outline icon per entry, in order (24-unit stroke markup).
+const REF_ICONS = [
+  ['staff-management', '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>'],
+  ['staff-list', '<path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/>'],
+  ['staff-add', '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/>'],
+  ['staff-accounts', '<path d="M8 2v2"/><path d="M16 2v2"/><rect width="18" height="18" x="3" y="4" rx="2"/><circle cx="12" cy="11" r="3"/><path d="M7 22v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/>'],
+  ['staff-roles', '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>'],
+  ['staff-attendance', '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>'],
+  ['staff-leave', '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>'],
+  ['staff-performance', '<path d="M4 18v3"/><path d="M8 14v7"/><path d="M12 16v5"/><path d="M16 14v7"/><path d="M20 10v11"/><path d="m22 3-8.65 8.65a.5.5 0 0 1-.7 0L9.35 8.35a.5.5 0 0 0-.7 0L2 15"/>'],
+  ['staff-activity-log', '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'],
 ];
 const NEW_KEYS = ['staff-attendance', 'staff-leave', 'staff-performance'];
 
@@ -82,7 +88,7 @@ console.log('-- 1. sidebar --');
     ['Dashboard', 'Customers', 'Vehicles', 'Appointments', 'Job Cards', 'Estimates & Quotations', 'Services', 'Mechanics',
       'Inventory', 'Invoices', 'Payments', 'Expenses', 'Reports', 'Settings']);
   const block = staffBlock(html);
-  ok('the sidebar has a Staff Management group', /<summary class="nav__summary"><svg[^>]*><path d="M[^"]+"\/><\/svg><span>Staff Management<\/span>/.test(block), block.slice(0, 200));
+  ok('the sidebar has a Staff Management group', /<summary class="nav__summary"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"[^>]*>[\s\S]*?<\/svg><span>Staff Management<\/span>/.test(block), block.slice(0, 200));
   const iMec = html.indexOf('href="pages/mechanics.html"'), iGrp = html.indexOf('id="navStaff"'), iInv = html.indexOf('href="pages/inventory.html"');
   ok('   ...placed right after Mechanics and before Inventory', iMec > -1 && iMec < iGrp && iGrp < iInv
     && !/<a class="nav__link/.test(html.slice(iMec + 1, iGrp).replace(/^[^>]*>/, '')), JSON.stringify({ iMec, iGrp, iInv }));
@@ -90,13 +96,19 @@ console.log('-- 1. sidebar --');
   check('   ...with the nine entries, in order', links, ENTRIES.map(([, label, href]) => [href, label]));
   check('   ...the three new entries sit right after Roles & Permissions and right before Activity Log',
     links.slice(4, 9).map(l => l[1]), ['Roles & Permissions', 'Attendance', 'Leave Management', 'Performance', 'Activity Log']);
-  const subs = [...block.matchAll(/<a class="nav__sub[^"]*" href="([^"]+)"[^>]*><svg[^>]*><path d="([^"]+)"\/><\/svg><span>([^<]+)<\/span><\/a>/g)]
-    .map(m => [m[1], m[3], m[2]]);
-  check('   ...the original six keep their order, labels, URLs and icons',
-    subs.filter(([href]) => ORIGINAL.some(o => o[2] === href)), ORIGINAL.map(([, label, href, icon]) => [href, label, icon]));
-  const newIcons = subs.filter(([href]) => !ORIGINAL.some(o => o[2] === href)).map(x => x[2]);
-  ok('   ...each new entry has its own icon, different from every other entry', newIcons.length === 3
-    && new Set(subs.map(x => x[2])).size === subs.length, JSON.stringify(newIcons));
+  const subs = [...block.matchAll(/<a class="nav__sub[^"]*" href="([^"]+)"[^>]*><svg ([^>]*)>([\s\S]*?)<\/svg><span>([^<]+)<\/span><\/a>/g)]
+    .map(m => ({ href: m[1], attrs: m[2], icon: m[3], label: m[4] }));
+  check('   ...each entry has the outline icon of the approved reference design, in order',
+    subs.map(x => [x.href, x.icon]), REF_ICONS.map(([k, icon]) => [`pages/${k}.html`, icon]));
+  ok('   ...drawn as 16px stroke icons that follow the text colour',
+    subs.length === 9 && subs.every(x => /^viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"$/.test(x.attrs)), JSON.stringify(subs.map(x => x.attrs)));
+  ok('   ...nine different icons', new Set(subs.map(x => x.icon)).size === 9, '');
+  ok('   ...the chevron is an outline chevron that turns with the group',
+    /<svg class="nav__chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"[^>]*><path d="m6 9 6 6 6-6"\/><\/svg><\/summary>/.test(block), '');
+  const crm = (html.match(/<details class="nav__group[^"]*" id="navCrm"[\s\S]*?<\/details>/) || [''])[0];
+  ok('every other group and link keeps its filled icons (the outline style is the Staff group\'s only)',
+    crm && !/fill="none"/.test(crm) && !/fill="none"/.test((html.match(/<nav[\s\S]*?<\/nav>/) || [''])[0].replace(block, ''))
+      && (html.match(/<a class="nav__link[^"]*" href="[^"]+"><svg[^>]*fill="currentColor"/g) || []).length === 14, '');
   ok('   ...each linking to a page that exists', ENTRIES.every(([, , href]) => fs.existsSync(path.join(ROOT, href))), '');
   ok('   ...the Overview keeps its existing URL', links[0] && links[0][0] === 'pages/staff-management.html', '');
   ok('   ...a native <details> with a chevron, so it opens from the keyboard',
@@ -354,6 +366,11 @@ const selectors = css.replace(/@media[^{]*\{/g, '').split('}').map(r => r.trim()
   .flatMap(r => r.split('{')[0].split(/,(?![^(]*\))/).map(s => s.trim())).filter(Boolean);
 const loose = selectors.filter(sel => !sel.startsWith('[data-page^="staff-"]'));
 check('every rule is scoped to the Staff pages', loose, []);
+const shared = read('css/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+const navStaffRules = shared.split('}').map(x => x.trim()).filter(x => x.includes('#navStaff')).flatMap(x => x.split('{')[0].split(/,(?![^(]*\))/).map(y => y.trim()));
+ok('the Staff menu styling lives in the shared stylesheet (the sidebar is on every page), every rule scoped to #navStaff',
+  navStaffRules.length >= 10 && navStaffRules.every(sel => sel.startsWith('#navStaff')), JSON.stringify(navStaffRules.filter(sel => !sel.startsWith('#navStaff'))));
+ok('   ...and css/staff.css no longer restyles the menu on Staff pages only', !css.includes('#navStaff'), '');
 ok('   ...and only the nine Staff pages load it',
   fs.readdirSync(path.join(ROOT, 'pages')).filter(f => read(`pages/${f}`).includes('../css/staff.css')).sort().join('|')
     === ENTRIES.map(([k]) => `${k}.html`).sort().join('|'), '');
