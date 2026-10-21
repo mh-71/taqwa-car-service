@@ -1,7 +1,7 @@
 /* ============================================================
    staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by the six Staff Management pages. Each page says which
+   Loaded by the nine Staff Management pages. Each page says which
    it is through <body data-page="...">, and this file fills in
    that page from the DEMO data below.
 
@@ -9,7 +9,8 @@
      - read or write the workshop database (no Api, no Storage);
      - read or write browser storage;
      - send anything anywhere, or read a chosen file;
-     - create staff, accounts, passwords, permissions or log entries.
+     - create staff, accounts, passwords, permissions or log entries;
+     - record attendance, submit or decide leave, or measure performance.
 
    Every action button carries data-preview and only explains that
    it is not available yet. Search, filters and paging work on the
@@ -104,6 +105,49 @@ const StaffUI = (() => {
   ].map(([when, user, action, module, description], i) =>
     ({ id: `ACT-DEMO-${String(i + 1).padStart(3, '0')}`, when, user, action, module, description }));
 
+  // Example attendance for one week of the active demo staff, so the layout can
+  // be judged. Attendance is not recorded yet; none of this happened. One letter
+  // per day, Saturday to Friday: P Present, L Late, D Half-day, A Absent,
+  // V On Leave, H Holiday.
+  const ATTENDANCE_STATUSES = ['Present', 'Late', 'Half-day', 'Absent', 'On Leave', 'Holiday'];
+  const ATT_CODE = { P: 'Present', L: 'Late', D: 'Half-day', A: 'Absent', V: 'On Leave', H: 'Holiday' };
+  const DEMO_DAYS = ['2026-10-10', '2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16'];
+  const DEMO_WEEK = {
+    'DEMO-001': 'PPPPLPH', 'DEMO-002': 'PAPPPPH', 'DEMO-003': 'PPPPDPH', 'DEMO-004': 'LPPPPPH', 'DEMO-006': 'PPLPPPH',
+    'DEMO-007': 'PPPVVVH', 'DEMO-008': 'PPPPPDH', 'DEMO-009': 'PPPPPPH', 'DEMO-010': 'PPPPAPH', 'DEMO-011': 'PLPPPPH',
+  };
+
+  // Example leave requests. Leave cannot be requested or approved yet; none of
+  // this happened. DEMO-007's approved casual leave is the On Leave in the week above.
+  const LEAVE_TYPES = ['Casual', 'Sick', 'Annual', 'Unpaid'];
+  const LEAVE_STATUSES = ['Pending', 'Approved', 'Rejected'];
+  const DEMO_LEAVE = [
+    ['DEMO-007', 'Casual', '2026-10-13', '2026-10-15', 'Family event (demo).',           'Approved', 'Approved for the demo.'],
+    ['DEMO-001', 'Annual', '2026-11-02', '2026-11-06', 'Annual holiday (demo).',         'Pending',  null],
+    ['DEMO-003', 'Sick',   '2026-10-05', '2026-10-06', 'Unwell (demo).',                 'Approved', 'Approved for the demo.'],
+    ['DEMO-008', 'Casual', '2026-10-27', '2026-10-27', 'Personal errand (demo).',        'Pending',  null],
+    ['DEMO-004', 'Unpaid', '2026-11-10', '2026-11-14', 'Travel to home district (demo).', 'Pending', null],
+    ['DEMO-011', 'Casual', '2026-10-20', '2026-10-20', 'Personal errand (demo).',        'Rejected', 'Workshop short-staffed that day (demo).'],
+    ['DEMO-006', 'Annual', '2026-12-20', '2026-12-24', 'Annual holiday (demo).',         'Approved', 'Approved for the demo.'],
+    ['DEMO-010', 'Sick',   '2026-09-28', '2026-09-29', 'Unwell (demo).',                 'Approved', 'Approved for the demo.'],
+    ['DEMO-002', 'Unpaid', '2026-09-21', '2026-09-23', 'Personal reasons (demo).',       'Rejected', 'Overlaps a busy week (demo).'],
+    ['DEMO-009', 'Annual', '2026-10-29', '2026-10-31', 'Annual holiday (demo).',         'Pending',  null],
+  ].map(([staffId, type, from, to, reason, status, note], i) =>
+    ({ id: `LV-DEMO-${String(i + 1).padStart(3, '0')}`, staffId, type, from, to, reason, status,
+      decidedBy: status === 'Pending' ? null : 'Demo Staff I', note }));
+
+  // Sample performance figures for the workshop's demo staff. Nothing is measured
+  // yet; every number is invented so the layout can be judged.
+  // [staff, completed jobs, of which on time, average turnaround in hours, labour value in Tk]
+  const PERFORMANCE_PERIOD = 'October 2026 (demo)';
+  const DEMO_PERFORMANCE = [
+    ['DEMO-001', 46, 42, 5.2, 92000],
+    ['DEMO-002', 38, 31, 6.8, 71500],
+    ['DEMO-003', 33, 30, 5.9, 60500],
+    ['DEMO-004', 27, 22, 7.4, 58000],
+    ['DEMO-011', 12, 11, 4.1, 9600],
+  ].map(([staffId, jobs, onTime, turnaround, labour]) => ({ staffId, jobs, onTime, turnaround, labour }));
+
   /* ---------- pure helpers (also used by the unit tests) ---------- */
 
   const count = (list, pred) => list.filter(pred).length;
@@ -154,6 +198,93 @@ const StaffUI = (() => {
     return `${d} ${MONTHS[Number(m) - 1]} ${y}`;
   }
 
+  const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  /** '2026-10-14' -> 'Wed' (computed in UTC, so no time zone can shift the day). */
+  function weekday(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  }
+
+  const byId = id => DEMO_STAFF.find(s => s.id === id);
+  const hhmm = mins => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+  /** 545 -> '9h 05m'. */
+  const fmtDuration = mins => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
+
+  /** One demo day's attendance: every active demo staff member, with times where they worked. */
+  function attendanceFor(day) {
+    const d = DEMO_DAYS.indexOf(day);
+    if (d < 0) return [];
+    return DEMO_STAFF.filter(s => DEMO_WEEK[s.id]).map(s => {
+      const status = ATT_CODE[DEMO_WEEK[s.id][d]];
+      const n = Number(s.id.slice(-3));
+      // Invented but steady times: a few minutes either side of 09:00 and 18:00.
+      const span = { Present: [530 + 5 * (n % 4), 1080 + 5 * (n % 3)], Late: [580, 1090], 'Half-day': [540, 810] }[status];
+      return { staff: s, status, checkIn: span ? hhmm(span[0]) : null, checkOut: span ? hhmm(span[1]) : null, minutes: span ? span[1] - span[0] : 0 };
+    });
+  }
+
+  /** How many rows have each attendance status, in the fixed order. */
+  function attendanceSummary(rows) {
+    return ATTENDANCE_STATUSES.map(status => ({ status, n: count(rows, r => r.status === status) }));
+  }
+
+  /** Attendance rows matching a search text, a status and a department ('all' = no filter). */
+  function filterAttendance(rows, { q = '', status = 'all', department = 'all' } = {}) {
+    const needle = q.trim().toLowerCase();
+    return rows.filter(r =>
+      (!needle || [r.staff.id, r.staff.name, r.staff.designation].some(v => v.toLowerCase().includes(needle)))
+      && (status === 'all' || r.status === status)
+      && (department === 'all' || r.staff.department === department));
+  }
+
+  /** Calendar days from one date to another, both included. */
+  function leaveDays(from, to) {
+    const t = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+    return Math.round((t(to) - t(from)) / 86400000) + 1;
+  }
+
+  function leaveSummary(list = DEMO_LEAVE) {
+    const byStatus = LEAVE_STATUSES.map(status => ({ status, n: count(list, l => l.status === status) }));
+    const byType = LEAVE_TYPES.map(type => ({ type, n: count(list, l => l.type === type) }));
+    const approvedDays = list.filter(l => l.status === 'Approved').reduce((t, l) => t + leaveDays(l.from, l.to), 0);
+    return { total: list.length, byStatus, byType, approvedDays };
+  }
+
+  /** Leave requests matching a search text, a type and a status ('all' = no filter). */
+  function filterLeave(list, { q = '', type = 'all', status = 'all' } = {}) {
+    const needle = q.trim().toLowerCase();
+    return list.filter(l => {
+      const s = byId(l.staffId);
+      return (!needle || [l.id, s.name, s.id, l.reason].some(v => v.toLowerCase().includes(needle)))
+        && (type === 'all' || l.type === type)
+        && (status === 'all' || l.status === status);
+    });
+  }
+
+  /** Each staff member's sample figures plus their on-time percentage. */
+  function performanceRows(list = DEMO_PERFORMANCE) {
+    return list.map(p => Object.assign({ staff: byId(p.staffId), onTimePct: pct(p.onTime, p.jobs) }, p));
+  }
+
+  /** The workshop totals: jobs, on-time share, job-weighted average turnaround (one decimal) and labour value. */
+  function performanceSummary(list = DEMO_PERFORMANCE) {
+    const jobs = list.reduce((t, p) => t + p.jobs, 0);
+    const onTime = list.reduce((t, p) => t + p.onTime, 0);
+    const hours = list.reduce((t, p) => t + p.jobs * p.turnaround, 0);
+    return { jobs, onTime, onTimePct: pct(onTime, jobs), turnaround: jobs ? Math.round((hours / jobs) * 10) / 10 : 0,
+      labour: list.reduce((t, p) => t + p.labour, 0) };
+  }
+
+  /** Best first: most jobs, highest on-time share, shortest turnaround or most labour value. */
+  function sortPerformance(rows, key) {
+    const by = { jobs: (a, b) => b.jobs - a.jobs, onTime: (a, b) => b.onTimePct - a.onTimePct || b.jobs - a.jobs,
+      turnaround: (a, b) => a.turnaround - b.turnaround, labour: (a, b) => b.labour - a.labour }[key] || ((a, b) => b.jobs - a.jobs);
+    return rows.slice().sort(by);
+  }
+
+  /** Demo amounts in taka. Deliberately not Utils.money: that reads the workshop's saved settings. */
+  const taka = n => `৳ ${n.toLocaleString('en-IN')}`;
+
   /* ---------- DOM helpers (text only, never HTML) ---------- */
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -165,6 +296,7 @@ const StaffUI = (() => {
     power: 'M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z',
     check: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
     dash: 'M19 13H5v-2h14v2z',
+    close: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   };
 
   function svgIcon(name, size = 16) {
@@ -201,6 +333,14 @@ const StaffUI = (() => {
   const statusBadge = status => h('span', { class: `badge ${STATUS_BADGE[status] || 'badge--neutral'}`, text: status });
   const roleBadge = role => h('span', { class: `stf-role stf-role--${roleSlot(role)}`, text: role });
   const ACTION_BADGE = { Create: 'badge--good', Update: 'badge--info', Delete: 'badge--bad', Payment: 'badge--warn', 'Sign in': 'badge--neutral' };
+  // Attendance: a badge class and a one-letter code per status (the week grid shows the letter).
+  const ATT_BADGE = { Present: 'badge--good', Late: 'badge--warn', 'Half-day': 'badge--info', Absent: 'badge--bad', 'On Leave': 'stf-badge--violet', Holiday: 'badge--neutral' };
+  const ATT_LETTER = { Present: 'P', Late: 'L', 'Half-day': 'HD', Absent: 'A', 'On Leave': 'OL', Holiday: 'H' };
+  const attSlug = status => status.toLowerCase().replace(/[^a-z]+/g, '-');
+  const attBadge = status => h('span', { class: `badge ${ATT_BADGE[status]}`, text: status });
+  const LEAVE_BADGE = { Pending: 'badge--warn', Approved: 'badge--good', Rejected: 'badge--bad' };
+  // The colour slot of each leave type (the same palette as the roles).
+  const LEAVE_SLOT = { Casual: 1, Sick: 3, Annual: 2, Unpaid: 5 };
 
   /** Avatar and name; `sub` (the staff ID unless told otherwise) underneath, or nothing. */
   function person(s, sub = s.id) {
@@ -418,6 +558,150 @@ const StaffUI = (() => {
     drawDetails();
   }
 
+  /* ---------- Attendance ---------- */
+
+  function renderAttendance() {
+    const state = { empty: false };
+    const day = $('stfAttDay'), q = $('stfAttSearch'), status = $('stfAttStatus'), dept = $('stfAttDept');
+    DEMO_DAYS.forEach(d => day.appendChild(h('option', { value: d, text: `${weekday(d)}, ${fmtDay(d)}` })));
+    day.value = DEMO_DAYS[4];   // a working day that shows most statuses
+    options(status, ATTENDANCE_STATUSES);
+    options(dept, [...new Set(DEMO_STAFF.filter(s => DEMO_WEEK[s.id]).map(s => s.department))].sort());
+
+    // The week at a glance: one row per staff member, one letter per day.
+    fill($('stfWeekHead'), h('tr', {}, h('th', { scope: 'col', text: 'Staff' }),
+      ...DEMO_DAYS.map(d => h('th', { scope: 'col', class: 'stf-week__day' },
+        h('span', { text: weekday(d) }), h('span', { class: 'stf-week__date', text: d.slice(8) })))));
+    const weekRows = DEMO_STAFF.filter(s => DEMO_WEEK[s.id]).map(s => h('tr', {},
+      h('th', { scope: 'row' }, person(s, null)),
+      ...DEMO_DAYS.map((d, i) => {
+        const st = ATT_CODE[DEMO_WEEK[s.id][i]];
+        return h('td', { class: 'stf-week__cell' },
+          h('span', { class: `stf-att stf-att--${attSlug(st)}`, title: `${s.name}, ${weekday(d)} ${fmtDay(d)}: ${st}`, 'aria-hidden': 'true', text: ATT_LETTER[st] }),
+          h('span', { class: 'stf-sr-only', text: st }));
+      })));
+    fill($('stfWeekKey'), ...ATTENDANCE_STATUSES.map(st => h('li', {},
+      h('span', { class: `stf-att stf-att--${attSlug(st)}`, 'aria-hidden': 'true', text: ATT_LETTER[st] }), h('span', { text: st }))));
+
+    function draw() {
+      const all = state.empty ? [] : attendanceFor(day.value);
+      attendanceSummary(all).forEach(({ status: st, n }) => { $(`stfAtt-${attSlug(st)}`).textContent = String(n); });
+      $('stfAttDayLabel').textContent = `${weekday(day.value)}, ${fmtDay(day.value)}`;
+      const list = filterAttendance(all, { q: q.value, status: status.value, department: dept.value });
+      $('stfAttEmpty').hidden = all.length > 0;
+      $('stfAttCard').hidden = all.length === 0;
+      $('stfWeekCard').hidden = all.length === 0;
+      $('stfAttCount').textContent = `${list.length} of ${all.length} staff`;
+      fill($('stfAttBody'), ...(list.length ? list.map(r => h('tr', {},
+        h('td', {}, person(r.staff)),
+        h('td', { text: r.staff.department }),
+        h('td', {}, attBadge(r.status)),
+        h('td', { class: 'stf-nowrap', text: r.checkIn || '—' }),
+        h('td', { class: 'stf-nowrap', text: r.checkOut || '—' }),
+        h('td', { class: 'stf-nowrap', text: r.minutes ? fmtDuration(r.minutes) : '—' }),
+        h('td', {}, h('div', { class: 'row-actions' }, previewBtn('edit', `Edit the attendance of ${r.staff.name}`)))))
+        : [emptyRow(7, 'No staff match these filters', 'Try a different search, or clear the filters.')]));
+      fill($('stfWeekBody'), ...weekRows);
+    }
+    [day, q, status, dept].forEach(c => c.addEventListener(c === q ? 'input' : 'change', draw));
+    $('stfAttClear').addEventListener('click', () => { q.value = ''; status.value = 'all'; dept.value = 'all'; draw(); });
+    emptyToggle(empty => { state.empty = empty; draw(); });
+    draw();
+  }
+
+  /* ---------- Leave Management ---------- */
+
+  function renderLeave() {
+    const PAGE = 8;
+    const state = { page: 1, empty: false };
+    const s = leaveSummary();
+    const n = st => s.byStatus.find(b => b.status === st).n;
+    $('stfLvPending').textContent = String(n('Pending'));
+    $('stfLvApproved').textContent = String(n('Approved'));
+    $('stfLvRejected').textContent = String(n('Rejected'));
+    $('stfLvDays').textContent = String(s.approvedDays);
+    donut($('stfLvTypeChart'), $('stfLvTypeLegend'),
+      s.byType.map(t => ({ label: `${t.type} Leave`, n: t.n, slot: LEAVE_SLOT[t.type] })), 'Requests',
+      `Demo leave requests by type: ${s.byType.map(t => `${t.type} ${t.n}`).join(', ')}.`);
+    donut($('stfLvStatusChart'), $('stfLvStatusLegend'),
+      s.byStatus.map(b => ({ label: b.status, n: b.n, slot: { Pending: 3, Approved: 2, Rejected: 4 }[b.status] })), 'Requests',
+      `Demo leave requests by status: ${s.byStatus.map(b => `${b.status} ${b.n}`).join(', ')}.`);
+    const q = $('stfLvSearch'), type = $('stfLvType'), status = $('stfLvStatus');
+    LEAVE_TYPES.forEach(t => type.appendChild(h('option', { value: t, text: `${t} Leave` })));
+    options(status, LEAVE_STATUSES);
+
+    function draw() {
+      const source = state.empty ? [] : DEMO_LEAVE;
+      const list = filterLeave(source, { q: q.value, type: type.value, status: status.value });
+      const res = paginate(list, state.page, PAGE);
+      state.page = res.page;
+      $('stfLvEmpty').hidden = source.length > 0;
+      $('stfLvCard').hidden = source.length === 0;
+      $('stfLvCount').textContent = `${list.length} of ${source.length} requests`;
+      fill($('stfLvBody'), ...(res.rows.length ? res.rows.map(l => {
+        const m = byId(l.staffId);
+        const days = leaveDays(l.from, l.to);
+        return h('tr', {},
+          h('td', { class: 'stf-nowrap', text: l.id }),
+          h('td', {}, person(m)),
+          h('td', {}, h('span', { class: `stf-role stf-role--${LEAVE_SLOT[l.type]}`, text: `${l.type} Leave` })),
+          h('td', { class: 'stf-nowrap' }, h('span', { text: fmtDay(l.from) }), h('span', { class: 'cell-sub', text: `to ${fmtDay(l.to)}` })),
+          h('td', { class: 'num', text: String(days) }),
+          // The decision is named under the reason; a rejection also says why.
+          h('td', { class: 'stf-reason' }, h('span', { text: l.reason }),
+            l.decidedBy ? h('span', { class: 'cell-sub', text: `${l.status} by ${l.decidedBy.replace(/ /g, '\u00a0')}${l.status === 'Rejected' ? `: ${l.note}` : ''}` }) : null),
+          h('td', {}, h('span', { class: `badge ${LEAVE_BADGE[l.status]}`, text: l.status })),
+          h('td', {}, h('div', { class: 'row-actions' },
+            l.status === 'Pending' ? previewBtn('check', `Approve ${l.id}`) : null,
+            l.status === 'Pending' ? previewBtn('close', `Reject ${l.id}`) : null,
+            previewBtn('view', `View ${l.id}`))));
+      }) : [emptyRow(8, 'No leave requests match these filters', 'Try a different search, or clear the filters.')]));
+      pager('stfLv', res, p => { state.page = p; draw(); });
+    }
+    [q, type, status].forEach(c => c.addEventListener(c === q ? 'input' : 'change', () => { state.page = 1; draw(); }));
+    $('stfLvClear').addEventListener('click', () => { q.value = ''; type.value = 'all'; status.value = 'all'; state.page = 1; draw(); });
+    emptyToggle(empty => { state.empty = empty; state.page = 1; draw(); });
+    draw();
+  }
+
+  /* ---------- Performance ---------- */
+
+  function renderPerformance() {
+    const state = { empty: false };
+    const sort = $('stfPerfSort');
+    $('stfPerfPeriod').textContent = PERFORMANCE_PERIOD;
+
+    function draw() {
+      const source = state.empty ? [] : DEMO_PERFORMANCE;
+      const s = performanceSummary(source);
+      $('stfPerfJobs').textContent = String(s.jobs);
+      $('stfPerfOnTime').textContent = `${s.onTimePct}%`;
+      $('stfPerfOnTimeSub').textContent = `${s.onTime} of ${s.jobs} jobs (demo)`;
+      $('stfPerfTurnaround').textContent = `${s.turnaround.toFixed(1)} h`;
+      $('stfPerfLabour').textContent = taka(s.labour);
+      $('stfPerfEmpty').hidden = source.length > 0;
+      $('stfPerfCard').hidden = source.length === 0;
+      const rows = sortPerformance(performanceRows(source), sort.value);
+      fill($('stfPerfBody'), ...rows.map((r, i) => {
+        const bar = h('span', { class: 'stf-bar__fill stf-bar__fill--good' });
+        bar.style.width = `${r.onTimePct}%`;
+        return h('tr', {},
+          h('td', { class: 'num', text: String(i + 1) }),
+          h('td', {}, person(r.staff)),
+          h('td', {}, roleBadge(r.staff.role)),
+          h('td', { class: 'num', text: String(r.jobs) }),
+          h('td', { class: 'stf-perf__ontime' },
+            h('span', { class: 'stf-perf__pct', text: `${r.onTimePct}%` }),
+            h('span', { class: 'stf-bar', 'aria-hidden': 'true' }, bar)),
+          h('td', { class: 'num stf-nowrap', text: `${r.turnaround.toFixed(1)} h` }),
+          h('td', { class: 'num stf-nowrap', text: taka(r.labour) }));
+      }));
+    }
+    sort.addEventListener('change', draw);
+    emptyToggle(empty => { state.empty = empty; draw(); });
+    draw();
+  }
+
   /* ---------- Activity Log ---------- */
 
   function renderActivity() {
@@ -479,6 +763,9 @@ const StaffUI = (() => {
     'staff-list': renderStaffList,
     'staff-accounts': renderAccounts,
     'staff-roles': renderRoles,
+    'staff-attendance': renderAttendance,
+    'staff-leave': renderLeave,
+    'staff-performance': renderPerformance,
     'staff-activity-log': renderActivity,
   };
 
@@ -497,7 +784,10 @@ const StaffUI = (() => {
     if (RENDER[page]) RENDER[page]();
   }
 
-  return { DEMO_STAFF, DEMO_ACTIVITY, ROLES, MODULES, ROLE_ORDER, summary, filterStaff, filterActivity, paginate, fmtDay, init };
+  return { DEMO_STAFF, DEMO_ACTIVITY, ROLES, MODULES, ROLE_ORDER, summary, filterStaff, filterActivity, paginate, fmtDay, init,
+    ATTENDANCE_STATUSES, DEMO_DAYS, DEMO_WEEK, attendanceFor, attendanceSummary, filterAttendance, weekday, fmtDuration,
+    LEAVE_TYPES, LEAVE_STATUSES, DEMO_LEAVE, leaveDays, leaveSummary, filterLeave,
+    PERFORMANCE_PERIOD, DEMO_PERFORMANCE, performanceRows, performanceSummary, sortPerformance, taka };
 })();
 
 // The page's markup is already parsed (this script is at the end of <body>),

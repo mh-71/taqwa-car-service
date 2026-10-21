@@ -66,7 +66,8 @@ const App = (() => {
 
   /* Staff Management, shown after Mechanics. UI PREVIEW ONLY: every page shows
      demo data that is labelled as such; nothing is read from or saved to the
-     database, and no account, permission or log exists behind them yet. Built
+     database, and no account, permission, log, attendance record, leave request
+     or performance figure exists behind them yet. Built
      like Customer CRM: each page is its own document, its key drives the
      active state, and the group opens on a Staff page. */
   const STAFF_AFTER = 'mechanics';
@@ -77,6 +78,9 @@ const App = (() => {
     { key: 'staff-add',          label: 'Add Staff',           href: 'pages/staff-add.html',          icon: 'M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' },
     { key: 'staff-accounts',     label: 'User Accounts',       href: 'pages/staff-accounts.html',     icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z' },
     { key: 'staff-roles',        label: 'Roles & Permissions', href: 'pages/staff-roles.html',        icon: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z' },
+    { key: 'staff-attendance',   label: 'Attendance',          href: 'pages/staff-attendance.html',   icon: 'M16.53 11.06L15.47 10l-4.88 4.88-2.12-2.12-1.06 1.06L10.59 17l5.94-5.94zM19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z' },
+    { key: 'staff-leave',        label: 'Leave Management',    href: 'pages/staff-leave.html',        icon: 'M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z' },
+    { key: 'staff-performance',  label: 'Performance',         href: 'pages/staff-performance.html',  icon: 'M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z' },
     { key: 'staff-activity-log', label: 'Activity Log',        href: 'pages/staff-activity-log.html', icon: 'M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z' },
   ];
   // Whether Staff Management was left open (display state only, like Customer CRM).
@@ -92,7 +96,8 @@ const App = (() => {
     'crm-reminders': 'Service Reminders', 'crm-follow-up': 'Customer Follow-up',
     'crm-history': 'Service History', 'crm-tasks': 'Follow-up Tasks', 'crm-reports': 'CRM Reports',
     'staff-management': 'Staff Management', 'staff-list': 'Staff List', 'staff-add': 'Add Staff',
-    'staff-accounts': 'User Accounts', 'staff-roles': 'Roles & Permissions', 'staff-activity-log': 'Activity Log'
+    'staff-accounts': 'User Accounts', 'staff-roles': 'Roles & Permissions', 'staff-attendance': 'Attendance',
+    'staff-leave': 'Leave Management', 'staff-performance': 'Performance', 'staff-activity-log': 'Activity Log'
   };
 
   function icon(path) {

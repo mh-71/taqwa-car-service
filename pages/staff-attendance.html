@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Attendance — Taqwa Automobile Service Center</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+  <link rel="stylesheet" href="../css/staff.css">
+  <!-- Hold the first paint until app.js has drawn the shell (marker at the end
+       of <body>), so a page change never shows a frame without the sidebar
+       and header. The browser keeps the previous page on screen meanwhile.
+       Chromium releases the hold as soon as app.js inserts the shell (it
+       contains images) and then logs "Did not find element expected to be
+       parsed" -- a harmless warning; the marker must stay AFTER the scripts,
+       because placed before app.js a frame can slip out before the shell. -->
+  <link rel="expect" href="#shell-drawn" blocking="render">
+  <!-- The sidebar logo and the header's avatar are drawn by app.js; fetch them
+       alongside the scripts so they are ready in that first frame instead of
+       popping in after it. -->
+  <link rel="preload" href="../assets/logo/logo-white.png" as="image">
+  <link rel="preload" href="../assets/avatar/admin.webp" as="image">
+</head>
+<body data-page="staff-attendance" data-root="../">
+
+  <div id="page-content">
+
+    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
+         writes the workshop database or browser storage, and no button saves or sends anything. -->
+
+    <nav class="stf-crumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="staff-management.html">Staff Management</a></li>
+        <li aria-current="page">Attendance</li>
+      </ol>
+    </nav>
+    <div class="stf-head">
+      <p class="page-subtitle">Who was in, who was late and who was away.</p>
+    </div>
+    <div class="stf-preview" role="note">
+      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
+      <p class="stf-preview__text"><strong>Preview: demo data, not real attendance records.</strong> Nothing on this page is saved or sent. Attendance is not recorded yet: this demo week is an example, not a record of who came to work.</p>
+      <button type="button" class="btn btn--ghost btn--sm stf-preview__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
+    </div>
+    <div class="toolbar stf-toolbar" role="search" aria-label="Find attendance">
+      <label class="stf-date"><span>Day</span><select class="select" id="stfAttDay" aria-label="Day (demo week)"></select></label>
+      <input type="search" class="input toolbar__search" id="stfAttSearch" placeholder="Search staff&#8230;" aria-label="Search staff" autocomplete="off">
+      <select class="select" id="stfAttStatus" aria-label="Filter by attendance status"><option value="all">All statuses</option></select>
+      <select class="select" id="stfAttDept" aria-label="Filter by department"><option value="all">All departments</option></select>
+      <button type="button" class="btn btn--ghost btn--sm" id="stfAttClear">Clear filters</button>
+      <span class="toolbar__count" id="stfAttCount"></span>
+    </div>
+    <section class="stats-grid stf-stats stf-stats--six" aria-label="Attendance on the chosen day (demo data)">
+      <div class="stat stf-stat">
+        <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Present</div>
+          <div class="stat__value" id="stfAtt-present"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Late</div>
+          <div class="stat__value" id="stfAtt-late"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18V4c4.41 0 8 3.59 8 8s-3.59 8-8 8z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Half-day</div>
+          <div class="stat__value" id="stfAtt-half-day"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Absent</div>
+          <div class="stat__value" id="stfAtt-absent"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stf-icon--violet"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">On Leave</div>
+          <div class="stat__value" id="stfAtt-on-leave"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+      <div class="stat stf-stat">
+        <div class="stat__icon stf-icon--neutral"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Holiday</div>
+          <div class="stat__value" id="stfAtt-holiday"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Demo</div>
+        </div>
+      </div>
+    </section>
+    <section class="card stf-table-card" id="stfAttCard" aria-labelledby="stfAttTitle">
+      <div class="card__head">
+        <h2 id="stfAttTitle">Daily Attendance</h2>
+        <span class="stf-muted" id="stfAttDayLabel"></span>
+        <span class="badge badge--neutral">Demo</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table stf-table">
+          <thead>
+            <tr><th>Staff</th><th>Department</th><th>Status</th><th>Check-in</th><th>Check-out</th><th>Hours</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="stfAttBody"></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card stf-table-card" id="stfWeekCard" aria-labelledby="stfWeekTitle">
+      <div class="card__head">
+        <h2 id="stfWeekTitle">This Week at a Glance</h2>
+        <span class="badge badge--neutral">Demo</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table stf-table stf-week">
+          <caption class="stf-sr-only">Attendance of each demo staff member, Saturday to Friday</caption>
+          <thead id="stfWeekHead"></thead>
+          <tbody id="stfWeekBody"></tbody>
+        </table>
+      </div>
+      <div class="card__body stf-card-foot">
+        <ul class="stf-week__key" id="stfWeekKey" aria-label="Key"></ul>
+      </div>
+    </section>
+    <section class="card" id="stfAttEmpty" aria-labelledby="stfAttEmptyTitle" hidden>
+      <div class="card__body">
+        <div class="empty">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          <h3 id="stfAttEmptyTitle">No attendance yet</h3>
+          <p>Daily attendance will be listed here once attendance recording is available.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/staff-ui.js"></script>
+  <span id="shell-drawn" hidden></span>
+</body>
+</html>

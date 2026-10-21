@@ -1,10 +1,12 @@
-/* staff-management-ui — Staff Management: the sidebar group and its six
+/* staff-management-ui — Staff Management: the sidebar group and its nine
    UI-preview pages.
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
-        before Inventory, with six entries that link to real pages, mark the
-        current one as active and open the group on a Staff page. It is no
+        before Inventory, with nine entries that link to real pages, mark the
+        current one as active and open the group on a Staff page. The original
+        six keep their order, URLs and icons; Attendance, Leave Management and
+        Performance sit between Roles & Permissions and Activity Log. It is no
         longer a top-level link, and every other link keeps its order.
      2. On each Staff page only its own entry is active and the header title
         names the page; on any other page nothing in the group is active.
@@ -17,7 +19,9 @@
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
         addresses, masked phones), holds no password, and the summaries,
-        filters and paging the pages show are computed from it correctly.
+        filters and paging the pages show are computed from it correctly --
+        including the attendance week, the leave requests and the sample
+        performance figures.
      6. css/staff.css reaches the Staff pages only.
 
    Drives the REAL js/app.js through the shared harness; js/staff-ui.js is
@@ -33,8 +37,21 @@ const ENTRIES = [
   ['staff-add', 'Add Staff', 'pages/staff-add.html', 'Add Staff'],
   ['staff-accounts', 'User Accounts', 'pages/staff-accounts.html', 'User Accounts'],
   ['staff-roles', 'Roles & Permissions', 'pages/staff-roles.html', 'Roles & Permissions'],
+  ['staff-attendance', 'Attendance', 'pages/staff-attendance.html', 'Attendance'],
+  ['staff-leave', 'Leave Management', 'pages/staff-leave.html', 'Leave Management'],
+  ['staff-performance', 'Performance', 'pages/staff-performance.html', 'Performance'],
   ['staff-activity-log', 'Activity Log', 'pages/staff-activity-log.html', 'Activity Log'],
 ];
+// The six entries that shipped first, with the icon each has always had: none of them may change.
+const ORIGINAL = [
+  ['staff-management', 'Overview', 'pages/staff-management.html', 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z'],
+  ['staff-list', 'Staff List', 'pages/staff-list.html', 'M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z'],
+  ['staff-add', 'Add Staff', 'pages/staff-add.html', 'M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'],
+  ['staff-accounts', 'User Accounts', 'pages/staff-accounts.html', 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'],
+  ['staff-roles', 'Roles & Permissions', 'pages/staff-roles.html', 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z'],
+  ['staff-activity-log', 'Activity Log', 'pages/staff-activity-log.html', 'M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z'],
+];
+const NEW_KEYS = ['staff-attendance', 'staff-leave', 'staff-performance'];
 
 /** Render the shell for one page; return the HTML the shell wrote. */
 function shellFor(page, root = '', sessionHint = null) {
@@ -70,7 +87,16 @@ console.log('-- 1. sidebar --');
   ok('   ...placed right after Mechanics and before Inventory', iMec > -1 && iMec < iGrp && iGrp < iInv
     && !/<a class="nav__link/.test(html.slice(iMec + 1, iGrp).replace(/^[^>]*>/, '')), JSON.stringify({ iMec, iGrp, iInv }));
   const links = [...block.matchAll(/<a class="nav__sub[^"]*" href="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)<\/span><\/a>/g)].map(m => [m[1], m[2]]);
-  check('   ...with the six entries, in order', links, ENTRIES.map(([, label, href]) => [href, label]));
+  check('   ...with the nine entries, in order', links, ENTRIES.map(([, label, href]) => [href, label]));
+  check('   ...the three new entries sit right after Roles & Permissions and right before Activity Log',
+    links.slice(4, 9).map(l => l[1]), ['Roles & Permissions', 'Attendance', 'Leave Management', 'Performance', 'Activity Log']);
+  const subs = [...block.matchAll(/<a class="nav__sub[^"]*" href="([^"]+)"[^>]*><svg[^>]*><path d="([^"]+)"\/><\/svg><span>([^<]+)<\/span><\/a>/g)]
+    .map(m => [m[1], m[3], m[2]]);
+  check('   ...the original six keep their order, labels, URLs and icons',
+    subs.filter(([href]) => ORIGINAL.some(o => o[2] === href)), ORIGINAL.map(([, label, href, icon]) => [href, label, icon]));
+  const newIcons = subs.filter(([href]) => !ORIGINAL.some(o => o[2] === href)).map(x => x[2]);
+  ok('   ...each new entry has its own icon, different from every other entry', newIcons.length === 3
+    && new Set(subs.map(x => x[2])).size === subs.length, JSON.stringify(newIcons));
   ok('   ...each linking to a page that exists', ENTRIES.every(([, , href]) => fs.existsSync(path.join(ROOT, href))), '');
   ok('   ...the Overview keeps its existing URL', links[0] && links[0][0] === 'pages/staff-management.html', '');
   ok('   ...a native <details> with a chevron, so it opens from the keyboard',
@@ -167,6 +193,41 @@ for (const [key, label] of ENTRIES) {
   ok('   ...search, date range, user and action filters, details panel, pager, empty state',
     ['stfActSearch', 'stfActFrom', 'stfActTo', 'stfActUser', 'stfActAction', 'stfActDetails', 'stfActPrev', 'stfActNext', 'stfActEmpty'].every(id => g.includes(`id="${id}"`)), '');
 }
+{
+  const cols = body => [...body.matchAll(/<th(?: class="num")?>([^<]+)<\/th>/g)].map(m => m[1]);
+  const demoBadges = body => (body.match(/<span class="badge badge--neutral">Demo<\/span>/g) || []).length;
+  const t = pages['staff-attendance'];
+  ok('Attendance: says attendance is not recorded yet and the week is only an example',
+    /<strong>Preview: demo data, not real attendance records\.<\/strong>/.test(t) && /Attendance is not recorded yet/.test(t), '');
+  check('   ...a summary card for each of the six statuses, in order',
+    [...t.matchAll(/<div class="stat__value" id="stfAtt-([a-z-]+)">/g)].map(m => m[1]), ['present', 'late', 'half-day', 'absent', 'on-leave', 'holiday']);
+  ok('   ...day picker, search, status and department filters, the week grid with its key, empty state',
+    ['stfAttDay', 'stfAttSearch', 'stfAttStatus', 'stfAttDept', 'stfAttClear', 'stfAttBody', 'stfWeekHead', 'stfWeekBody', 'stfWeekKey', 'stfAttEmpty'].every(id => t.includes(`id="${id}"`)), '');
+  check('   ...the daily columns', cols(t), ['Staff', 'Department', 'Status', 'Check-in', 'Check-out', 'Hours', 'Actions']);
+  check('   ...both data cards are badged "Demo"', demoBadges(t), 2);
+  const v = pages['staff-leave'];
+  ok('Leave Management: says leave cannot be requested, approved or rejected yet',
+    /<strong>Preview: demo data, not real leave requests\.<\/strong>/.test(v) && /Leave cannot be requested, approved or rejected yet/.test(v), '');
+  ok('   ...New Leave Request only explains it is a preview', /<button type="button" class="btn btn--primary" data-preview="New Leave Request">/.test(v), '');
+  ok('   ...Pending, Approved, Rejected and approved-days cards, both charts, filters, pager, empty state',
+    ['stfLvPending', 'stfLvApproved', 'stfLvRejected', 'stfLvDays', 'stfLvTypeChart', 'stfLvTypeLegend', 'stfLvStatusChart', 'stfLvStatusLegend',
+      'stfLvSearch', 'stfLvType', 'stfLvStatus', 'stfLvClear', 'stfLvPrev', 'stfLvNext', 'stfLvEmpty'].every(id => v.includes(`id="${id}"`)), '');
+  check('   ...the requested columns', cols(v), ['Request', 'Staff', 'Leave Type', 'Dates', 'Days', 'Reason', 'Status', 'Actions']);
+  check('   ...every data card is badged "Demo"', demoBadges(v), 3);
+  const f = pages['staff-performance'];
+  ok('Performance: says every figure is a sample and performance is not measured yet',
+    /<strong>Preview: sample figures, not real performance\.<\/strong>/.test(f) && /Every number here is demo data: performance is not measured yet/.test(f), '');
+  check('   ...the four requested measures, in order', [...f.matchAll(/<div class="stat__label">([^<]+)<\/div>/g)].map(m => m[1]),
+    ['Completed Jobs', 'On-time Completion', 'Average Turnaround Time', 'Labour Value']);
+  check('   ...each card says it is a sample figure', (f.match(/<div class="stf-stat__sub"[^>]*>Sample figure/g) || []).length, 4);
+  check('   ...the staff table columns', cols(f), ['#', 'Staff', 'Role', 'Completed Jobs', 'On-time Completion', 'Avg. Turnaround', 'Labour Value']);
+  ok('   ...a sort choice for each measure, the period label and an empty state',
+    ['stfPerfSort', 'stfPerfPeriod', 'stfPerfBody', 'stfPerfEmpty'].every(id => f.includes(`id="${id}"`))
+      && ['jobs', 'onTime', 'turnaround', 'labour'].every(o => f.includes(`<option value="${o}">`)), '');
+  check('   ...the table is badged "Demo"', demoBadges(f), 1);
+  ok('the three new pages each have an empty-state switch in their preview notice',
+    NEW_KEYS.every(k => /<div class="stf-preview" role="note">[\s\S]*?data-empty-toggle aria-pressed="false">Show the empty state<\/button>/.test(pages[k])), '');
+}
 
 /* ---------- 4. the page script ---------- */
 console.log('\n-- 4. js/staff-ui.js --');
@@ -176,6 +237,10 @@ check('it never reaches the database, browser storage or the network',
   ['fetch(', 'XMLHttpRequest', 'Api.', 'Storage.', 'localStorage', 'sessionStorage', 'sendBeacon', 'WebSocket', 'FileReader', 'indexedDB']
     .filter(t => code.includes(t)), []);
 check('it never writes HTML', ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function'].filter(t => code.includes(t)), []);
+ok('it does not format the demo amounts with Utils.money (which reads the workshop settings)', !code.includes('Utils.money'), '');
+check('it renders exactly the nine Staff pages',
+  [...code.match(/const RENDER = \{([\s\S]*?)\};/)[1].matchAll(/'([a-z-]+)':/g)].map(m => m[1]),
+  ENTRIES.map(([k]) => k).filter(k => k !== 'staff-add'));
 ok('every action button it creates is type="button" and only explains it is a preview',
   /type: 'button', class: `icon-btn icon-btn--sm\$\{extraClass\}`, title: label, 'aria-label': label, 'data-preview': label/.test(code)
     && /Preview only: .* is not available yet\. Nothing was saved or sent\./.test(code), '');
@@ -217,6 +282,70 @@ ok('   ...following the recorded decisions (no counter payments for advisors, no
   !S.ROLES[2].perms.Payments.includes('C') && S.ROLES[3].perms.Payments === '' && S.ROLES[3].perms.Invoices === ''
     && S.ROLES[4].perms['Staff Management'] === '', '');
 
+// Attendance (demo week)
+const activeIds = S.DEMO_STAFF.filter(s => s.status === 'Active').map(s => s.id).sort();
+check('the attendance week runs Saturday to Friday', S.DEMO_DAYS.map(S.weekday), ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+check('   ...covers every active demo staff member and no inactive one', Object.keys(S.DEMO_WEEK).sort(), activeIds);
+ok('   ...with one valid code per day', Object.values(S.DEMO_WEEK).every(w => /^[PLDAVH]{7}$/.test(w)), '');
+check('   ...the six statuses, in order', S.ATTENDANCE_STATUSES, ['Present', 'Late', 'Half-day', 'Absent', 'On Leave', 'Holiday']);
+ok('   ...all six appear somewhere in the week',
+  S.ATTENDANCE_STATUSES.every(st => S.DEMO_DAYS.some(d => S.attendanceFor(d).some(r => r.status === st))), '');
+check('the default day (Wednesday) shows every status but Holiday',
+  S.attendanceSummary(S.attendanceFor('2026-10-14')).map(x => [x.status, x.n]),
+  [['Present', 6], ['Late', 1], ['Half-day', 1], ['Absent', 1], ['On Leave', 1], ['Holiday', 0]]);
+check('Friday is a holiday for everyone', S.attendanceSummary(S.attendanceFor('2026-10-16')).find(x => x.status === 'Holiday').n, 10);
+const wed = Object.fromEntries(S.attendanceFor('2026-10-14').map(r => [r.staff.id, r]));
+check('times: late, half-day and present rows have times; absent and leave rows do not',
+  [[wed['DEMO-001'].checkIn, wed['DEMO-001'].checkOut, wed['DEMO-001'].minutes], [wed['DEMO-003'].checkIn, wed['DEMO-003'].checkOut, wed['DEMO-003'].minutes],
+    [wed['DEMO-010'].checkIn, wed['DEMO-010'].minutes], [wed['DEMO-007'].checkIn, wed['DEMO-007'].minutes], [wed['DEMO-002'].checkIn, wed['DEMO-002'].checkOut]],
+  [['09:40', '18:10', 510], ['09:00', '13:30', 270], [null, 0], [null, 0], ['09:00', '18:10']]);
+check('an unknown day has no rows', S.attendanceFor('2026-01-01').length, 0);
+const wedRows = S.attendanceFor('2026-10-14');
+check('attendance filters: status, department, search, combined',
+  [S.filterAttendance(wedRows, { status: 'Late' }).length, S.filterAttendance(wedRows, { department: 'Front Desk' }).length,
+    S.filterAttendance(wedRows, { q: 'DEMO-011' }).length, S.filterAttendance(wedRows, { status: 'Present', department: 'Workshop' }).length],
+  [1, 2, 1, 3]);
+check('durations read as hours and minutes', [S.fmtDuration(545), S.fmtDuration(270)], ['9h 05m', '4h 30m']);
+
+// Leave Management
+check('ten demo leave requests', S.DEMO_LEAVE.length, 10);
+ok('   ...each belongs to a demo staff member and its reason says (demo)',
+  S.DEMO_LEAVE.every(l => S.DEMO_STAFF.some(s => s.id === l.staffId) && /\(demo\)\.$/.test(l.reason) && /^LV-DEMO-\d{3}$/.test(l.id)), '');
+check('   ...the four leave types and three statuses', [S.LEAVE_TYPES, S.LEAVE_STATUSES], [['Casual', 'Sick', 'Annual', 'Unpaid'], ['Pending', 'Approved', 'Rejected']]);
+ok('   ...every type and every status appears',
+  S.LEAVE_TYPES.every(t => S.DEMO_LEAVE.some(l => l.type === t)) && S.LEAVE_STATUSES.every(st => S.DEMO_LEAVE.some(l => l.status === st)), '');
+ok('   ...only decided requests carry a decision, made by a demo person',
+  S.DEMO_LEAVE.every(l => (l.status === 'Pending') === (l.decidedBy === null && l.note === null)
+    && (l.decidedBy === null || /^Demo Staff [A-L]$/.test(l.decidedBy))), '');
+ok('   ...no request ends before it starts', S.DEMO_LEAVE.every(l => l.from <= l.to), '');
+const ls = S.leaveSummary();
+check('the leave summary: by status, by type, approved days',
+  [ls.byStatus.map(b => b.n), ls.byType.map(b => b.n), ls.approvedDays], [[4, 4, 2], [3, 2, 3, 2], 12]);
+check('leave days include both ends, across a month end too',
+  [S.leaveDays('2026-10-13', '2026-10-15'), S.leaveDays('2026-10-27', '2026-10-27'), S.leaveDays('2026-10-31', '2026-11-02')], [3, 1, 3]);
+check('leave filters: type, status, search, combined',
+  [S.filterLeave(S.DEMO_LEAVE, { type: 'Sick' }).length, S.filterLeave(S.DEMO_LEAVE, { status: 'Pending' }).length,
+    S.filterLeave(S.DEMO_LEAVE, { q: 'lv-demo-006' }).length, S.filterLeave(S.DEMO_LEAVE, { type: 'Annual', status: 'Approved' }).length],
+  [2, 4, 1, 1]);
+const casual = S.DEMO_LEAVE.find(l => l.staffId === 'DEMO-007');
+ok('the approved casual leave is the On Leave in the attendance week',
+  casual.status === 'Approved' && S.DEMO_DAYS.filter(d => S.attendanceFor(d).find(r => r.staff.id === 'DEMO-007').status === 'On Leave').join() === '2026-10-13,2026-10-14,2026-10-15'
+    && casual.from === '2026-10-13' && casual.to === '2026-10-15', '');
+
+// Performance (sample figures)
+check('sample performance for five workshop staff', S.DEMO_PERFORMANCE.map(p => p.staffId), ['DEMO-001', 'DEMO-002', 'DEMO-003', 'DEMO-004', 'DEMO-011']);
+ok('   ...each figure is consistent (on time within jobs, positive turnaround and labour)',
+  S.DEMO_PERFORMANCE.every(p => p.onTime <= p.jobs && p.jobs > 0 && p.turnaround > 0 && p.labour > 0), '');
+ok('   ...the period is labelled as demo', /\(demo\)$/.test(S.PERFORMANCE_PERIOD), '');
+const ps = S.performanceSummary();
+check('the workshop totals', [ps.jobs, ps.onTime, ps.onTimePct, ps.turnaround, ps.labour], [156, 136, 87, 6, 291600]);
+const pr = S.performanceRows();
+check('sorting: best first by each measure', ['jobs', 'onTime', 'turnaround', 'labour'].map(k => S.sortPerformance(pr, k)[0].staffId),
+  ['DEMO-001', 'DEMO-011', 'DEMO-011', 'DEMO-001']);
+check('   ...on-time percentages per person', pr.map(r => r.onTimePct), [91, 82, 91, 81, 92]);
+check('an empty period sums to zero', Object.values(S.performanceSummary([])), [0, 0, 0, 0, 0]);
+check('amounts read as taka', S.taka(291600), '৳ 2,91,600');
+
 /* ---------- 6. the stylesheet ---------- */
 console.log('\n-- 6. css/staff.css --');
 const css = read('css/staff.css').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -225,7 +354,7 @@ const selectors = css.replace(/@media[^{]*\{/g, '').split('}').map(r => r.trim()
   .flatMap(r => r.split('{')[0].split(/,(?![^(]*\))/).map(s => s.trim())).filter(Boolean);
 const loose = selectors.filter(sel => !sel.startsWith('[data-page^="staff-"]'));
 check('every rule is scoped to the Staff pages', loose, []);
-ok('   ...and only the six Staff pages load it',
+ok('   ...and only the nine Staff pages load it',
   fs.readdirSync(path.join(ROOT, 'pages')).filter(f => read(`pages/${f}`).includes('../css/staff.css')).sort().join('|')
     === ENTRIES.map(([k]) => `${k}.html`).sort().join('|'), '');
 

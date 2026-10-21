@@ -1,14 +1,15 @@
 /* ============================================================
    staff.css — Staff Management pages (UI preview)
    ------------------------------------------------------------
-   Loaded only by the six pages/staff-*.html pages, and every rule
+   Loaded only by the nine pages/staff-*.html pages, and every rule
    is also scoped to [data-page^="staff-"], so nothing here can
    reach another page. The pages are built from the shared
    components (stats grid, cards, toolbar, inputs, buttons, table,
    badges, form sections, empty state); this file only arranges
    them and styles what exists on these pages alone: the preview
    notice, breadcrumb, donut charts, avatars, role badges, the
-   permission matrix and the photo drop area.
+   permission matrix, the photo drop area, the attendance codes
+   and week grid, and the on-time bars.
    ============================================================ */
 
 /* ---------- palette for roles and charts (built on the shared tokens) ---------- */
@@ -151,6 +152,7 @@
 /* ---------- toolbar and pager ---------- */
 [data-page^="staff-"] .stf-toolbar { flex-wrap: wrap; }
 [data-page^="staff-"] .stf-date { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--text-3); }
+[data-page^="staff-"] .stf-date > span { white-space: nowrap; }
 [data-page^="staff-"] .stf-range-error { flex: 1 1 100%; margin: 0; font-size: .8rem; color: var(--bad); }
 [data-page^="staff-"] .stf-range-error[hidden] { display: none; }
 [data-page^="staff-"] .stf-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -227,6 +229,43 @@
 [data-page^="staff-"] .stf-dl dt { color: var(--text-3); }
 [data-page^="staff-"] .stf-dl dd { margin: 0; color: var(--text); }
 
+/* ---------- Attendance ---------- */
+/* Six status cards: two rows of three (the shared wide grid is overridden by the dashboard's). */
+[data-page^="staff-"] .stats-grid.stf-stats--six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+[data-page^="staff-"] .stf-badge--violet { background: var(--stf-violet-soft); color: var(--stf-violet); }
+[data-page^="staff-"] .stf-att {
+  display: inline-grid; place-items: center; min-width: 28px; height: 24px; padding: 0 6px; border-radius: 6px;
+  font-size: .72rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--stf-att, var(--text-3)) 15%, var(--surface));
+  color: var(--stf-att, var(--text-2));
+}
+[data-page^="staff-"] .stf-att--present { --stf-att: var(--good); }
+[data-page^="staff-"] .stf-att--late { --stf-att: var(--warn); }
+[data-page^="staff-"] .stf-att--half-day { --stf-att: var(--info); }
+[data-page^="staff-"] .stf-att--absent { --stf-att: var(--bad); }
+[data-page^="staff-"] .stf-att--on-leave { --stf-att: var(--stf-violet); }
+[data-page^="staff-"] .stf-att--holiday { --stf-att: var(--text-3); }
+[data-page^="staff-"] .stf-week tbody th[scope="row"] {
+  font-size: .85rem; font-weight: 400; letter-spacing: normal; text-transform: none; text-align: left;
+  color: var(--text); background: none;
+}
+[data-page^="staff-"] .stf-week__day,
+[data-page^="staff-"] .stf-week__cell { text-align: center; }
+[data-page^="staff-"] .stf-week__day span { display: block; }
+[data-page^="staff-"] .stf-week__date { font-weight: 400; color: var(--text-3); }
+[data-page^="staff-"] .stf-week__key {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; padding: 0; list-style: none; font-size: .78rem; color: var(--text-2);
+}
+[data-page^="staff-"] .stf-week__key li { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- Leave Management ---------- */
+[data-page^="staff-"] .stf-reason { min-width: 180px; max-width: 280px; }
+
+/* ---------- Performance ---------- */
+[data-page^="staff-"] .stf-perf__ontime { min-width: 150px; }
+[data-page^="staff-"] .stf-perf__pct { display: block; font-weight: 600; font-variant-numeric: tabular-nums; }
+[data-page^="staff-"] .stf-perf__ontime .stf-bar { display: block; margin-top: 6px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
   [data-page^="staff-"] .stf-grid-2,
@@ -246,4 +285,5 @@
   [data-page^="staff-"] .stf-form-actions .btn { flex: 1; justify-content: center; }
   [data-page^="staff-"] .stf-form-actions .stf-muted { flex-basis: 100%; }
   [data-page^="staff-"] .stf-dl__row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  [data-page^="staff-"] .stats-grid.stf-stats--six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
