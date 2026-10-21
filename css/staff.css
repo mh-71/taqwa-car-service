@@ -34,11 +34,6 @@
    wrapper it escapes the wrapper's horizontal scroll and widens the whole page. */
 [data-page^="staff-"] .table-wrap { position: relative; }
 
-/* The sidebar's Staff Management label is bold on these pages (the group holds the
-   current page) and needs two pixels more than the shared row spacing leaves. */
-[data-page^="staff-"] #navStaff > .nav__summary { gap: 10px; }
-[data-page^="staff-"] #navStaff > .nav__summary > span { white-space: nowrap; }
-[data-page^="staff-"] #navStaff .nav__sub.is-active > span { white-space: nowrap; }
 [data-page^="staff-"] .stf-muted { margin: 0; font-size: .78rem; color: var(--text-3); }
 [data-page^="staff-"] .stf-nowrap { white-space: nowrap; }
 [data-page^="staff-"] .stf-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; }
