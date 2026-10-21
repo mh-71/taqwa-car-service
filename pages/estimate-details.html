@@ -37,9 +37,9 @@
 
   <div id="page-content" data-est-view="details">
 
-    <!-- DEMO ONLY. Filled in by js/estimates-demo.js from fictional records in that file. Nothing here reads
-         or writes the workshop database or browser storage, and no button saves, sends, approves,
-         creates a Job Card or Invoice, or changes Inventory. -->
+    <!-- One estimate (?id=EST-0001), read from the workshop database. Every action is sent to the database,
+         which checks it again; nothing is kept in browser storage. Print opens the browser's print dialog for
+         the quotation sheet only. -->
 
     <nav class="est-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -47,16 +47,14 @@
         <li aria-current="page"><span id="estCrumb">Estimate</span></li>
       </ol>
     </nav>
-    <div class="est-demo" role="note">
-      <span class="est-demo__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="est-demo__text"><strong>DEMO ONLY &#8212; No real data is loaded or saved.</strong></p>
-    </div>
-    <div id="estDetail">
+    <div class="est-notice est-notice--info" id="estStateNotice" role="status" hidden></div>
+    <div id="estDetail" hidden>
       <section class="card est-detail-head" aria-labelledby="estDetailId">
         <div class="card__body est-detail-head__body">
           <div class="est-detail-head__id">
             <h2 id="estDetailId"><span aria-hidden="true">&#8212;</span></h2>
             <span id="estDetailStatus"></span>
+            <span class="est-muted" id="estDetailVersion"></span>
             <p class="est-muted" id="estDetailValidity"></p>
           </div>
           <div class="est-detail-head__actions">
@@ -66,20 +64,19 @@
         </div>
       </section>
       <div class="est-detail-layout">
-        <article class="est-sheet" aria-label="Quotation sheet (demo)">
-          <span class="est-sheet__mark" aria-hidden="true">DEMO</span>
+        <article class="est-sheet" aria-label="Quotation sheet">
           <header class="est-sheet__head">
             <div class="est-sheet__brand">
-              <strong>TAQWA AUTOMOBILE</strong>
-              <span>Service Center</span>
+              <strong id="estShBusiness"></strong>
+              <span id="estShBusinessLines"></span>
             </div>
             <div class="est-sheet__title">
-              <h3>ESTIMATE / QUOTATION</h3>
+              <h3>QUOTATION / ESTIMATE</h3>
               <dl class="est-sheet__meta">
                 <div><dt>Estimate No.</dt><dd id="estShNo"></dd></div>
                 <div><dt>Date</dt><dd id="estShDate"></dd></div>
                 <div><dt>Valid until</dt><dd id="estShValid"></dd></div>
-                <div><dt>Status</dt><dd id="estShStatus"></dd></div>
+                <div><dt>Version</dt><dd id="estShVersion"></dd></div>
               </dl>
             </div>
           </header>
@@ -88,15 +85,16 @@
             <div class="est-sheet__party"><span class="est-sheet__label">Vehicle</span><div id="estShVehicle"></div></div>
           </div>
           <div class="est-sheet__block"><span class="est-sheet__label">Repair description</span><p id="estShDesc"></p></div>
+          <div class="est-sheet__block" id="estShNotesBlock" hidden><span class="est-sheet__label">Notes</span><p id="estShNotes"></p></div>
+          <table class="est-sheet__table">
+            <caption>Services &amp; Labour</caption>
+            <thead><tr><th class="num">#</th><th>Description</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead>
+            <tbody id="estShServices"></tbody>
+          </table>
           <table class="est-sheet__table">
             <caption>Parts</caption>
             <thead><tr><th class="num">#</th><th>Item</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead>
             <tbody id="estShParts"></tbody>
-          </table>
-          <table class="est-sheet__table">
-            <caption>Labour</caption>
-            <thead><tr><th class="num">#</th><th>Description</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
-            <tbody id="estShLabour"></tbody>
           </table>
           <div class="est-sheet__bottom">
             <div class="est-sheet__terms"><span class="est-sheet__label">Terms</span><ul id="estShTerms"></ul></div>
@@ -106,37 +104,27 @@
             <div><span></span>Customer approval</div>
             <div><span></span>Authorised by</div>
           </div>
-          <footer class="est-sheet__foot">DEMO ONLY &#8212; not a real quotation. This is an estimate, not a tax invoice.</footer>
+          <footer class="est-sheet__foot">Quotation / Estimate &#8212; not an invoice.</footer>
         </article>
         <aside class="est-side">
+          <section class="card" aria-labelledby="estDecisionTitle">
+            <div class="card__head"><h2 id="estDecisionTitle">Status</h2></div>
+            <div class="card__body" id="estDecision"></div>
+          </section>
           <section class="card" aria-labelledby="estBdTitle">
-            <div class="card__head"><h2 id="estBdTitle">Cost Breakdown</h2><span class="spacer"></span><span class="badge badge--neutral">Demo</span></div>
+            <div class="card__head"><h2 id="estBdTitle">Cost Breakdown</h2></div>
             <div class="card__body"><div class="est-bd" id="estBreakdown"></div></div>
           </section>
-          <section class="card" aria-labelledby="estNextTitle">
-            <div class="card__head"><h2 id="estNextTitle">How this will work</h2></div>
+          <section class="card" aria-labelledby="estHistoryTitle">
+            <div class="card__head"><h2 id="estHistoryTitle">Activity History</h2></div>
             <div class="card__body">
-              <ol class="est-steps">
-                <li>The customer approves or rejects the estimate.</li>
-                <li>An approved estimate is converted into a Job Card.</li>
-                <li>The finished Job Card is invoiced as usual.</li>
-              </ol>
-              <p class="est-muted">None of these steps is available in this preview.</p>
+              <ol class="est-history" id="estHistory"></ol>
+              <p class="est-muted">Names are typed in under the shared workshop login; they are not verified identities.</p>
             </div>
           </section>
         </aside>
       </div>
     </div>
-    <section class="card" id="estNotFound" aria-labelledby="estNotFoundTitle" hidden>
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm1 10h-4v1h3c.55 0 1 .45 1 1v3c0 .55-.45 1-1 1h-1v1h-2v-1H9v-2h4v-1h-3c-.55 0-1-.45-1-1v-3c0-.55.45-1 1-1h1V8h2v1h2v2zm-2-4V3.5L17.5 8H13z"/></svg>
-          <h3 id="estNotFoundTitle">Estimate not found</h3>
-          <p>There is no demo estimate <strong id="estNotFoundId"></strong>.</p>
-          <a class="btn btn--primary" href="estimates.html">Back to Estimates</a>
-        </div>
-      </div>
-    </section>
 
   </div>
 
@@ -145,7 +133,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/estimates-demo.js"></script>
+  <script src="../js/estimates.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>

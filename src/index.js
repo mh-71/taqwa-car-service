@@ -88,6 +88,14 @@ import {
 import {
   listInventoryTransactions, getInventoryTransaction, createInventoryTransaction,
 } from './routes/inventory-transactions.js';
+// Estimates & quotations (0007). Sending, recording a decision, cancelling and
+// converting to a job card are actions, not field changes, and there is no
+// delete: a mistaken estimate is cancelled with a reason and kept. Every route
+// is behind the gate; there is no public estimate route.
+import {
+  listEstimates, getEstimate, createEstimate, updateEstimate,
+  sendEstimate, approveEstimate, rejectEstimate, cancelEstimate, convertEstimate,
+} from './routes/estimates.js';
 // Settings is a singleton the schema enforces (id INTEGER PRIMARY KEY
 // CHECK (id = 1)), so it has no list and no addressable detail. It is
 // dispatched directly below, beside /api/health, rather than joining
@@ -187,6 +195,14 @@ const COLLECTIONS = {
     list: listFollowUpTasks, detail: getFollowUpTask,
     create: createFollowUpTask, update: updateFollowUpTask,
     actions: { start: startFollowUpTask, complete: completeFollowUpTask, cancel: cancelFollowUpTask },
+  },
+  estimates: {
+    list: listEstimates, detail: getEstimate,
+    create: createEstimate, update: updateEstimate,
+    actions: {
+      send: sendEstimate, approve: approveEstimate, reject: rejectEstimate,
+      cancel: cancelEstimate, convert: convertEstimate,
+    },
   },
 };
 

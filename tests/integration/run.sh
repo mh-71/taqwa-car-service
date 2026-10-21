@@ -86,6 +86,8 @@ cleanup() {
                     + (SELECT count(*) FROM follow_ups)
                     + (SELECT count(*) FROM follow_up_contacts)
                     + (SELECT count(*) FROM follow_up_tasks)
+                    + (SELECT count(*) FROM estimates) + (SELECT count(*) FROM estimate_services)
+                    + (SELECT count(*) FROM estimate_parts) + (SELECT count(*) FROM estimate_events)
                     + (SELECT count(*) FROM settings WHERE id = 1) AS n" \
            | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')
     # Counters matter as much as rows from C-2 onward: a write test that
@@ -194,6 +196,8 @@ COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM cust
                     + (SELECT count(*) FROM follow_ups)
                     + (SELECT count(*) FROM follow_up_contacts)
                     + (SELECT count(*) FROM follow_up_tasks)
+                    + (SELECT count(*) FROM estimates) + (SELECT count(*) FROM estimate_services)
+                    + (SELECT count(*) FROM estimate_parts) + (SELECT count(*) FROM estimate_events)
                     + (SELECT count(*) FROM settings)
                     + (SELECT sum(last_value) FROM id_counters) AS n" \
          | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')

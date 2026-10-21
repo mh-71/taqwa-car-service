@@ -462,7 +462,7 @@ const DISCOUNT_TYPES = ['amount', 'percent'];
  * 49.95, 16,000 x 7% is 1,120. The client's copy (js/job-cards.js) is the same
  * function.
  */
-function percentDiscount(subtotal, rate) {
+export function percentDiscount(subtotal, rate) {
   const bp = Math.round(rate * 100);
   const paisa = Math.floor((Math.round(subtotal * 10000) * bp + 500000) / 1000000);
   return Math.min(paisa / 100, subtotal);
@@ -482,7 +482,7 @@ function percentDiscount(subtotal, rate) {
  *   - tax is rounded to whole taka, and only the tax (:105);
  *   - due never goes below zero (:108).
  */
-function computeTotals(job) {
+export function computeTotals(job) {
   const lineSum = (lines) => (lines || []).reduce(
     (s, l) => s + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0
   );
@@ -550,7 +550,7 @@ const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArr
  * existing behaviour is changed, and dropping it over the API would silently
  * lose an inventory line the caller believed it had sent.
  */
-function readLines(raw, { isService, field }) {
+export function readLines(raw, { isService, field }) {
   if (!Array.isArray(raw)) return { error: `\`${field}\` must be an array.` };
   if (raw.length > MAX_LINES) {
     return { error: `\`${field}\` cannot hold more than ${MAX_LINES} lines.` };

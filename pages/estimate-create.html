@@ -37,26 +37,23 @@
 
   <div id="page-content" data-est-view="create">
 
-    <!-- DEMO ONLY. A layout of the estimate form: there is no form element, so nothing typed here can be
-         submitted anywhere; the totals are worked out in the browser only. Nothing here reads
-         or writes the workshop database or browser storage, and no button saves, sends, approves,
-         creates a Job Card or Invoice, or changes Inventory. -->
+    <!-- The estimate form (new, or ?id=EST-0001 to edit a Draft or Pending estimate). There is no form
+         element: js/estimates.js reads the fields and sends them to the workshop database, which checks every
+         field again and calculates every total itself. Nothing typed here is kept in browser storage. -->
 
     <nav class="est-crumbs" aria-label="Breadcrumb">
       <ol>
         <li><a href="estimates.html">Estimates &amp; Quotations</a></li>
-        <li aria-current="page">New Estimate</li>
+        <li aria-current="page" id="estFormCrumb">New Estimate</li>
       </ol>
     </nav>
     <div class="est-head">
-      <p class="page-subtitle">Build a repair cost estimate for a customer.</p>
+      <p class="page-subtitle" id="estFormSubtitle">Build a repair cost estimate for a customer.</p>
     </div>
-    <div class="est-demo" role="note">
-      <span class="est-demo__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="est-demo__text"><strong>DEMO ONLY &#8212; No real data is loaded or saved.</strong> The customers, vehicles, parts and prices here are fictional, and the totals are worked out in this browser only.</p>
-    </div>
-    <div class="est-form-layout">
-      <div class="est-form-main">
+    <div class="est-notice est-notice--warn" id="estEditNotice" role="status" hidden></div>
+    <div class="est-notice est-notice--bad" id="estFormNotice" role="alert" hidden></div>
+    <div class="est-form-layout" id="estFormLayout">
+      <div class="est-form-main" id="estForm">
         <div class="form-section est-section" role="group" aria-labelledby="est-sec-party">
           <div class="form-section__head">
             <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span>
@@ -66,21 +63,29 @@
             </div>
           </div>
           <div class="form-grid form-section__body">
+            <div class="field span-2">
+              <label for="estCustomerSearch">Find customer</label>
+              <input class="input" type="search" id="estCustomerSearch" placeholder="Type a name or phone number&#8230;" autocomplete="off">
+            </div>
             <div class="field">
               <label for="estCustomer">Customer <span class="req" aria-hidden="true">*</span></label>
               <select class="select" id="estCustomer" aria-required="true"><option value="">Select a customer</option></select>
+              <div class="field__error" data-err="customerId"></div>
             </div>
             <div class="field">
               <label for="estVehicle">Vehicle <span class="req" aria-hidden="true">*</span></label>
-              <select class="select" id="estVehicle" aria-required="true"></select>
+              <select class="select" id="estVehicle" aria-required="true"><option value="">Select a customer first</option></select>
+              <div class="field__error" data-err="vehicleId"></div>
             </div>
             <div class="field">
               <label for="estDate">Estimate date</label>
               <input class="input" type="date" id="estDate">
+              <div class="field__error" data-err="date"></div>
             </div>
             <div class="field">
               <label for="estValid">Valid until <span class="est-muted" id="estValidDays"></span></label>
               <input class="input" type="date" id="estValid">
+              <div class="field__error" data-err="validUntil"></div>
             </div>
           </div>
         </div>
@@ -95,8 +100,34 @@
           <div class="form-section__body est-single">
             <div class="field">
               <label for="estDescription">Description <span class="req" aria-hidden="true">*</span></label>
-              <textarea class="textarea" id="estDescription" rows="3" aria-required="true" placeholder="e.g. Front brakes grinding; replace pads and discs."></textarea>
+              <textarea class="textarea" id="estDescription" rows="3" maxlength="2000" aria-required="true" placeholder="e.g. Front brakes grinding; replace pads and discs."></textarea>
+              <div class="field__error" data-err="complaint"></div>
             </div>
+            <div class="field">
+              <label for="estNotes">Notes for the quotation</label>
+              <textarea class="textarea" id="estNotes" rows="2" maxlength="2000" placeholder="Optional"></textarea>
+              <div class="field__error" data-err="notes"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-section est-section" role="group" aria-labelledby="est-sec-services">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="est-sec-services">Services &amp; Labour</h3>
+              <p class="form-section__desc">Catalogue services or custom work. Catalogue prices can be changed for this estimate.</p>
+            </div>
+          </div>
+          <div class="form-section__body est-lines">
+            <div class="table-wrap">
+              <table class="table table--compact est-line-table">
+                <thead><tr><th>Service</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th><th><span class="est-sr-only">Remove</span></th></tr></thead>
+                <tbody id="estServiceRows"></tbody>
+              </table>
+            </div>
+            <p class="est-muted" id="estNoServices">No services yet.</p>
+            <div class="field__error" data-err="services"></div>
+            <button type="button" class="btn btn--ghost btn--sm est-add" id="estAddService"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add service or custom work</span></button>
           </div>
         </div>
         <div class="form-section est-section" role="group" aria-labelledby="est-sec-parts">
@@ -104,7 +135,7 @@
             <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M20 2H4c-1 0-2 .9-2 2v3c0 .7.4 1.4 1 1.7V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.6-.3 1-1 1-1.7V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z"/></svg></span>
             <div>
               <h3 class="form-section__title" id="est-sec-parts">Parts</h3>
-              <p class="form-section__desc">Parts and their prices. Stock is not checked or reserved.</p>
+              <p class="form-section__desc">Inventory parts or manual parts. Stock is shown for reference only; it is not reserved or deducted.</p>
             </div>
           </div>
           <div class="form-section__body est-lines">
@@ -114,79 +145,94 @@
                 <tbody id="estPartRows"></tbody>
               </table>
             </div>
-            <p class="est-muted" id="estNoParts" hidden>No parts yet.</p>
+            <p class="est-muted" id="estNoParts">No parts yet.</p>
+            <div class="field__error" data-err="partsUsed"></div>
             <button type="button" class="btn btn--ghost btn--sm est-add" id="estAddPart"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add part</span></button>
-          </div>
-        </div>
-        <div class="form-section est-section" role="group" aria-labelledby="est-sec-labour">
-          <div class="form-section__head">
-            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1 .1-1.4z"/></svg></span>
-            <div>
-              <h3 class="form-section__title" id="est-sec-labour">Labour</h3>
-              <p class="form-section__desc">Work hours and the rate per hour.</p>
-            </div>
-          </div>
-          <div class="form-section__body est-lines">
-            <div class="table-wrap">
-              <table class="table table--compact est-line-table">
-                <thead><tr><th>Description</th><th class="num">Hours</th><th class="num">Rate / hr</th><th class="num">Amount</th><th><span class="est-sr-only">Remove</span></th></tr></thead>
-                <tbody id="estLabourRows"></tbody>
-              </table>
-            </div>
-            <p class="est-muted" id="estNoLabour" hidden>No labour yet.</p>
-            <button type="button" class="btn btn--ghost btn--sm est-add" id="estAddLabour"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add labour</span></button>
           </div>
         </div>
         <div class="form-section est-section" role="group" aria-labelledby="est-sec-money">
           <div class="form-section__head">
             <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M7.5 11C9.43 11 11 9.43 11 7.5S9.43 4 7.5 4 4 5.57 4 7.5 5.57 11 7.5 11zm0-5C8.33 6 9 6.67 9 7.5S8.33 9 7.5 9 6 8.33 6 7.5 6.67 6 7.5 6zM4.0025 18.5832 18.59 3.9955 20.0042 5.4097 5.4167 19.9974zM16.5 13c-1.93 0-3.5 1.57-3.5 3.5s1.57 3.5 3.5 3.5 3.5-1.57 3.5-3.5-1.57-3.5-3.5-3.5zm0 5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg></span>
             <div>
-              <h3 class="form-section__title" id="est-sec-money">Discount &amp; VAT</h3>
-              <p class="form-section__desc">VAT is added after the discount, as on Job Cards.</p>
+              <h3 class="form-section__title" id="est-sec-money">Labour, Discount &amp; Tax</h3>
+              <p class="form-section__desc">Labour hours &#215; rate, or a fixed labour cost, as on Job Cards. Tax is added after the discount.</p>
             </div>
           </div>
           <div class="form-grid form-grid--3 form-section__body">
             <div class="field">
+              <label for="estLabourHours">Labour hours</label>
+              <input class="input" type="number" id="estLabourHours" min="0" step="0.25" inputmode="decimal">
+              <div class="field__error" data-err="labourHours"></div>
+            </div>
+            <div class="field">
+              <label for="estLabourRate">Rate per hour</label>
+              <input class="input" type="number" id="estLabourRate" min="0" step="0.01" inputmode="decimal">
+              <div class="field__error" data-err="labourRate"></div>
+            </div>
+            <div class="field">
+              <label for="estLabourCost">Fixed labour cost</label>
+              <input class="input" type="number" id="estLabourCost" min="0" step="0.01" inputmode="decimal" placeholder="Used when hours &#215; rate is empty">
+              <div class="field__error" data-err="labourCost"></div>
+            </div>
+            <div class="field">
               <label for="estDiscType">Discount type</label>
-              <select class="select" id="estDiscType"><option value="amount">Amount (&#2547;)</option><option value="percent">Percentage (%)</option></select>
+              <select class="select" id="estDiscType"><option value="amount">Amount</option><option value="percent">Percentage (%)</option></select>
+              <div class="field__error" data-err="discountType"></div>
             </div>
             <div class="field">
               <label for="estDiscValue">Discount</label>
               <input class="input" type="number" id="estDiscValue" min="0" step="0.01" value="0" inputmode="decimal">
+              <div class="field__error" data-err="discount"></div>
+              <div class="field__error" data-err="discountRate"></div>
             </div>
             <div class="field">
-              <label for="estVat">VAT (%)</label>
-              <input class="input" type="number" id="estVat" min="0" max="100" step="0.5" value="5" inputmode="decimal">
+              <label for="estTax">Tax (%)</label>
+              <input class="input" type="number" id="estTax" min="0" max="100" step="0.5" inputmode="decimal">
+              <div class="field__error" data-err="taxRate"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-section est-section" role="group" aria-labelledby="est-sec-by">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="est-sec-by">Prepared by</h3>
+              <p class="form-section__desc">The workshop shares one login, so this is a name only &#8212; it is not a verified identity.</p>
+            </div>
+          </div>
+          <div class="form-section__body est-single">
+            <div class="field">
+              <label for="estBy">Your name</label>
+              <input class="input" type="text" id="estBy" maxlength="100" autocomplete="off">
+              <div class="field__error" data-err="createdBy"></div>
+              <div class="field__error" data-err="updatedBy"></div>
             </div>
           </div>
         </div>
       </div>
       <aside class="est-form-side">
         <section class="card est-preview" aria-labelledby="estPreviewTitle">
-          <div class="card__head"><h2 id="estPreviewTitle">Estimate Preview</h2><span class="spacer"></span><span class="badge badge--neutral">Demo</span></div>
+          <div class="card__head"><h2 id="estPreviewTitle">Estimate Preview</h2></div>
           <div class="card__body">
             <dl class="est-pv">
-              <div class="est-pv__row"><dt>Parts</dt><dd id="estPvParts">&#2547; 0</dd></div>
-              <div class="est-pv__row"><dt>Labour</dt><dd id="estPvLabour">&#2547; 0</dd></div>
-              <div class="est-pv__row est-pv__sub"><dt>Subtotal</dt><dd id="estPvSubtotal">&#2547; 0</dd></div>
-              <div class="est-pv__row"><dt id="estPvDiscLabel">Discount</dt><dd id="estPvDiscount">&#8722; &#2547; 0</dd></div>
-              <div class="est-pv__row"><dt id="estPvVatLabel">VAT (5%)</dt><dd id="estPvVat">&#2547; 0</dd></div>
-              <div class="est-pv__row est-pv__total"><dt>Estimated Total</dt><dd id="estPvTotal">&#2547; 0</dd></div>
+              <div class="est-pv__row"><dt>Parts</dt><dd id="estPvParts">&#8212;</dd></div>
+              <div class="est-pv__row"><dt>Services &amp; Labour</dt><dd id="estPvLabour">&#8212;</dd></div>
+              <div class="est-pv__row est-pv__sub"><dt>Subtotal</dt><dd id="estPvSubtotal">&#8212;</dd></div>
+              <div class="est-pv__row"><dt id="estPvDiscLabel">Discount</dt><dd id="estPvDiscount">&#8212;</dd></div>
+              <div class="est-pv__row"><dt id="estPvTaxLabel">Tax</dt><dd id="estPvTax">&#8212;</dd></div>
+              <div class="est-pv__row est-pv__total"><dt>Estimated Total</dt><dd id="estPvTotal">&#8212;</dd></div>
             </dl>
             <ul class="est-pv__notes" id="estPvNotes" role="status" hidden></ul>
             <div class="est-pv__actions">
-              <button type="button" class="btn btn--primary" data-preview="Save &amp; Approve">Save &amp; Approve</button>
-              <button type="button" class="btn btn--ghost" data-preview="Send to Customer">Send to Customer</button>
-              <button type="button" class="btn btn--ghost" data-preview="Save Draft">Save Draft</button>
-              <a class="btn btn--ghost" href="estimates.html">Cancel</a>
+              <button type="button" class="btn btn--primary" id="estSaveSend">Save &amp; Send</button>
+              <button type="button" class="btn btn--ghost" id="estSaveDraft">Save as Draft</button>
+              <a class="btn btn--ghost" href="estimates.html" id="estFormCancel">Cancel</a>
             </div>
-            <p class="est-muted">Totals are worked out in this browser only. Nothing is saved or sent.</p>
+            <p class="est-muted">The preview is worked out in this browser; the workshop database calculates the stored totals itself.</p>
           </div>
         </section>
       </aside>
     </div>
-    <datalist id="estPartList"></datalist>
-    <datalist id="estLabourList"></datalist>
 
   </div>
 
@@ -195,7 +241,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/estimates-demo.js"></script>
+  <script src="../js/estimates.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>
