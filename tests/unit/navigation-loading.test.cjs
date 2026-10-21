@@ -105,7 +105,7 @@ console.log('-- 1. the shell goes up before hydration finishes --');
   const h = boot({ modules: ['js/app.js'], origin: API, fetch: () => new Promise(() => {}) });
   const html = h.ctx.document.body._lastShellHtml || '';
   ok('with a backend, the shell is drawn as soon as app.js runs', html.length > 0, 'nothing was drawn');
-  check('   ...with every sidebar link', (html.match(/class="nav__link/g) || []).length, 14);
+  check('   ...with every sidebar link (and the Notifications Center row)', (html.match(/class="nav__link/g) || []).length, 15);
   ok('   ...and the header (title, theme toggle, avatar)',
     /topbar__title/.test(html) && /id="themeToggle"/.test(html) && /class="avatar"/.test(html), '');
   ok('   ...and a placeholder in the content area instead of a blank sheet',

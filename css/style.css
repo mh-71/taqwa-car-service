@@ -283,6 +283,25 @@ a.nav__sub:hover { background: rgba(255, 255, 255, .06); color: #fff; text-decor
 .nav__sub--off { color: #8592a3; cursor: default; }
 .nav__sub--off svg { opacity: .55; }
 
+/* Notifications Center: a top-level row like the links (not a link yet) with an amber count badge
+   on the right. The count is a fixed design placeholder. */
+.nav__notify { cursor: default; }
+.nav__notify > span:not(.nav__count) { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nav__count {
+  margin-left: auto;
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: var(--ink-900);
+  font-size: .75rem;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+
 /* Staff Management, to the approved reference: a rounded panel, amber outline group icon and bold
    title, roomier rows with outline icons and no guide line. Scoped to #navStaff, so every other
    link and group keeps the shared styles above; the sidebar is dark in both themes. */

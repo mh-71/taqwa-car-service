@@ -64,6 +64,13 @@ const App = (() => {
   // On a CRM page the group is always open, so the current entry is visible.
   const CRM_OPEN_KEY = 'taqwa_nav_crm_open';
 
+  /* Notifications Center, shown after Customer CRM. UI DESIGN ONLY: there is no
+     page and no notification data yet, so it is not a link (like the Social
+     Inbox entries that are not configured), and the count is a fixed design
+     placeholder -- nothing is fetched or counted. */
+  const NOTIFY_ICON = 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z';
+  const NOTIFY_PLACEHOLDER_COUNT = 3;
+
   /* Staff Management, shown after Mechanics. UI PREVIEW ONLY: every page shows
      demo data that is labelled as such; nothing is read from or saved to the
      database, and no account, permission, log, attendance record, leave request
@@ -331,10 +338,12 @@ const App = (() => {
             <div class="nav__subs">${subs}</div>
           </details>`;
     };
+    const notifyHtml = () =>
+      `<span class="nav__link nav__notify" id="navNotify" aria-disabled="true" title="Notifications Center is not available yet. The count is a design placeholder.">${icon(NOTIFY_ICON)}<span>Notifications Center</span><span class="nav__count">${NOTIFY_PLACEHOLDER_COUNT}</span></span>`;
     const navHtml = NAV.map(item => linkHtml(item)
       + (item.key === STAFF_AFTER ? staffHtml() : '')
       + (item.key === INBOX_AFTER ? inboxHtml() : '')
-      + (item.key === CRM_AFTER ? crmHtml() : '')).join('');
+      + (item.key === CRM_AFTER ? crmHtml() + notifyHtml() : '')).join('');
 
     const shell = document.createElement('div');
     shell.className = pending ? 'shell is-pending' : 'shell';
