@@ -24,8 +24,15 @@
 -- run.sh refuses to start unless all of these tables are empty, so anything
 -- present here was created by this run and is safe to remove. Order follows
 -- the foreign keys.
+-- 0007: estimates reference customers, vehicles, catalogue services, parts and
+-- job cards (all RESTRICT); their lines and history reference the estimate, so
+-- they go first of all, children before the estimates.
+DELETE FROM estimate_events;
+DELETE FROM estimate_services;
+DELETE FROM estimate_parts;
+DELETE FROM estimates;
 -- 0006: follow-up tasks reference customers, vehicles, job cards and
--- mechanics (all RESTRICT), so they go first of all.
+-- mechanics (all RESTRICT), so they go next.
 DELETE FROM follow_up_tasks;
 -- 0005: follow-up contacts reference follow-ups, and follow-ups reference
 -- customers and vehicles (all RESTRICT), so they go next.

@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 84 routes', routes.length === 84, routes);
+  t('advertises 93 routes', routes.length === 93, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('33 GET, 27 POST, 13 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 33, POST: 27, PUT: 13, DELETE: 11 }), byMethod);
+    t('35 GET, 33 POST, 14 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 35, POST: 33, PUT: 14, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -89,7 +89,9 @@ sec('1. Health');
         'POST /api/follow-ups/:id/complete', 'POST /api/follow-ups/:id/cancel',
         'POST /api/follow-ups/:id/contact', 'POST /api/follow-up-contacts/:id/void',
         'POST /api/follow-up-tasks/:id/start', 'POST /api/follow-up-tasks/:id/complete',
-        'POST /api/follow-up-tasks/:id/cancel']), routes);
+        'POST /api/follow-up-tasks/:id/cancel',
+        'POST /api/estimates/:id/send', 'POST /api/estimates/:id/approve', 'POST /api/estimates/:id/reject',
+        'POST /api/estimates/:id/cancel', 'POST /api/estimates/:id/convert']), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -5399,6 +5401,80 @@ sec('26. Follow-up tasks (0006): references, assignment, idempotent creates and 
     [anon.status, anonL.status, anonA.status]);
 
   // cleanup.sql removes these rows (tasks first) and resets the counters.
+}
+
+sec('27. Estimates (0007): server totals, idempotent creates, the lifecycle and conversion to a job card, against real D1');
+{
+  const cust = await send('POST', '/api/customers', { name: '0007 Estimate Customer', phone: '01933-000701' });
+  const C = cust.body?.data?.id;
+  const veh = await send('POST', '/api/vehicles', { customerId: C, regNo: 'DHAKA-ES-0007', brand: 'Toyota', model: 'Premio' });
+  const V = veh.body?.data?.id;
+  const svc = await send('POST', '/api/services', { name: '0007 Brake Service', category: 'Brakes', price: 1200 });
+  const S = svc.body?.data?.id;
+  const prt = await send('POST', '/api/parts', { name: '0007 Brake Pad', partNo: 'ES-BP-1', category: 'Brakes', unit: 'set', minStock: 0, sellingPrice: 3200, purchasePrice: 2500 });
+  const P = prt.body?.data?.id;
+  const mech = await send('POST', '/api/mechanics', { name: '0007 Estimate Mechanic', phone: '01933-000702', specialization: 'Brakes' });
+  const M = mech.body?.data?.id;
+  t('27 fixtures for the estimate section were created', [cust, veh, svc, prt, mech].every((r) => r.status === 201),
+    [cust.status, veh.status, svc.status, prt.status, mech.status]);
+
+  // 27a. create: totals on the server, an override kept, idempotent replay
+  const key = `integration-0007-${Date.now()}-abcdef`;
+  const body = {
+    customerId: C, vehicleId: V, complaint: '0007: brakes grinding', createdBy: 'Integration',
+    services: [{ serviceId: S, name: '0007 Brake Service', qty: 1, unitPrice: 1500 }],
+    partsUsed: [{ partId: P, name: '0007 Brake Pad', partNo: 'ES-BP-1', qty: 2, unitPrice: 3200 }],
+    discount: 500, taxRate: 5, idempotencyKey: key,
+  };
+  const c1 = await send('POST', '/api/estimates', body);
+  const E = c1.body?.data;
+  t('27a create -> 201 Draft, totals from the server (1500 + 6400 - 500, 5% tax = 7,770)',
+    c1.status === 201 && E?.status === 'Draft' && E?.total === 7770 && E?.services?.[0]?.unitPrice === 1500, c1.body);
+  const c2 = await send('POST', '/api/estimates', body);
+  t('   ...the same key and payload replays the same estimate', c2.status === 200 && c2.body?.replayed === true && c2.body?.data?.id === E?.id, c2.body);
+  const c3 = await send('POST', '/api/estimates', { ...body, total: 1 });
+  t('   ...a client-sent total is refused (422)', c3.status === 422 && 'total' in (c3.body?.error?.fields ?? {}), c3.body);
+
+  // 27b. edit and lifecycle
+  const e1 = await send('PUT', `/api/estimates/${E?.id}`, { complaint: '0007: brakes and pads' });
+  const e2 = await send('PUT', `/api/estimates/${E?.id}`, { complaint: '0007: brakes and pads', expectedUpdatedAt: E?.updatedAt });
+  t('27b an edit needs expectedUpdatedAt (422), then -> version 2', e1.status === 422 && e2.status === 200 && e2.body?.data?.version === 2, [e1.body, e2.body]);
+  const s1 = await send('POST', `/api/estimates/${E?.id}/send`, { by: 'Integration' });
+  t('   ...send -> Pending', s1.status === 200 && s1.body?.data?.status === 'Pending', s1.body);
+  const a0 = await send('POST', `/api/estimates/${E?.id}/approve`, {});
+  const a1 = await send('POST', `/api/estimates/${E?.id}/approve`, { note: 'Approved by phone', by: 'Integration' });
+  t('   ...approve needs a note (422), then -> Approved, decidedVia staff',
+    a0.status === 422 && a1.status === 200 && a1.body?.data?.status === 'Approved' && a1.body?.data?.decidedVia === 'staff', [a0.body, a1.body]);
+
+  // 27c. conversion through the job card route
+  const stockBefore = (await get(`/api/parts/${P}`)).body?.data?.stock;
+  const v0 = await send('POST', `/api/estimates/${E?.id}/convert`, {});
+  const v1 = await send('POST', `/api/estimates/${E?.id}/convert`, { mechanicId: M, priority: 'high' });
+  const J = v1.body?.jobCardId;
+  t('27c convert needs a mechanic (422), then -> 200 with a job card id', v0.status === 422 && v1.status === 200 && /^JOB-\d+$/.test(J ?? ''), [v0.body, v1.body]);
+  const job = await get(`/api/job-cards/${J}`);
+  t('   ...the job card is Received, with the estimate total and lines',
+    job.status === 200 && job.body?.data?.status === 'Received' && job.body?.data?.total === 7770 && job.body?.data?.partsUsed?.length === 1, job.body);
+  const part = await get(`/api/parts/${P}`);
+  t('   ...no stock moved', typeof stockBefore === 'number' && part.body?.data?.stock === stockBefore, [stockBefore, part.body]);
+  const v2 = await send('POST', `/api/estimates/${E?.id}/convert`, { mechanicId: M });
+  t('   ...converting again -> 409', v2.status === 409, v2.body);
+  const dj = await send('DELETE', `/api/job-cards/${J}`);
+  t('   ...the linked job card cannot be deleted (409)', dj.status === 409, dj.body);
+
+  // 27d. cancel, no delete, and the gate
+  const k2 = await send('POST', '/api/estimates', { ...body, idempotencyKey: `${key}-2` });
+  const x1 = await send('POST', `/api/estimates/${k2.body?.data?.id}/cancel`, {});
+  const x2 = await send('POST', `/api/estimates/${k2.body?.data?.id}/cancel`, { reason: 'Customer postponed', by: 'Integration' });
+  t('27d cancel needs a reason (422), then -> Cancelled and kept',
+    x1.status === 422 && x2.status === 200 && x2.body?.data?.status === 'Cancelled' && x2.body?.data?.cancelReason === 'Customer postponed', [x1.body, x2.body]);
+  const del = await send('DELETE', `/api/estimates/${E?.id}`);
+  t('   ...estimates are never deleted (405)', del.status === 405, del.status);
+  const anon = await sendAnon('POST', '/api/estimates', body);
+  const anonL = await sendAnon('GET', '/api/estimates');
+  t('   ...without credentials every estimate route is 401', anon.status === 401 && anonL.status === 401, [anon.status, anonL.status]);
+
+  // cleanup.sql removes these rows (estimates first) and resets the counters.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);
