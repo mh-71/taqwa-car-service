@@ -1,7 +1,7 @@
 /* notifications-nav — the Notifications Center row in the sidebar.
 
    What must hold:
-     1. The row sits right after the Customer CRM group and before Reports,
+     1. The row sits after the Customer CRM group (right after Workshop Tools) and before Reports,
         and links to the demo page, which exists.
      2. On the Notifications page it is the active link (amber, aria-current)
         and no other top-level link is; elsewhere it is not active.
@@ -38,8 +38,9 @@ console.log('-- 1. placement and target --');
   const iCrm = html.indexOf('id="navCrm"'), iRow = html.indexOf('id="navNotify"'), iRep = html.indexOf('href="pages/reports.html"');
   ok('   ...placed after Customer CRM and before Reports', iCrm > -1 && iCrm < iRow && iRow < iRep, JSON.stringify({ iCrm, iRow, iRep }));
   const iRowStart = html.indexOf('<a class="nav__link nav__notify');
-  ok('   ...with nothing between the CRM group and it',
-    iRowStart > iCrm && !/<a |<details /.test(html.slice(html.indexOf('</details>', iCrm) + '</details>'.length, iRowStart)), '');
+  const iTools = html.indexOf('<a class="nav__link" href="pages/workshop-tools.html">');
+  ok('   ...right after the Workshop Tools link, which follows the CRM group',
+    iCrm < iTools && iTools < iRowStart && !/<a |<details /.test(html.slice(html.indexOf('</a>', iTools) + '</a>'.length, iRowStart)), '');
   ok('   ...and not active on another page', !/is-active|aria-current/.test(row), row.slice(0, 160));
   ok('   ...no longer a disabled row', !/aria-disabled|not available yet/.test(row), row.slice(0, 160));
 }

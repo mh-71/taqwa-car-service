@@ -71,6 +71,13 @@ const App = (() => {
   const NOTIFY_ICON = 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z';
   const NOTIFY_PLACEHOLDER_COUNT = 3;
 
+  /* Workshop Tools & Equipment, shown after Customer CRM and before Notifications
+     Center. A DEMO page (pages/workshop-tools.html, sample data only): an ordinary
+     top-level link, drawn and marked active like the links in NAV. The sidebar says
+     "Workshop Tools" (the full name does not fit on one line); the header says it in full. */
+  const TOOLS_LINK = { key: 'workshop-tools', label: 'Workshop Tools', href: 'pages/workshop-tools.html',
+    icon: 'M21.67 18.17l-5.3-5.3h-.99l-2.54 2.54v.99l5.3 5.3c.39.39 1.02.39 1.41 0l2.12-2.12c.39-.38.39-1.02 0-1.41zM17.34 10.19l1.41-1.41 2.12 2.12c1.17-1.17 1.17-3.07 0-4.24l-3.54-3.54-1.41 1.41V1.71l-.7-.71-3.54 3.54.71.71h2.83l-1.41 1.41 1.06 1.06-2.89 2.89-4.13-4.13V5.06L4.83 2.04 2 4.87 5.03 7.9h1.41l4.13 4.13-.85.85H7.6l-5.3 5.3c-.39.39-.39 1.02 0 1.41l2.12 2.12c.39.39 1.02.39 1.41 0l5.3-5.3v-2.12l5.15-5.15 1.06 1.05z' };
+
   /* Staff Management, shown after Mechanics. UI PREVIEW ONLY: every page shows
      demo data that is labelled as such; nothing is read from or saved to the
      database, and no account, permission, log, attendance record, leave request
@@ -111,7 +118,8 @@ const App = (() => {
     'crm-history': 'Service History', 'crm-tasks': 'Follow-up Tasks', 'crm-reports': 'CRM Reports',
     'staff-management': 'Staff Management', 'staff-list': 'Staff List', 'staff-add': 'Add Staff',
     'staff-accounts': 'User Accounts', 'staff-roles': 'Roles & Permissions', 'staff-attendance': 'Attendance',
-    'staff-leave': 'Leave Management', 'staff-performance': 'Performance', 'staff-activity-log': 'Activity Log'
+    'staff-leave': 'Leave Management', 'staff-performance': 'Performance', 'staff-activity-log': 'Activity Log',
+    'workshop-tools': 'Workshop Tools & Equipment'
   };
 
   function icon(path) {
@@ -345,7 +353,7 @@ const App = (() => {
     const navHtml = NAV.map(item => linkHtml(item)
       + (item.key === STAFF_AFTER ? staffHtml() : '')
       + (item.key === INBOX_AFTER ? inboxHtml() : '')
-      + (item.key === CRM_AFTER ? crmHtml() + notifyHtml() : '')).join('');
+      + (item.key === CRM_AFTER ? crmHtml() + linkHtml(TOOLS_LINK) + notifyHtml() : '')).join('');
 
     const shell = document.createElement('div');
     shell.className = pending ? 'shell is-pending' : 'shell';
