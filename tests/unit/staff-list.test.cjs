@@ -73,7 +73,7 @@ function api({ staff = STAFF, failStaff = null, failTimes = Infinity, failPut = 
 }
 
 function page({ origin = 'http://localhost:8787', fetch, plantDemo = false } = {}) {
-  const h = boot({ origin, fetch, modules: ['js/staff-list.js'] });
+  const h = boot({ origin, fetch, modules: ['js/staff-form.js', 'js/staff-list.js'] });
   vm.runInContext('globalThis.StaffList = StaffList;', h.ctx);
   if (plantDemo) {
     // Rows planted in browser storage under the staff collection's own name must never show.
@@ -84,7 +84,7 @@ function page({ origin = 'http://localhost:8787', fetch, plantDemo = false } = {
 }
 const countRows = html => (html.match(/<tr data-id=/g) || []).length;
 const rowIds = html => [...html.matchAll(/<tr data-id="([^"]+)"/g)].map(m => m[1]);
-const CONTROLS = ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear', 'stlAdd'];
+const CONTROLS = ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear'];
 const click = (el, action, id) => el('stlBody').dispatch('click', { target: { closest: () => ({ dataset: { action, id }, disabled: false }) } });
 
 (async () => {
@@ -150,7 +150,7 @@ console.log('\n-- 2. the page in api mode --');
   await tick(80);
   ok('staff are loaded on demand, as a paged GET', f.calls.some(c => c.path === '/staff?limit=1000&offset=0'), JSON.stringify(f.calls.map(c => c.path)));
   ok('   ...and nothing is written by loading', !f.calls.some(c => c.method && c.method !== 'GET'), '');
-  ok('controls and Add Staff are enabled once loaded', CONTROLS.every(id => el(id).disabled === false), '');
+  ok('the controls are enabled once loaded', CONTROLS.every(id => el(id).disabled === false), '');
   const html = el('stlBody').innerHTML;
   check('every staff member is a row, sorted by name', rowIds(html), ['STF-0002', 'STF-0003', 'MEC-0001', 'STF-0001']);
   ok('   ...with every value escaped', !html.includes('<img src=x') && html.includes('&lt;img src=x onerror=alert(1)&gt;'), '');
@@ -216,7 +216,42 @@ console.log('\n-- 3. an empty roster --');
   await tick(80);
   const html = el('stlBody').innerHTML;
   ok('an empty database: "No staff yet", with Add Staff', /No staff yet/.test(html) && /data-action="add"/.test(html) && !/No staff match/.test(html), html.slice(0, 200));
-  ok('   ...no pager, and Add Staff is enabled', el('stlFoot').hidden === true && el('stlAdd').disabled === false, '');
+  ok('   ...Add Staff is a link to the Add Staff page, not a dialog', /<a class="btn btn--primary btn--sm" href="staff-add.html" data-action="add">Add Staff<\/a>/.test(html), html);
+  ok('   ...and no pager', el('stlFoot').hidden === true, '');
+}
+
+/* ---------- 3b. back from Add Staff ---------- */
+console.log('\n-- 3b. back from Add Staff (?added=) --');
+{
+  const { h, el } = page({ fetch: api() });
+  h.ctx.location.search = '?added=STF-0003';
+  h.ctx.location.pathname = '/pages/staff-list.html';
+  const toasts = [], replaced = [];
+  h.ctx.Utils.toast = (msg, type) => toasts.push([msg, type]);
+  h.ctx.history = { replaceState: (s, t, url) => replaced.push(url) };
+  h.fireReady();
+  await tick(80);
+  check('the new record is confirmed once, named as the database returned it', JSON.stringify(toasts), JSON.stringify([['Bashir was added (STF-0003).', 'success']]));
+  check('   ...and the marker leaves the address, so a refresh does not say it again', replaced, ['/pages/staff-list.html']);
+  ok('   ...the new record is in the list, read fresh from the database', rowIds(el('stlBody').innerHTML).includes('STF-0003'), '');
+}
+{
+  const { h } = page({ fetch: api() });
+  h.ctx.location.search = '?added=STF-9999';
+  const toasts = [];
+  h.ctx.Utils.toast = (msg, type) => toasts.push([msg, type]);
+  h.fireReady();
+  await tick(80);
+  check('an id that is not in the list confirms nothing', toasts.length, 0);
+}
+{
+  const { h } = page({ fetch: api({ failStaff: { status: 500, error: { code: 'database_error', message: 'x' } } }) });
+  h.ctx.location.search = '?added=STF-0003';
+  const toasts = [];
+  h.ctx.Utils.toast = (msg, type) => toasts.push([msg, type]);
+  h.fireReady();
+  await tick(80);
+  check('a list that could not load confirms nothing', toasts.length, 0);
 }
 
 /* ---------- 4. status changes ---------- */
@@ -317,7 +352,7 @@ console.log('\n-- 7. no backend, a failed hydration, signed out --');
   ok('   ...offers no Retry', !/data-action="retry"/.test(html), '');
   ok('   ...and shows no one: not the planted staff row, not the demo mechanics', countRows(html) === 0 && !/DEMO ROW/.test(html)
     && h.ctx.Storage.getData('mechanics').length > 0, '');
-  check('   ...Add Staff stays disabled', el('stlAdd').disabled, true);
+  ok('   ...and no longer claims nothing can be added here (Add Staff explains that for itself)', !/none can be added/.test(html), '');
   const w = await h.ctx.Storage.create('staff', { name: 'x' });
   check('   ...and Storage refuses to write staff to browser storage', [w.ok, w.code], [false, 'no_api']);
 }

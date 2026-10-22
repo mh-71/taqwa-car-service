@@ -64,6 +64,12 @@ const PAY_FIELDS = ['salary', 'salaryType', 'commissionRate'];
 /** The mechanic fields the Staff List may write, through the Mechanics route's own rules. */
 const MECHANIC_KEYS = ['name', 'phone', 'altPhone', 'email', 'address', 'specialization',
   'joiningDate', 'employmentType', 'notes', 'status'];
+/** Every field the staff API accepts. Anything else is refused by name, never ignored. */
+const STAFF_KEYS = ['isMechanic', 'employeeCode', 'designation', 'department', 'name', 'phone', 'email',
+  'address', 'joiningDate', 'status', 'notes'];
+const MECHANIC_ONLY_KEYS = ['specialization', 'altPhone', 'employmentType'];
+/** Designation and department: letters and their marks (any script, Bangla too), digits, spaces and a little punctuation. */
+const LABEL_TEXT = /^[\p{L}\p{M}\p{N} .,&/()'+-]+$/u;
 
 const digits = (phone) => String(phone || '').replace(/\D/g, '');
 
@@ -264,6 +270,9 @@ function readHrFields(body, mode, isMechanic) {
       ? optionalText(body, key, LIMITS[key])
       : readString(body, key, { required: true, max: LIMITS[key] });
     f.take(column, key, read);
+    if (f.values[column] && !LABEL_TEXT.test(f.values[column])) {
+      f.reject(key, 'Use letters, digits, spaces and . , & / ( ) \' + - only.');
+    }
   }
   return f;
 }
@@ -276,7 +285,7 @@ function readPersonFields(body, mode) {
   f.take('phone', 'phone', readString(body, 'phone', { required, max: LIMITS.phone }));
   f.take('email', 'email', optionalText(body, 'email', LIMITS.email));
   f.take('address', 'address', optionalText(body, 'address', LIMITS.address));
-  f.take('joining_date', 'joiningDate', readDate(body, 'joiningDate', { fallback: null }));
+  f.take('joining_date', 'joiningDate', readDate(body, 'joiningDate', { required, fallback: null }));
   if (f.values.joining_date === '') f.values.joining_date = null;
   f.take('notes', 'notes', optionalText(body, 'notes', LIMITS.notes));
   f.take('status', 'status', readEnum(body, 'status', STATUSES, { fallback: 'Active' }));
@@ -306,6 +315,10 @@ function readMechanicPerson(body, mode) {
   const picked = {};
   for (const key of MECHANIC_KEYS) if (body[key] !== undefined) picked[key] = body[key];
   const f = readMechanicFields(picked, mode);
+  // Every new employee has a joining date; the Mechanics page alone may still leave it out.
+  if (mode === 'create' && !f.values.joining_date && !f.errors.joiningDate) {
+    f.reject('joiningDate', '`joiningDate` is required.');
+  }
   // The schema would refuse these as a bare CHECK failure; say which field.
   if (mode === 'update') {
     if (picked.name !== undefined && f.values.name === '') f.reject('name', '`name` cannot be blank.');
@@ -314,11 +327,17 @@ function readMechanicPerson(body, mode) {
   return f;
 }
 
-/** Field errors for pay, and for an `isMechanic` that is not a boolean. */
-function foreignFields(body) {
+/**
+ * Field errors for anything the staff API does not take: pay, an `isMechanic` that is not a
+ * boolean, mechanic-only fields on anyone else, and every unknown key (an id included) --
+ * so a body can never assign a column this route did not mean to write.
+ */
+function foreignFields(body, isMechanic) {
   const errors = {};
-  for (const key of PAY_FIELDS) {
-    if (body[key] !== undefined) errors[key] = 'Pay is managed on the Mechanics page, not in the staff list.';
+  for (const key of Object.keys(body)) {
+    if (PAY_FIELDS.includes(key)) errors[key] = 'Pay is managed on the Mechanics page, not in the staff list.';
+    else if (MECHANIC_ONLY_KEYS.includes(key)) { if (!isMechanic) errors[key] = 'Only a mechanic has this field.'; }
+    else if (!STAFF_KEYS.includes(key)) errors[key] = 'This is not a staff field.';
   }
   if (body.isMechanic !== undefined && typeof body.isMechanic !== 'boolean') {
     errors.isMechanic = '`isMechanic` must be true or false.';
@@ -397,7 +416,7 @@ export async function createStaff(request, env) {
   const hr = readHrFields(body, 'create', isMechanic);
   const person = isMechanic ? readMechanicPerson(body, 'create') : readPersonFields(body, 'create');
   // Every problem at once, so a form can mark all of them in one round trip.
-  const invalid = fieldErrors(foreignFields(body), hr, person);
+  const invalid = fieldErrors(foreignFields(body, isMechanic), hr, person);
   if (invalid) return invalid;
 
   try {
@@ -454,7 +473,7 @@ export async function updateStaff(request, env, rawId) {
 
     const hr = readHrFields(body, 'update', isMechanic);
     const person = isMechanic ? readMechanicPerson(body, 'update') : readPersonFields(body, 'update');
-    const invalid = fieldErrors(foreignFields(body), hr, person);
+    const invalid = fieldErrors(foreignFields(body, isMechanic), hr, person);
     if (invalid) return invalid;
     if (!hr.touched && !person.touched) return unprocessable('No staff fields were supplied to update.');
 

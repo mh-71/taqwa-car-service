@@ -46,12 +46,6 @@
 }
 
 /* ---------- dialogs (rendered inside the page body) ---------- */
-[data-page="staff-list"] .stl-type {
-  margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--amber, #f59e0b) 6%, var(--surface));
-}
-[data-page="staff-list"] .stl-check { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: .88rem; cursor: pointer; }
-[data-page="staff-list"] .stl-check input { width: 18px; height: 18px; }
 [data-page="staff-list"] .stl-hint { margin: 6px 0 0; font-size: .76rem; color: var(--text-3); }
 [data-page="staff-list"] .stl-type-note { margin: 0 0 14px; font-size: .82rem; color: var(--text-2); }
 [data-page="staff-list"] .detail-grid + .stl-type-note { margin: 16px 0 0; }

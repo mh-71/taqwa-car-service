@@ -1,6 +1,7 @@
-/* staff-management-ui — Staff Management: the sidebar group, its eight
-   UI-preview pages, and the static shape of the one real page (Staff List,
-   whose behaviour is tested in staff-list.test.cjs).
+/* staff-management-ui — Staff Management: the sidebar group, its seven
+   UI-preview pages, and the static shape of the two real pages (Staff List
+   and Add Staff, whose behaviour is tested in staff-list.test.cjs and
+   staff-add.test.cjs).
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
@@ -15,13 +16,15 @@
      2. On each Staff page only its own entry is active and the header title
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
-        stylesheets aside), declares its own page key and has no form, file or
-        password input, inline handler or inline script; every button is
-        type="button". The eight previews say plainly that their content is
-        not saved or sent and load exactly the shared shell scripts plus
-        js/staff-ui.js. Staff List is NOT a preview: no preview notice, no
-        Demo badge, no preview-only control, and js/staff-list.js in place of
-        js/staff-ui.js.
+        stylesheets aside), declares its own page key and has no file or
+        password input, inline handler or inline script. The seven previews
+        have no form, every button is type="button", they say plainly that
+        their content is not saved or sent and load exactly the shared shell
+        scripts plus js/staff-ui.js. Staff List and Add Staff are NOT
+        previews: no preview notice, no Demo badge, no preview-only control,
+        and js/staff-form.js plus their own script in place of
+        js/staff-ui.js. Add Staff is the one page with a form: one submit
+        button (Save Staff), no pay, password or photo field.
      4. js/staff-ui.js never touches the database, browser storage or the
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
@@ -150,33 +153,36 @@ const head = s => s.slice(0, s.indexOf('</head>'));
 const settingsHead = head(read('pages/settings.html'));
 const SCRIPTS = ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js', '../js/staff-ui.js'];
 const pages = {};
+const REAL = { 'staff-list': ['staff-list.css', 'staff-list.js'], 'staff-add': ['staff-add.css', 'staff-add.js'] };
 for (const [key, label] of ENTRIES) {
   const html = read(`pages/${key}.html`);
   const body = html.slice(html.indexOf('<body data-page='));
   pages[key] = body;
   const titleText = label === 'Overview' ? 'Staff Management' : label;
-  const real = key === 'staff-list';
+  const real = REAL[key];
   check(`${label}: <head> is the Settings head with only the title and the staff stylesheet${real ? 's' : ''} changed`, head(html),
     settingsHead.replace('<title>Settings — ', `<title>${titleText} — `)
       .replace('<link rel="stylesheet" href="../css/responsive.css">',
         '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/staff.css">'
-          + (real ? '\n  <link rel="stylesheet" href="../css/staff-list.css">' : '')));
+          + (real ? `\n  <link rel="stylesheet" href="../css/${real[0]}">` : '')));
   ok('   ...declares its own page key', body.startsWith(`<body data-page="${key}" data-root="../">`), body.slice(0, 60));
   const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
   if (real) {
     ok('   ...is NOT a preview: no preview notice, Demo badge, empty-state switch or preview-only control',
       !/stf-preview|Preview:|>Demo<|data-empty-toggle|data-preview|not saved or sent/.test(body), '');
-    check('   ...loads the shared shell scripts plus js/staff-list.js (never staff-ui.js), last', scripts, [...SCRIPTS.slice(0, -1), '../js/staff-list.js']);
+    check(`   ...loads the shared shell scripts plus js/staff-form.js and js/${real[1]} (never staff-ui.js), last`, scripts,
+      [...SCRIPTS.slice(0, -1), '../js/staff-form.js', `../js/${real[1]}`]);
   } else {
     ok('   ...says it is a preview and that nothing is saved or sent',
       /<div class="stf-preview" role="note">/.test(body) && /<strong>Preview: [^<]+<\/strong>/.test(body) && /Nothing on this page is saved or sent/.test(body), '');
     check('   ...loads the shared shell scripts plus js/staff-ui.js, last', scripts, SCRIPTS);
   }
   ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
-  ok('   ...has no form, file input or password input', !/<form\b|type="file"|type="password"/i.test(body), '');
+  ok('   ...has no file input or password input', !/type="file"|type="password"/i.test(body), '');
+  if (key !== 'staff-add') ok('   ...has no form', !/<form\b/i.test(body), '');
   ok('   ...has no inline handler and no inline script in the body', !/\son[a-z]+=/i.test(html) && !/<script>/.test(body), '');
-  const buttons = body.match(/<button\b[^>]*>/g) || [];
-  ok('   ...every button is type="button"', buttons.every(b => /\stype="button"/.test(b)), JSON.stringify(buttons.filter(b => !/type="button"/.test(b))));
+  const buttons = (body.match(/<button\b[^>]*>/g) || []).filter(b => !(key === 'staff-add' && b === '<button type="submit" class="btn btn--primary" id="saSave" disabled>'));
+  ok(`   ...every button${key === 'staff-add' ? ' but Save Staff' : ''} is type="button"`, buttons.every(b => /\stype="button"/.test(b)), JSON.stringify(buttons.filter(b => !/type="button"/.test(b))));
   if (key !== 'staff-management') {
     ok('   ...has a breadcrumb back to the Overview', /<nav class="stf-crumbs" aria-label="Breadcrumb">/.test(body)
       && body.includes('<a href="staff-management.html">Staff Management</a>') && body.includes(`<li aria-current="page">${label}</li>`), '');
@@ -193,18 +199,31 @@ for (const [key, label] of ENTRIES) {
   const l = pages['staff-list'];
   ok('Staff List: search, designation, department, status and sort controls, page size and pager',
     ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear', 'stlAdd', 'stlPageSize', 'stlPrev', 'stlNext', 'stlBody'].every(id => l.includes(`id="${id}"`)), '');
-  ok('   ...every control starts disabled until the data loads', ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear', 'stlAdd']
+  ok('   ...every control starts disabled until the data loads', ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear']
     .every(id => new RegExp(`id="${id}"[^>]*\\sdisabled`).test(l)), '');
+  ok('   ...Add Staff is a link to the Add Staff page', /<a class="btn btn--primary" id="stlAdd" href="staff-add.html">/.test(l), '');
   check('   ...the requested columns', [...l.matchAll(/<th scope="col">(?:<span class="stl-sr-only">)?([^<]+)/g)].map(m => m[1]),
     ['Staff ID / Code', 'Name', 'Designation', 'Department', 'Phone', 'Email', 'Status', 'Joining Date', 'Actions']);
   ok('   ...and no salary or commission column', !/salary|commission/i.test(l), '');
   const a = pages['staff-add'];
-  ok('Add Staff: personal, contact and employment sections and a photo area',
-    ['stf-sec-personal', 'stf-sec-contact', 'stf-sec-employment', 'stfPhotoTitle'].every(id => a.includes(`id="${id}"`)), '');
-  ok('   ...required fields are marked', (a.match(/<span class="req" aria-hidden="true">\*<\/span>/g) || []).length >= 6, '');
-  ok('   ...Save Staff and the photo button only explain they are a preview',
-    a.includes('<button type="button" class="btn btn--primary" data-preview="Save Staff">Save Staff</button>')
-      && a.includes('data-preview="Upload photo"'), '');
+  ok('Add Staff: the "Add New Staff" heading', a.includes('<h2 class="sa-title">Add New Staff</h2>'), '');
+  check('   ...personal, employment, contact and additional sections, in order',
+    [...a.matchAll(/<h3 class="form-section__title" id="sa-sec-([a-z]+)">([^<]+)<\/h3>/g)].map(m => [m[1], m[2]]),
+    [['personal', 'Personal Information'], ['employment', 'Employment Information'], ['contact', 'Contact Information'], ['additional', 'Additional Information']]);
+  check('   ...the requested fields, each labelled', [...a.matchAll(/<label for="(sa[A-Za-z]+)">/g)].map(m => m[1]),
+    ['saName', 'saDesignation', 'saDesignationOther', 'saDepartment', 'saDepartmentOther', 'saJoined', 'saStatus', 'saCode', 'saSpec', 'saPhone', 'saEmail', 'saAddress', 'saNotes']);
+  check('   ...full name, phone, joining date, designation and department are required (and marked)',
+    ['saName', 'saPhone', 'saJoined', 'saDesignation', 'saDepartment'].map(id => new RegExp(`id="${id}"[^>]*\\srequired aria-required="true"`).test(a)), [true, true, true, true, true]);
+  ok('   ...a Staff type choice (other staff by default, or mechanic), each option labelled',
+    /<label class="sa-choice" for="saTypeStaff">\s*<input type="radio" name="staffType" id="saTypeStaff" value="staff" checked>/.test(a)
+      && /<label class="sa-choice" for="saTypeMechanic">\s*<input type="radio" name="staffType" id="saTypeMechanic" value="mechanic">/.test(a), '');
+  ok('   ...Status defaults to Active', /<option value="Active" selected>Active<\/option><option value="Inactive">Inactive<\/option>/.test(a), '');
+  ok('   ...no pay, password, login or photo field', !/salary|commission|payroll|password|username|type="file"|photo/i.test(a.replace(/<!--[\s\S]*?-->/g, '').replace(/no pay is recorded|Their pay is set there|Pay is set there, never here/g, '')), '');
+  ok('   ...every field is disabled until the database answers (one fieldset), and Save Staff too',
+    a.includes('<fieldset class="sa-fields" id="saFields" disabled>') && a.includes('<button type="submit" class="btn btn--primary" id="saSave" disabled>Save Staff</button>'), '');
+  ok('   ...Cancel goes back to the Staff List', a.includes('<a class="btn btn--ghost" id="saCancel" href="staff-list.html">Cancel</a>'), '');
+  ok('   ...a page-level alert and a polite status line', a.includes('id="saAlert" role="alert"') && a.includes('id="saStatus" role="status" aria-live="polite"'), '');
+  ok('   ...every field\'s message is tied to its input', [...a.matchAll(/<p class="field__error" id="([^"]+)-err"/g)].every(m => new RegExp(`id="${m[1]}"[^>]*aria-describedby="[^"]*${m[1]}-err`).test(a)), '');
   const u = pages['staff-accounts'];
   ok('User Accounts: says accounts are not active and passwords are never shown',
     /not active yet: the workshop still signs in with the shared passphrase/.test(u) && /Passwords are never shown/.test(u), '');

@@ -5501,7 +5501,11 @@ sec('28. Staff (0008): one roster of mechanics and other employees, against real
   t('   ...an active mechanic\'s phone -> 409 naming the mechanic', dupPhone.status === 409 && dupPhone.body?.error?.conflictsWith === 'MEC-9001', dupPhone.body);
   const bad = await send('POST', '/api/staff', { name: 'X', phone: '01755000103', salary: 1 });
   t('   ...missing designation/department and a pay field -> 422 naming each',
-    bad.status === 422 && ['designation', 'department', 'salary'].every((k) => k in (bad.body?.error?.fields ?? {})), bad.body);
+    bad.status === 422 && ['designation', 'department', 'joiningDate', 'salary'].every((k) => k in (bad.body?.error?.fields ?? {})), bad.body);
+  const forged = await send('POST', '/api/staff', { ...body, phone: '01755000105', employeeCode: 'IT-105', id: 'STF-0999', mechanicId: 'MEC-9001' });
+  const notThere = await get('/api/staff/STF-0999');
+  t('   ...an id or mechanicId chosen by the browser -> 422 naming each, and nothing is created',
+    forged.status === 422 && ['id', 'mechanicId'].every((k) => k in (forged.body?.error?.fields ?? {})) && notThere.status === 404, [forged.body, notThere.status]);
 
   // 28c. deactivate, filter, no delete
   const off = await send('PUT', `/api/staff/${S}`, { status: 'Inactive' });
@@ -5516,7 +5520,9 @@ sec('28. Staff (0008): one roster of mechanics and other employees, against real
   const mech = await get('/api/mechanics/MEC-9001');
   t('28d editing a mechanic\'s profile -> 200; the Mechanics record keeps its name and pay',
     e.status === 200 && e.body?.data?.designation === 'Head Mechanic' && mech.body?.data?.name === 'B5 Full Mechanic' && mech.body?.data?.salary === 32000, [e.body, mech.body]);
-  const m = await send('POST', '/api/staff', { isMechanic: true, name: 'Integration Mechanic', phone: '01755000104', specialization: 'Tyres', employeeCode: 'IT-104' });
+  const undated = await send('POST', '/api/staff', { isMechanic: true, name: 'Integration Mechanic', phone: '01755000104', specialization: 'Tyres' });
+  t('   ...a new mechanic needs a joining date here (422), as every new employee does', undated.status === 422 && 'joiningDate' in (undated.body?.error?.fields ?? {}), undated.body);
+  const m = await send('POST', '/api/staff', { isMechanic: true, name: 'Integration Mechanic', phone: '01755000104', specialization: 'Tyres', employeeCode: 'IT-104', joiningDate: '2025-03-01' });
   const MID = m.body?.data?.id;
   const viaMech = await get(`/api/mechanics/${MID}`);
   t('   ...a mechanic added from the staff list gets a MEC id the Mechanics API returns',

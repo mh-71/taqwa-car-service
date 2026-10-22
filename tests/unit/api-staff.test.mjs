@@ -220,7 +220,7 @@ console.log('\n-- C. create --');
   check('   ...and a later read (a page refresh) finds it', ids(listed), ['STF-0001']);
 
   const missing = await h.api('POST', '/api/staff', {});
-  check('nothing sent -> 422 naming every required field', [missing.status, fields(missing)], [422, ['department', 'designation', 'name', 'phone']]);
+  check('nothing sent -> 422 naming every required field', [missing.status, fields(missing)], [422, ['department', 'designation', 'joiningDate', 'name', 'phone']]);
   for (const [why, extra, want] of [
     ['blank name', { name: '   ' }, ['name']],
     ['bad phone', { phone: 'call me' }, ['phone']],
@@ -239,8 +239,22 @@ console.log('\n-- C. create --');
     check(`${why} -> 422 on ${want.join(', ')}`, [bad.status, fields(bad)], [422, want]);
   }
   const all = await h.api('POST', '/api/staff', { name: 'X', phone: '01700999998', salary: 1 });
-  check('every problem is reported at once (missing fields and a pay field)', [all.status, fields(all)], [422, ['department', 'designation', 'salary']]);
+  check('every problem is reported at once (missing fields and a pay field)', [all.status, fields(all)], [422, ['department', 'designation', 'joiningDate', 'salary']]);
+  for (const [why, extra, want] of [
+    ['an id from the client', { id: 'STF-0042' }, ['id']],
+    ['a mechanic id from the client', { mechanicId: 'MEC-0001' }, ['mechanicId']],
+    ['an unknown property', { role: 'Admin' }, ['role']],
+    ['a mechanic-only field on someone who is not a mechanic', { specialization: 'Engine' }, ['specialization']],
+    ['a designation with markup', { designation: '<b>Boss</b>' }, ['designation']],
+    ['a department with markup', { department: 'Front <i>Desk</i>' }, ['department']],
+  ]) {
+    const bad = await h.api('POST', '/api/staff', GOOD({ phone: '01700999997', employeeCode: 'NEW-2', ...extra }));
+    check(`${why} -> 422 on ${want.join(', ')} (nothing is assigned from it)`, [bad.status, fields(bad)], [422, want]);
+  }
+  check('   ...and still no row was written', h.one('SELECT count(*) AS n FROM staff').n, 1);
   check('   ...none of the refused creates wrote a row', h.one('SELECT count(*) AS n FROM staff').n, 1);
+  const bangla = await h.api('POST', '/api/staff', GOOD({ name: 'Rina', phone: '01700999996', employeeCode: 'BN-1', designation: 'হিসাবরক্ষক', department: 'Accounts & Admin' }));
+  check('a designation in Bangla, and a department with "&", are accepted', [bangla.status, bangla.body.data.designation, bangla.body.data.department], [201, 'হিসাবরক্ষক', 'Accounts & Admin']);
 
   const dupCode = await h.api('POST', '/api/staff', GOOD({ phone: '01911000009', employeeCode: 'tq-101' }));
   check('duplicate employee code, any case -> 409 on employeeCode, naming the holder', [dupCode.status, dupCode.body.error.field, dupCode.body.error.conflictsWith], [409, 'employeeCode', 'STF-0001']);
@@ -262,6 +276,8 @@ console.log('\n-- C. create --');
 console.log('\n-- D. create a mechanic --');
 {
   const h = fresh();
+  const noDate = await h.api('POST', '/api/staff', { isMechanic: true, name: 'No Date', phone: '01700777770', specialization: 'Tyres' });
+  check('a mechanic added here needs a joining date too', [noDate.status, fields(noDate)], [422, ['joiningDate']]);
   const noSpec = await h.api('POST', '/api/staff', GOOD({ isMechanic: true }));
   check('a mechanic needs a specialization (the Mechanics route\'s own rule)', [noSpec.status, fields(noSpec)], [422, ['specialization']]);
   const r = await h.api('POST', '/api/staff', GOOD({ isMechanic: true, specialization: 'Electrical', designation: 'Auto Electrician', department: 'Workshop' }));
@@ -274,9 +290,9 @@ console.log('\n-- D. create a mechanic --');
   check('   ...no STF id was spent', h.one(`SELECT last_value FROM id_counters WHERE collection = 'staff'`).last_value, 0);
   const viaMechanics = await h.api('GET', '/api/mechanics/MEC-0004');
   check('   ...the Mechanics API returns the same person under the same id', [viaMechanics.status, viaMechanics.body.data.name, viaMechanics.body.data.salary], [200, 'Nadia Akter', null]);
-  const bare = await h.api('POST', '/api/staff', { isMechanic: true, name: 'Bare', phone: '01700777777', specialization: 'Tyres' });
+  const bare = await h.api('POST', '/api/staff', { isMechanic: true, name: 'Bare', phone: '01700777777', specialization: 'Tyres', joiningDate: '2025-01-01' });
   check('a mechanic with no HR fields needs no profile row', [bare.status, bare.body.data.designation, h.one(`SELECT count(*) AS n FROM staff WHERE id = ?`, bare.body.data.id).n], [201, 'Mechanic', 0]);
-  const pay = await h.api('POST', '/api/staff', { isMechanic: true, name: 'Paid', phone: '01700777778', specialization: 'Tyres', salary: 30000 });
+  const pay = await h.api('POST', '/api/staff', { isMechanic: true, name: 'Paid', phone: '01700777778', specialization: 'Tyres', joiningDate: '2025-01-01', salary: 30000 });
   check('pay cannot be set through the staff API, even for a mechanic', [pay.status, fields(pay)], [422, ['salary']]);
 }
 
@@ -349,6 +365,7 @@ console.log('\n-- G. compatibility with mechanics, job cards and appointments --
   check('the Mechanics list keeps its shape and ids', after.body.data.map((m) => [m.id, Object.keys(m).sort().join()]), before.body.data.map((m) => [m.id, Object.keys(m).sort().join()]));
   check('   ...and still carries pay for the Mechanics page', after.body.data.find((m) => m.id === 'MEC-0001').salary, 25000);
   const mechCreate = await h.api('POST', '/api/mechanics', { name: 'Via Mechanics', phone: '01700555555', specialization: 'Body' });
+  check('the Mechanics page still adds a mechanic without a joining date (its own rules are unchanged)', mechCreate.status, 201);
   check('a mechanic added on the Mechanics page appears in the Staff List at once', [mechCreate.status, ids(await h.api('GET', `/api/staff?q=${mechCreate.body.data.id}`))], [201, [mechCreate.body.data.id]]);
   const mechEdit = await h.api('PUT', '/api/mechanics/MEC-0001', { name: 'Renamed On Mechanics' });
   check('an edit on the Mechanics page shows in the Staff List (one record)', [mechEdit.status, (await h.api('GET', '/api/staff/MEC-0001')).body.data.name], [200, 'Renamed On Mechanics']);
