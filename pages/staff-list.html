@@ -50,7 +50,7 @@
     </nav>
     <div class="stf-head">
       <p class="page-subtitle">Every employee in the workshop database: mechanics and all other staff.</p>
-      <div class="stf-head__actions"><button type="button" class="btn btn--primary" id="stlAdd" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add Staff</span></button></div>
+      <div class="stf-head__actions"><a class="btn btn--primary" id="stlAdd" href="staff-add.html"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add Staff</span></a></div>
     </div>
     <div class="toolbar stf-toolbar stl-toolbar" role="search" aria-label="Find staff">
       <input type="search" class="input toolbar__search" id="stlSearch" placeholder="Search name, ID, code, phone, email&#8230;" aria-label="Search staff" autocomplete="off" maxlength="100" disabled>
@@ -101,6 +101,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
+  <script src="../js/staff-form.js"></script>
   <script src="../js/staff-list.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>

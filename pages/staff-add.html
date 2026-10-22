@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
   <link rel="stylesheet" href="../css/staff.css">
+  <link rel="stylesheet" href="../css/staff-add.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -37,9 +38,10 @@
 
   <div id="page-content">
 
-    <!-- UI PREVIEW ONLY. A layout of the staff form only: there is no form element, so nothing typed
-         here can be submitted anywhere. Nothing here reads or writes the workshop database or
-         browser storage, and no button saves or sends anything. -->
+    <!-- Add Staff. js/staff-add.js saves the form through the workshop database
+         (POST /api/staff) and nothing else: with no database or a signed-out
+         browser the form stays disabled and says why. Nothing typed here is
+         kept in browser storage. -->
 
     <nav class="stf-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -47,134 +49,169 @@
         <li aria-current="page">Add Staff</li>
       </ol>
     </nav>
-    <div class="stf-head">
-      <p class="page-subtitle">Register a new staff member.</p>
+    <div class="stf-head sa-head">
+      <div>
+        <h2 class="sa-title">Add New Staff</h2>
+        <p class="page-subtitle">Register a mechanic or any other employee. They appear in the Staff List as soon as they are saved.</p>
+      </div>
     </div>
-    <div class="stf-preview" role="note">
-      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="stf-preview__text"><strong>Preview: layout only.</strong> Nothing on this page is saved or sent: <strong>Save Staff</strong> does not save anything, and no file is read.</p>
-    </div>
-    <div class="stf-form-layout">
-      <div class="stf-form-main">
-      <div class="form-section stf-section" role="group" aria-labelledby="stf-sec-personal">
-        <div class="form-section__head">
-          <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span>
-          <div>
-            <h3 class="form-section__title" id="stf-sec-personal">Personal Information</h3>
-            <p class="form-section__desc">Name and personal details.</p>
+
+    <div class="sa-alert" id="saAlert" role="alert" tabindex="-1" hidden></div>
+
+    <form id="saForm" class="sa-form" novalidate aria-describedby="saRequiredNote">
+      <fieldset class="sa-fields" id="saFields" disabled>
+        <legend class="sa-sr-only">New staff member</legend>
+        <div class="stf-form-layout">
+          <div class="stf-form-main">
+        <section class="form-section stf-section" aria-labelledby="sa-sec-personal">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="sa-sec-personal">Personal Information</h3>
+              <p class="form-section__desc">Who they are, and what kind of staff member.</p>
+            </div>
           </div>
-        </div>
-        <div class="form-grid form-section__body">
-            <div class="field span-2">
-              <label for="stfName">Full name <span class="req" aria-hidden="true">*</span></label>
-              <input class="input" type="text" id="stfName" autocomplete="off" placeholder="e.g. Demo Staff M" aria-required="true">
+          <div class="form-grid form-section__body">
+            <div class="field span-2" id="saName-field">
+              <label for="saName">Full name <span class="req" aria-hidden="true">*</span></label>
+              <input class="input" type="text" id="saName" name="name" maxlength="120" required aria-required="true" aria-describedby="saName-err" autocomplete="off" spellcheck="false">
+              <p class="field__error" id="saName-err" data-err="name"></p>
             </div>
-            <div class="field">
-              <label for="stfGender">Gender</label>
-              <select class="select" id="stfGender"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select>
-            </div>
-            <div class="field">
-              <label for="stfDob">Date of birth</label>
-              <input class="input" type="date" id="stfDob" autocomplete="off">
-            </div>
-        </div>
-      </div>
-      <div class="form-section stf-section" role="group" aria-labelledby="stf-sec-contact">
-        <div class="form-section__head">
-          <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg></span>
-          <div>
-            <h3 class="form-section__title" id="stf-sec-contact">Contact Information</h3>
-            <p class="form-section__desc">How to reach this staff member.</p>
-          </div>
-        </div>
-        <div class="form-grid form-section__body">
-            <div class="field">
-              <label for="stfPhone">Mobile number <span class="req" aria-hidden="true">*</span></label>
-              <input class="input" type="tel" id="stfPhone" autocomplete="off" placeholder="01XXX-XXXXXX" aria-required="true">
-            </div>
-            <div class="field">
-              <label for="stfEmail">Email</label>
-              <input class="input" type="email" id="stfEmail" autocomplete="off" placeholder="name@example.com">
-            </div>
-            <div class="field span-2">
-              <label for="stfAddress">Address</label>
-              <textarea class="textarea" id="stfAddress" rows="2" placeholder="House, road, area"></textarea>
-            </div>
-            <div class="field">
-              <label for="stfEmergencyName">Emergency contact name</label>
-              <input class="input" type="text" id="stfEmergencyName" autocomplete="off">
-            </div>
-            <div class="field">
-              <label for="stfEmergencyPhone">Emergency contact phone</label>
-              <input class="input" type="tel" id="stfEmergencyPhone" autocomplete="off" placeholder="01XXX-XXXXXX">
-            </div>
-        </div>
-      </div>
-      <div class="form-section stf-section" role="group" aria-labelledby="stf-sec-employment">
-        <div class="form-section__head">
-          <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4C8.9 2 8 2.9 8 4v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4z"/></svg></span>
-          <div>
-            <h3 class="form-section__title" id="stf-sec-employment">Employment Information</h3>
-            <p class="form-section__desc">Role in the workshop.</p>
-          </div>
-        </div>
-        <div class="form-grid form-section__body">
-            <div class="field">
-              <label for="stfId">Staff ID</label>
-              <input class="input" type="text" id="stfId" autocomplete="off" placeholder="Assigned when saved" disabled>
-            </div>
-            <div class="field">
-              <label for="stfDesignation">Designation <span class="req" aria-hidden="true">*</span></label>
-              <select class="select" id="stfDesignation" aria-required="true"><option value="">Select a designation</option><option value="Senior Mechanic">Senior Mechanic</option><option value="Mechanic">Mechanic</option><option value="Electrician">Electrician</option><option value="Helper">Helper</option><option value="Service Advisor">Service Advisor</option><option value="Accountant">Accountant</option><option value="Workshop Manager">Workshop Manager</option><option value="Administrator">Administrator</option></select>
-            </div>
-            <div class="field">
-              <label for="stfDepartment">Department <span class="req" aria-hidden="true">*</span></label>
-              <select class="select" id="stfDepartment" aria-required="true"><option value="">Select a department</option><option value="Workshop">Workshop</option><option value="Front Desk">Front Desk</option><option value="Accounts">Accounts</option><option value="Management">Management</option></select>
-            </div>
-            <div class="field">
-              <label for="stfJoined">Joining date <span class="req" aria-hidden="true">*</span></label>
-              <input class="input" type="date" id="stfJoined" autocomplete="off" aria-required="true">
-            </div>
-            <div class="field">
-              <label for="stfType">Employment type</label>
-              <select class="select" id="stfType"><option value="Full Time">Full Time</option><option value="Part Time">Part Time</option><option value="Contract">Contract</option><option value="Temporary">Temporary</option></select>
-            </div>
-            <div class="field">
-              <label for="stfEmpStatus">Employment status <span class="req" aria-hidden="true">*</span></label>
-              <select class="select" id="stfEmpStatus" aria-required="true"><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
-            </div>
-        </div>
-      </div>
-      </div>
-      <aside class="stf-form-side">
-        <section class="card stf-photo" aria-labelledby="stfPhotoTitle">
-          <div class="card__head"><h2 id="stfPhotoTitle">Profile Photo</h2></div>
-          <div class="card__body">
-            <div class="stf-photo__drop">
-              <span class="stf-photo__avatar"><svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg></span>
-              <p class="stf-photo__hint">JPG or PNG, square, up to 2&nbsp;MB</p>
-              <button type="button" class="btn btn--ghost btn--sm" data-preview="Upload photo">Choose photo</button>
-            </div>
-            <p class="stf-muted">Photo upload is not available in this preview; no file is read.</p>
+            <fieldset class="sa-type span-2" id="saType-field" aria-describedby="saType-hint">
+              <legend>Staff type <span class="req" aria-hidden="true">*</span></legend>
+              <div class="sa-type__choices">
+                <label class="sa-choice" for="saTypeStaff">
+                  <input type="radio" name="staffType" id="saTypeStaff" value="staff" checked>
+                  <span class="sa-choice__text"><strong>Office and other staff</strong><span>Service advisor, receptionist, accountant, storekeeper and everyone else.</span></span>
+                </label>
+                <label class="sa-choice" for="saTypeMechanic">
+                  <input type="radio" name="staffType" id="saTypeMechanic" value="mechanic">
+                  <span class="sa-choice__text"><strong>Mechanic</strong><span>Works on vehicles. Can be assigned to job cards and appointments.</span></span>
+                </label>
+              </div>
+              <p class="sa-hint" id="saType-hint">A mechanic is added to the Mechanics page as well, as one record &mdash; not a second copy. Pay is set there, never here.</p>
+            </fieldset>
           </div>
         </section>
-        <section class="card stf-help" aria-labelledby="stfHelpTitle">
-          <div class="card__head"><h2 id="stfHelpTitle">Before saving</h2></div>
-          <div class="card__body">
-            <ul class="stf-checklist">
-              <li>Fields marked <span class="req">*</span> are required.</li>
-              <li>The Staff ID is assigned automatically.</li>
-              <li>A sign-in account is created separately, under User Accounts.</li>
-            </ul>
+        <section class="form-section stf-section" aria-labelledby="sa-sec-employment">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4C8.9 2 8 2.9 8 4v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4z"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="sa-sec-employment">Employment Information</h3>
+              <p class="form-section__desc">Their role in the workshop.</p>
+            </div>
+          </div>
+          <div class="form-grid form-section__body">
+            <div class="field sa-designation" id="saDesignation-field">
+              <label for="saDesignation">Designation <span class="req" aria-hidden="true">*</span></label>
+              <select class="select" id="saDesignation" name="designation" required aria-required="true" aria-describedby="saDesignation-err"><option value="">Select a designation</option></select>
+              <p class="field__error" id="saDesignation-err" data-err="designation"></p>
+            </div>
+            <div class="field" id="saDesignationOther-field" hidden>
+              <label for="saDesignationOther">Other designation</label>
+              <input class="input" type="text" id="saDesignationOther" name="designationOther" maxlength="60" aria-describedby="saDesignationOther-err" autocomplete="off">
+              <p class="field__error" id="saDesignationOther-err" data-err="designationOther"></p>
+            </div>
+            <div class="field sa-department" id="saDepartment-field">
+              <label for="saDepartment">Department <span class="req" aria-hidden="true">*</span></label>
+              <select class="select" id="saDepartment" name="department" required aria-required="true" aria-describedby="saDepartment-err"><option value="">Select a department</option></select>
+              <p class="field__error" id="saDepartment-err" data-err="department"></p>
+            </div>
+            <div class="field" id="saDepartmentOther-field" hidden>
+              <label for="saDepartmentOther">Other department</label>
+              <input class="input" type="text" id="saDepartmentOther" name="departmentOther" maxlength="60" aria-describedby="saDepartmentOther-err" autocomplete="off">
+              <p class="field__error" id="saDepartmentOther-err" data-err="departmentOther"></p>
+            </div>
+            <div class="field" id="saJoined-field">
+              <label for="saJoined">Joining date <span class="req" aria-hidden="true">*</span></label>
+              <input class="input" type="date" id="saJoined" name="joiningDate" required aria-required="true" aria-describedby="saJoined-err" min="1980-01-01">
+              <p class="field__error" id="saJoined-err" data-err="joiningDate"></p>
+            </div>
+            <div class="field" id="saStatus-field">
+              <label for="saStatus">Status</label>
+              <select class="select" id="saStatus" name="status" aria-describedby="saStatus-err"><option value="Active" selected>Active</option><option value="Inactive">Inactive</option></select>
+              <p class="field__error" id="saStatus-err" data-err="status"></p>
+            </div>
+            <div class="field" id="saCode-field">
+              <label for="saCode">Employee code</label>
+              <input class="input" type="text" id="saCode" name="employeeCode" maxlength="20" aria-describedby="saCode-hint saCode-err" autocomplete="off" spellcheck="false">
+              <p class="sa-hint" id="saCode-hint">Optional. Must be unique, e.g. TQ-014.</p>
+              <p class="field__error" id="saCode-err" data-err="employeeCode"></p>
+            </div>
+            <div class="field" id="saSpec-field" hidden>
+              <label for="saSpec">Specialization <span class="req" aria-hidden="true">*</span></label>
+              <input class="input" type="text" id="saSpec" name="specialization" maxlength="80" aria-describedby="saSpec-hint saSpec-err" list="saSpecs" autocomplete="off"><datalist id="saSpecs"></datalist>
+              <p class="sa-hint" id="saSpec-hint">What this mechanic mainly works on, e.g. Engine, AC, Electrical.</p>
+              <p class="field__error" id="saSpec-err" data-err="specialization"></p>
+            </div>
           </div>
         </section>
-      </aside>
-    </div>
-    <div class="stf-form-actions">
-      <p class="stf-muted"><span class="req" aria-hidden="true">*</span> Required fields</p>
-      <a class="btn btn--ghost" href="staff-list.html">Cancel</a>
-      <button type="button" class="btn btn--primary" data-preview="Save Staff">Save Staff</button>
-    </div>
+        <section class="form-section stf-section" aria-labelledby="sa-sec-contact">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="sa-sec-contact">Contact Information</h3>
+              <p class="form-section__desc">How to reach them.</p>
+            </div>
+          </div>
+          <div class="form-grid form-section__body">
+            <div class="field" id="saPhone-field">
+              <label for="saPhone">Phone <span class="req" aria-hidden="true">*</span></label>
+              <input class="input" type="tel" id="saPhone" name="phone" maxlength="20" required aria-required="true" aria-describedby="saPhone-hint saPhone-err" autocomplete="off" inputmode="tel">
+              <p class="sa-hint" id="saPhone-hint">One active staff member per phone number.</p>
+              <p class="field__error" id="saPhone-err" data-err="phone"></p>
+            </div>
+            <div class="field" id="saEmail-field">
+              <label for="saEmail">Email</label>
+              <input class="input" type="email" id="saEmail" name="email" maxlength="160" aria-describedby="saEmail-err" autocomplete="off" spellcheck="false">
+              <p class="field__error" id="saEmail-err" data-err="email"></p>
+            </div>
+          </div>
+        </section>
+        <section class="form-section stf-section" aria-labelledby="sa-sec-additional">
+          <div class="form-section__head">
+            <span class="form-section__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></span>
+            <div>
+              <h3 class="form-section__title" id="sa-sec-additional">Additional Information</h3>
+              <p class="form-section__desc">Anything else worth keeping. Both are optional.</p>
+            </div>
+          </div>
+          <div class="form-grid form-section__body">
+            <div class="field span-2" id="saAddress-field">
+              <label for="saAddress">Address</label>
+              <textarea class="textarea" id="saAddress" name="address" rows="2" maxlength="500" aria-describedby="saAddress-err"></textarea>
+              <p class="field__error" id="saAddress-err" data-err="address"></p>
+            </div>
+            <div class="field span-2" id="saNotes-field">
+              <label for="saNotes">Notes</label>
+              <textarea class="textarea" id="saNotes" name="notes" rows="3" maxlength="1000" aria-describedby="saNotes-err"></textarea>
+              <p class="field__error" id="saNotes-err" data-err="notes"></p>
+            </div>
+          </div>
+        </section>
+          </div>
+          <aside class="stf-form-side">
+            <section class="card stf-help" aria-labelledby="saHelpTitle">
+              <div class="card__head"><h2 id="saHelpTitle">Before saving</h2></div>
+              <div class="card__body">
+                <ul class="stf-checklist">
+                  <li>Fields marked <span class="req">*</span> are required.</li>
+                  <li>The Staff ID is given when you save: MEC-&hellip; for a mechanic, STF-&hellip; for everyone else.</li>
+                  <li>A mechanic also appears on the Mechanics page and can be assigned to job cards. Their pay is set there.</li>
+                  <li>No sign-in account is created here, and no pay is recorded.</li>
+                </ul>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </fieldset>
+      <div class="stf-form-actions">
+        <p class="stf-muted" id="saRequiredNote"><span class="req" aria-hidden="true">*</span> Required fields</p>
+        <p class="sa-status" id="saStatus" role="status" aria-live="polite"></p>
+        <a class="btn btn--ghost" id="saCancel" href="staff-list.html">Cancel</a>
+        <button type="submit" class="btn btn--primary" id="saSave" disabled>Save Staff</button>
+      </div>
+    </form>
 
   </div>
 
@@ -183,7 +220,8 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/staff-ui.js"></script>
+  <script src="../js/staff-form.js"></script>
+  <script src="../js/staff-add.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>

@@ -11,10 +11,12 @@
      - In every other mode -- no backend, a backend that failed, a
        signed-out browser -- this page shows no one and saves nothing.
        There is no demo or browser-stored roster to fall back to.
-     - Add, Edit and Activate / Deactivate go through Storage.create /
-       update (POST / PUT /api/staff). The Worker re-checks every field,
-       the phone and employee-code rules and the type; the checks here
-       only spare a round trip.
+     - Edit and Activate / Deactivate go through Storage.update
+       (PUT /api/staff/:id). The Worker re-checks every field, the phone
+       and employee-code rules and the type; the checks here (shared with
+       Add Staff in js/staff-form.js) only spare a round trip.
+     - New employees are added on their own page, Add Staff
+       (pages/staff-add.html), which returns here with ?added=<id>.
 
    The model (migration 0008): a mechanic is the Mechanics page's own
    record (MEC-0001) plus an optional profile with employee code,
@@ -30,26 +32,14 @@ const StaffList = (() => {
 
   const { esc } = Utils;
 
-  /* Field limits: the Worker's (src/routes/staff.js LIMITS) and the schema's
-     CHECKs (0008) use the same numbers. */
-  const LIMITS = { employeeCode: 20, designation: 60, department: 60, name: 120, phone: 20,
-    email: 160, address: 500, notes: 1000, specialization: 80, search: 100 };
-  const PHONE = /^[0-9+\-\s()]{6,20}$/;
+  // Field limits, statuses and the suggested designations / departments are the form's (js/staff-form.js).
+  const { LIMITS, STATUSES, DESIGNATIONS, DEPARTMENTS, EARLIEST_JOINING } = StaffForm;
   const PHONE_QUERY = /^[0-9+\-\s()]+$/;
-  const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const EMPLOYEE_CODE = /^[A-Za-z0-9][A-Za-z0-9._\/-]*$/;
-  const EARLIEST_JOINING = '1980-01-01';
 
-  const STATUSES = ['Active', 'Inactive'];
   const SORTS = ['name-asc', 'name-desc', 'joined-desc', 'joined-asc', 'status'];
   const PAGE_SIZES = [10, 25, 50, 100];
   const DEFAULT_PAGE_SIZE = 25;
   const COLS = 9;
-
-  // Offered as suggestions only; any designation or department can be typed.
-  const DESIGNATIONS = ['Mechanic', 'Senior Mechanic', 'Electrician', 'Service Advisor', 'Receptionist',
-    'Accountant', 'Workshop Manager', 'Manager', 'Helper', 'Administrator'];
-  const DEPARTMENTS = ['Workshop', 'Front Desk', 'Accounts', 'Management', 'Stores', 'Administration'];
 
   const svg = d => `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>`;
   const ICON = {
@@ -125,46 +115,9 @@ const StaffList = (() => {
     return { designations: uniq('designation'), departments: uniq('department') };
   }
 
-  /**
-   * The browser's copy of the Worker's rules, so most mistakes are caught
-   * without a round trip. Returns { field: message }.
-   */
-  function validateStaff(v, { isMechanic = false, today = Utils.todayStr() } = {}) {
-    const e = {};
-    const need = (key, label) => { if (!String(v[key] || '').trim()) e[key] = `${label} is required.`; };
-    const max = (key, label) => { if (String(v[key] || '').length > LIMITS[key]) e[key] = `${label} must be ${LIMITS[key]} characters or fewer.`; };
-    need('name', 'Full name'); max('name', 'Full name');
-    need('phone', 'Phone');
-    if (v.phone && !e.phone && !PHONE.test(v.phone)) e.phone = 'Enter a valid phone number (digits, +, -, spaces).';
-    if (v.email && !EMAIL.test(v.email)) e.email = 'Enter a valid email address.';
-    max('email', 'Email');
-    if (v.employeeCode) {
-      if (!EMPLOYEE_CODE.test(v.employeeCode)) e.employeeCode = 'Use letters, digits, and - . / _ only, starting with a letter or digit.';
-      max('employeeCode', 'Employee code');
-    }
-    if (!isMechanic) { need('designation', 'Designation'); need('department', 'Department'); }
-    max('designation', 'Designation'); max('department', 'Department');
-    if (isMechanic) { need('specialization', 'Specialization'); max('specialization', 'Specialization'); }
-    if (v.joiningDate) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(v.joiningDate)) e.joiningDate = 'Enter a real date.';
-      else if (v.joiningDate < EARLIEST_JOINING) e.joiningDate = 'Joining date looks too old.';
-      else if (today && v.joiningDate > today) e.joiningDate = 'Joining date cannot be in the future.';
-    }
-    if (!STATUSES.includes(v.status)) e.status = 'Choose Active or Inactive.';
-    max('address', 'Address'); max('notes', 'Notes');
-    return e;
-  }
-
-  /** The request body for a create or an edit. Never carries pay. */
-  function payload(v, { isMechanic = false, mode = 'create' } = {}) {
-    const body = {
-      name: v.name, phone: v.phone, email: v.email, address: v.address, joiningDate: v.joiningDate,
-      status: v.status, notes: v.notes, employeeCode: v.employeeCode, designation: v.designation, department: v.department,
-    };
-    if (isMechanic) body.specialization = v.specialization;
-    if (mode === 'create') body.isMechanic = !!isMechanic;
-    return body;
-  }
+  /** The edit form's checks: the shared rules, where an old record may still have no joining date. */
+  const validateStaff = (v, opts = {}) => StaffForm.validate(v, { ...opts, mode: 'edit' });
+  const payload = StaffForm.payload;
 
   /* ---------- markup ---------- */
 
@@ -211,7 +164,7 @@ const StaffList = (() => {
     const actions = [
       retry ? '<button type="button" class="btn btn--primary btn--sm" data-action="retry">Retry</button>' : '',
       signIn ? '<button type="button" class="btn btn--primary btn--sm" data-action="signin">Sign in again</button>' : '',
-      add ? '<button type="button" class="btn btn--primary btn--sm" data-action="add">Add Staff</button>' : '',
+      add ? '<a class="btn btn--primary btn--sm" href="staff-add.html" data-action="add">Add Staff</a>' : '',
       clear ? '<button type="button" class="btn btn--ghost btn--sm" data-action="clear">Clear filters</button>' : '',
     ].filter(Boolean).join(' ');
     return `
@@ -241,7 +194,8 @@ const StaffList = (() => {
   const $ = id => document.getElementById(id);
   let debounce = null;
 
-  const CONTROLS = ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear', 'stlAdd'];
+  // Add Staff is a link to its own page, which says for itself when there is no database to add to.
+  const CONTROLS = ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear'];
   function setControls(enabled) {
     for (const id of CONTROLS) { const el = $(id); if (el) el.disabled = !enabled; }
   }
@@ -322,7 +276,7 @@ const StaffList = (() => {
     note('Search and filters are unavailable until the staff list loads.');
     if (code === 'no_api') {
       setBody(stateRow({ icon: ICON.alert, tone: 'bad', title: 'The Staff List needs the workshop database',
-        text: 'This copy of the app is not connected to the workshop database, so no staff are shown and none can be added. Nothing stored in this browser is used in their place.' }));
+        text: 'This copy of the app is not connected to the workshop database, so no staff are shown. Nothing stored in this browser is used in their place.' }));
     } else if (code === 'unauthorized') {
       setBody(stateRow({ icon: ICON.alert, tone: 'bad', title: 'Your session has ended', signIn: true,
         text: 'Sign in again to see the staff list. Nothing was changed.' }));
@@ -341,6 +295,21 @@ const StaffList = (() => {
     setControls(true);
     refreshView();
     return true;
+  }
+
+  /**
+   * Back from Add Staff (?added=STF-0004): confirm the save once, naming the
+   * record as the database returned it, then drop the marker from the address
+   * so a refresh does not say it again. An id that is not in the list says nothing.
+   */
+  function announceAdded() {
+    const id = new URLSearchParams(location.search || '').get('added');
+    if (!id) return;
+    const s = Storage.getById('staff', id);
+    if (s) Utils.toast(`${s.name} was added (${s.id}).`, 'success');
+    try {
+      if (typeof history !== 'undefined' && history.replaceState) history.replaceState(null, '', location.pathname || 'staff-list.html');
+    } catch (e) { /* the address keeps the marker; harmless */ }
   }
 
   /* ---------- dialogs ---------- */
@@ -362,17 +331,12 @@ const StaffList = (() => {
     return `<datalist id="${id}">${[...new Set(values)].map(v => `<option value="${esc(v)}"></option>`).join('')}</datalist>`;
   }
 
-  function formHtml(s, { mode, isMechanic }) {
+  function formHtml(s, { isMechanic }) {
     const f = facets(rows());
     const specs = Storage.getData('mechanics').map(m => m && m.specialization).filter(Boolean);
-    const typeBlock = mode === 'create'
-      ? `<div class="stl-type">
-           <label class="stl-check"><input type="checkbox" id="sf-mech" name="isMechanic"${isMechanic ? ' checked' : ''}> This person is a mechanic</label>
-           <p class="stl-hint">Mechanics can be assigned to job cards and appointments, and appear on the Mechanics page. Pay is set there, not here.</p>
-         </div>`
-      : `<p class="stl-type-note">${isMechanic
-        ? 'Mechanic record — also shown on the Mechanics page, where pay is managed.'
-        : 'Staff record (not a mechanic).'} The type cannot be changed.</p>`;
+    const typeBlock = `<p class="stl-type-note">${isMechanic
+      ? 'Mechanic record — also shown on the Mechanics page, where pay is managed.'
+      : 'Staff record (not a mechanic).'} The type cannot be changed.</p>`;
     return `
       <form id="stlForm" novalidate>
         ${typeBlock}
@@ -399,7 +363,7 @@ const StaffList = (() => {
       </form>`;
   }
 
-  /** Show the mechanic-only field, and which fields are required, for the chosen type. */
+  /** Show the mechanic-only field, and which fields are required, for the record's type. */
   function applyType(form, isMechanic) {
     const spec = form.querySelector('[data-field="specialization"]');
     if (spec) spec.hidden = !isMechanic;
@@ -453,21 +417,19 @@ const StaffList = (() => {
     if (first && first.focus) first.focus();
   }
 
-  function openForm(record = {}, { mode }) {
-    let isMechanic = mode === 'create' ? false : !!record.isMechanic;
-    const title = mode === 'create' ? 'Add Staff' : `Edit ${record.name || 'staff member'}`;
+  /** The Edit dialog. Adding someone new happens on the Add Staff page. */
+  function openForm(record) {
+    const isMechanic = !!record.isMechanic;
     const ov = Utils.Modal.open({
-      title,
+      title: `Edit ${record.name || 'staff member'}`,
       size: 'lg',
-      body: formHtml(record, { mode, isMechanic }),
+      body: formHtml(record, { isMechanic }),
       footer: `
         <button type="button" class="btn btn--ghost" data-modal-close>Cancel</button>
-        <button type="button" class="btn btn--primary" data-save>${mode === 'create' ? 'Add Staff' : 'Save Changes'}</button>`,
+        <button type="button" class="btn btn--primary" data-save>Save Changes</button>`,
     });
     const form = ov.querySelector('#stlForm');
     applyType(form, isMechanic);
-    const box = form.querySelector('#sf-mech');
-    if (box) box.addEventListener('change', () => { isMechanic = box.checked; applyType(form, isMechanic); });
     form.addEventListener('submit', e => { e.preventDefault(); ov.querySelector('[data-save]').click(); });
 
     ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
@@ -475,11 +437,10 @@ const StaffList = (() => {
       const errors = validateStaff(values, { isMechanic });
       if (Object.keys(errors).length) { showErrors(form, errors); return; }
       showErrors(form, {});
-      const body = payload(values, { isMechanic, mode });
-      const res = mode === 'create' ? await Storage.create('staff', body) : await Storage.update('staff', record.id, body);
+      const res = await Storage.update('staff', record.id, payload(values, { isMechanic, mode: 'edit' }));
       if (!Utils.wrote(res, form)) { markInvalid(form); return; }
       Utils.Modal.close();
-      Utils.toast(mode === 'create' ? `${res.record.name} was added (${res.record.id}).` : `${res.record.name} was saved.`, 'success');
+      Utils.toast(`${res.record.name} was saved.`, 'success');
       refreshView();
     }));
   }
@@ -539,14 +500,14 @@ const StaffList = (() => {
           <button type="button" class="btn btn--ghost" data-modal-close>Close</button>
           <button type="button" class="btn btn--primary" data-edit>Edit</button>`,
       });
-      ov.querySelector('[data-edit]').addEventListener('click', () => openForm(s, { mode: 'edit' }));
+      ov.querySelector('[data-edit]').addEventListener('click', () => openForm(s));
     });
   }
 
   async function openEdit(id, btn) {
     await busy(btn, async () => {
       const s = await fetchOne(id);
-      if (s) openForm(s, { mode: 'edit' });
+      if (s) openForm(s);
     });
   }
 
@@ -602,9 +563,8 @@ const StaffList = (() => {
       state.pageSize = PAGE_SIZES.includes(n) ? n : DEFAULT_PAGE_SIZE;
       resetPage(); renderList();
     });
-    const clear = $('stlClear'), add = $('stlAdd'), prev = $('stlPrev'), next = $('stlNext');
+    const clear = $('stlClear'), prev = $('stlPrev'), next = $('stlNext');
     if (clear) clear.addEventListener('click', clearFilters);
-    if (add) add.addEventListener('click', () => { if (state.loaded) openForm({}, { mode: 'create' }); });
     if (prev) prev.addEventListener('click', () => { state.page = Math.max(1, state.page - 1); renderList(); });
     if (next) next.addEventListener('click', () => { state.page += 1; renderList(); });
     if (body) body.addEventListener('click', e => {
@@ -616,7 +576,6 @@ const StaffList = (() => {
         case 'retry': load(); break;
         case 'signin': window.location.reload(); break;
         case 'clear': clearFilters(); break;
-        case 'add': if (state.loaded) openForm({}, { mode: 'create' }); break;
         case 'view': openDetail(id, btn); break;
         case 'edit': openEdit(id, btn); break;
         case 'deactivate': setStatus(id, 'Inactive', btn); break;
@@ -631,7 +590,7 @@ const StaffList = (() => {
     // after signing in. Nothing has been read, so nothing is shown.
     if (outcome && outcome.mode === 'locked') return;
     bindEvents();
-    load();
+    load().then(loaded => { if (loaded) announceAdded(); });
   }
 
   Storage.ready(start);
