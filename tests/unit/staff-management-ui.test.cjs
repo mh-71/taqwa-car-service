@@ -1,5 +1,6 @@
-/* staff-management-ui — Staff Management: the sidebar group and its nine
-   UI-preview pages.
+/* staff-management-ui — Staff Management: the sidebar group, its eight
+   UI-preview pages, and the static shape of the one real page (Staff List,
+   whose behaviour is tested in staff-list.test.cjs).
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
@@ -14,10 +15,13 @@
      2. On each Staff page only its own entry is active and the header title
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
-        stylesheet aside), declares its own page key, says plainly that it is a
-        preview whose content is not saved or sent, loads exactly the shared
-        shell scripts plus js/staff-ui.js, and has no form, file or password
-        input, inline handler or inline script. Every button is type="button".
+        stylesheets aside), declares its own page key and has no form, file or
+        password input, inline handler or inline script; every button is
+        type="button". The eight previews say plainly that their content is
+        not saved or sent and load exactly the shared shell scripts plus
+        js/staff-ui.js. Staff List is NOT a preview: no preview notice, no
+        Demo badge, no preview-only control, and js/staff-list.js in place of
+        js/staff-ui.js.
      4. js/staff-ui.js never touches the database, browser storage or the
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
@@ -151,15 +155,23 @@ for (const [key, label] of ENTRIES) {
   const body = html.slice(html.indexOf('<body data-page='));
   pages[key] = body;
   const titleText = label === 'Overview' ? 'Staff Management' : label;
-  check(`${label}: <head> is the Settings head with only the title and the staff stylesheet changed`, head(html),
+  const real = key === 'staff-list';
+  check(`${label}: <head> is the Settings head with only the title and the staff stylesheet${real ? 's' : ''} changed`, head(html),
     settingsHead.replace('<title>Settings — ', `<title>${titleText} — `)
       .replace('<link rel="stylesheet" href="../css/responsive.css">',
-        '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/staff.css">'));
+        '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/staff.css">'
+          + (real ? '\n  <link rel="stylesheet" href="../css/staff-list.css">' : '')));
   ok('   ...declares its own page key', body.startsWith(`<body data-page="${key}" data-root="../">`), body.slice(0, 60));
-  ok('   ...says it is a preview and that nothing is saved or sent',
-    /<div class="stf-preview" role="note">/.test(body) && /<strong>Preview: [^<]+<\/strong>/.test(body) && /Nothing on this page is saved or sent/.test(body), '');
   const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
-  check('   ...loads the shared shell scripts plus js/staff-ui.js, last', scripts, SCRIPTS);
+  if (real) {
+    ok('   ...is NOT a preview: no preview notice, Demo badge, empty-state switch or preview-only control',
+      !/stf-preview|Preview:|>Demo<|data-empty-toggle|data-preview|not saved or sent/.test(body), '');
+    check('   ...loads the shared shell scripts plus js/staff-list.js (never staff-ui.js), last', scripts, [...SCRIPTS.slice(0, -1), '../js/staff-list.js']);
+  } else {
+    ok('   ...says it is a preview and that nothing is saved or sent',
+      /<div class="stf-preview" role="note">/.test(body) && /<strong>Preview: [^<]+<\/strong>/.test(body) && /Nothing on this page is saved or sent/.test(body), '');
+    check('   ...loads the shared shell scripts plus js/staff-ui.js, last', scripts, SCRIPTS);
+  }
   ok('   ...keeps the shell-drawn marker after every script', html.indexOf('id="shell-drawn"') > html.lastIndexOf('<script src='), '');
   ok('   ...has no form, file input or password input', !/<form\b|type="file"|type="password"/i.test(body), '');
   ok('   ...has no inline handler and no inline script in the body', !/\son[a-z]+=/i.test(html) && !/<script>/.test(body), '');
@@ -179,10 +191,13 @@ for (const [key, label] of ENTRIES) {
     o.includes('<p class="page-subtitle">Manage workshop staff and employee information.</p>') && /<a class="btn btn--ghost btn--sm" href="staff-list.html"><span>View All Staff<\/span>/.test(o), '');
   ok('   ...every card that shows data is badged "Demo"', (o.match(/<span class="badge badge--neutral">Demo<\/span>/g) || []).length === 3, '');
   const l = pages['staff-list'];
-  ok('Staff List: search, role, department and status filters, pager, empty state',
-    ['stfSearch', 'stfRole', 'stfDept', 'stfStatus', 'stfListClear', 'stfListPrev', 'stfListNext', 'stfListEmpty'].every(id => l.includes(`id="${id}"`)), '');
-  check('   ...the requested columns', [...l.matchAll(/<th>([^<]+)<\/th>/g)].map(m => m[1]),
-    ['Staff ID', 'Name', 'Designation', 'Department', 'Phone', 'Email', 'Status', 'Joining Date', 'Actions']);
+  ok('Staff List: search, designation, department, status and sort controls, page size and pager',
+    ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear', 'stlAdd', 'stlPageSize', 'stlPrev', 'stlNext', 'stlBody'].every(id => l.includes(`id="${id}"`)), '');
+  ok('   ...every control starts disabled until the data loads', ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear', 'stlAdd']
+    .every(id => new RegExp(`id="${id}"[^>]*\\sdisabled`).test(l)), '');
+  check('   ...the requested columns', [...l.matchAll(/<th scope="col">(?:<span class="stl-sr-only">)?([^<]+)/g)].map(m => m[1]),
+    ['Staff ID / Code', 'Name', 'Designation', 'Department', 'Phone', 'Email', 'Status', 'Joining Date', 'Actions']);
+  ok('   ...and no salary or commission column', !/salary|commission/i.test(l), '');
   const a = pages['staff-add'];
   ok('Add Staff: personal, contact and employment sections and a photo area',
     ['stf-sec-personal', 'stf-sec-contact', 'stf-sec-employment', 'stfPhotoTitle'].every(id => a.includes(`id="${id}"`)), '');
@@ -250,9 +265,9 @@ check('it never reaches the database, browser storage or the network',
     .filter(t => code.includes(t)), []);
 check('it never writes HTML', ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function'].filter(t => code.includes(t)), []);
 ok('it does not format the demo amounts with Utils.money (which reads the workshop settings)', !code.includes('Utils.money'), '');
-check('it renders exactly the nine Staff pages',
+check('it renders exactly the preview Staff pages (Staff List is real and has its own script)',
   [...code.match(/const RENDER = \{([\s\S]*?)\};/)[1].matchAll(/'([a-z-]+)':/g)].map(m => m[1]),
-  ENTRIES.map(([k]) => k).filter(k => k !== 'staff-add'));
+  ENTRIES.map(([k]) => k).filter(k => k !== 'staff-add' && k !== 'staff-list'));
 ok('every action button it creates is type="button" and only explains it is a preview',
   /type: 'button', class: `icon-btn icon-btn--sm\$\{extraClass\}`, title: label, 'aria-label': label, 'data-preview': label/.test(code)
     && /Preview only: .* is not available yet\. Nothing was saved or sent\./.test(code), '');

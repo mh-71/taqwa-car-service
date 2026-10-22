@@ -170,6 +170,11 @@ const writes = collectionWrite({
   beforeWrite,
 });
 
+// The Staff List (routes/staff.js) writes a mechanic's name, phone and the
+// rest through these same rules, so a mechanic is validated identically
+// whichever page saves it.
+export { readFields as readMechanicFields };
+
 export const listMechanics = routes.list;
 export const getMechanic = routes.detail;
 export const createMechanic = writes.create;
