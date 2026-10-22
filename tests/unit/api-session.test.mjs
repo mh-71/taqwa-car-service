@@ -150,7 +150,8 @@ console.log('\n-- 3. what a session unlocks --');
   const body = await res.json();
   check('GET /api/session reports the session', body.data.authenticated, true);
   check('   ...and says signing in is possible here', body.data.passphrase, true);
-  check('   ...and nothing else at all', Object.keys(body.data).sort(), ['authenticated', 'passphrase']);
+  // A passphrase session names nobody: no `account` key (only an account session has one, 0009).
+  check('   ...and nothing else at all (no account: a passphrase session names nobody)', Object.keys(body.data).sort(), ['accounts', 'authenticated', 'passphrase']);
 }
 
 /* ============================================================

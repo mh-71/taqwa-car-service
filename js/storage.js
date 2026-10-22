@@ -77,13 +77,14 @@ const Storage = (() => {
     followUps: 'follow-ups', followUpContacts: 'follow-up-contacts',
     followUpTasks: 'follow-up-tasks',
     estimates: 'estimates',
-    staff: 'staff'
+    staff: 'staff',
+    accounts: 'accounts'
   };
 
   /**
    * Collections that exist ONLY in the database and are read on demand by the
    * one page that needs them (Customer Follow-up; Follow-up Tasks;
-   * Estimates; Staff List), never during hydration.
+   * Estimates; Staff List; User Accounts), never during hydration.
    *
    * Deliberately not in COLLECTIONS: hydration reads every entry there and
    * falls back to browser storage if any one fails, so a missing table here
@@ -93,7 +94,12 @@ const Storage = (() => {
    * Outside 'api' mode they read as empty and refuse every write: there is no
    * browser-storage copy of them, demo or otherwise, to show or to change.
    */
-  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff'];
+  // The account this browser is signed in with (id, username, role), or null
+  // for a workshop-passphrase session. Set by hydrate(); display only -- the
+  // Worker decides what any caller may do.
+  let signedInAccount = null;
+
+  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff', 'accounts'];
   const isApiOnly = c => API_ONLY.includes(c);
   const apiOnlyRefusal = () => ({
     ok: false, code: 'no_api', message: 'This needs the workshop database, which this page is not connected to.',
@@ -627,8 +633,10 @@ const Storage = (() => {
       if (!who.ok) return { mode: 'local', reason: who.code || 'network_error' };
       if (!who.authenticated) {
         mode = 'locked';
-        return { mode: 'locked', canSignIn: who.passphrase };
+        return { mode: 'locked', canSignIn: who.passphrase, accountSignIn: who.accounts };
       }
+      // Who is signed in: a staff member's account, or null for the workshop passphrase.
+      signedInAccount = who.account || null;
 
       const [results, websiteBookings, settings] = await Promise.all([
         Promise.all(COLLECTIONS.map(fetchAll)),
@@ -643,7 +651,7 @@ const Storage = (() => {
         // falling back to browser storage would not be.
         if (why === 'unauthorized') {
           mode = 'locked';
-          return { mode: 'locked', canSignIn: true };
+          return { mode: 'locked', canSignIn: true, accountSignIn: who.accounts };
         }
         return { mode: 'local', reason: why, collection: COLLECTIONS[failed] };
       }
@@ -674,7 +682,15 @@ const Storage = (() => {
    * handed that stale answer once the session exists.
    */
   async function signIn(passphrase) {
-    const res = await Api.login(passphrase);
+    return finishSignIn(await Api.login(passphrase));
+  }
+
+  /** Sign in with a staff member's own account (username + password); otherwise exactly signIn(). */
+  async function signInWithAccount(username, password) {
+    return finishSignIn(await Api.loginAccount(username, password));
+  }
+
+  async function finishSignIn(res) {
     if (!res.ok) return res;
     hydration = null;
     settled = false;
@@ -711,6 +727,7 @@ const Storage = (() => {
     COLLECTIONS.forEach(c => { delete cache[c]; });
     API_ONLY.forEach(c => { delete cache[c]; });
     cachedSettings = null;
+    signedInAccount = null;
     mode = 'locked';
     hydration = null;
     settled = false;
@@ -773,8 +790,9 @@ const Storage = (() => {
     create, update, remove, action, reload, refreshAll, load, loadOne,
     generateId, getSettings, saveSettings, putSettings, getTheme, saveTheme,
     seedIfEmpty, resetToSeedData,
-    hydrate, whenReady, ready, signIn, signOut,
+    hydrate, whenReady, ready, signIn, signInWithAccount, signOut,
     get mode() { return mode; },
+    get account() { return signedInAccount; },
     isApi, isLocked
   };
 })();

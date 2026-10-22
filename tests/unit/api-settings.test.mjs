@@ -415,7 +415,7 @@ console.log('\n-- 14. Route registration --');
   const b = await res.json();
   const routes = b.data.routes;
 
-  check('health advertises 97 routes', routes.length, 97);
+  check('health advertises 102 routes', routes.length, 102);
   ok_('advertises GET /api/settings', routes.includes('GET /api/settings'));
   ok_('does NOT advertise a settings detail route', !routes.includes('GET /api/settings/:id'));
   // Was "every route is a GET" through Phase B. C-2 made that false by
@@ -424,8 +424,8 @@ console.log('\n-- 14. Route registration --');
   {
     const byMethod = {};
     routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    check('37 GET, 34 POST, 15 PUT, 11 DELETE', byMethod,
-      { GET: 37, POST: 34, PUT: 15, DELETE: 11 });
+    check('39 GET, 36 POST, 16 PUT, 11 DELETE', byMethod,
+      { GET: 39, POST: 36, PUT: 16, DELETE: 11 });
     ok_('no other method is advertised',
       routes.every((r) => ['GET', 'POST', 'PUT', 'DELETE'].includes(r.split(' ')[0])));
     check('settings offers a read and a write, and nothing else',
@@ -469,11 +469,11 @@ console.log('\n-- 15. The existing ten collections are untouched --');
   // order. C-2 interleaved write routes between them but removed none.
   {
     const gets = routes.filter((r) => r.startsWith('GET '));
-    check('all 37 GET routes survive, in order', gets, [
+    check('all 39 GET routes survive, in order', gets, [
       'GET /api/health',
       ...['customers', 'vehicles', 'services', 'mechanics', 'parts', 'appointments',
         'job-cards', 'invoices', 'payments', 'invoice-adjustments', 'expenses', 'inventory-transactions',
-        'follow-ups', 'follow-up-contacts', 'follow-up-tasks', 'estimates', 'staff']
+        'follow-ups', 'follow-up-contacts', 'follow-up-tasks', 'estimates', 'staff', 'accounts']
         .flatMap((n) => [`GET /api/${n}`, `GET /api/${n}/:id`]),
       'GET /api/settings',
       'GET /api/session',

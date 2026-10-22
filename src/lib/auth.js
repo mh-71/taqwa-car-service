@@ -5,7 +5,9 @@
    there are exactly two kinds.
 
      BROWSER   a signed `taqwa_session` cookie, obtained by
-               POSTing the workshop passphrase to /api/session.
+               POSTing to /api/session either the workshop
+               passphrase, or a staff member's username and
+               password (migration 0009, User Accounts).
      MACHINE   `Authorization: Bearer <API_TOKEN>`, for CI, the
                integration suite, and anything that is not a
                person at a screen.
@@ -17,18 +19,23 @@
 
    ---- what this deliberately is not ----
 
-   No users table, no sessions table, no passwords, no roles, no
-   JWT library, no OAuth. The workshop is one tenant with one
-   shared passphrase, and the session it buys is a signed
-   expiry -- nothing about it is stored anywhere, so there is
-   nothing to look up and nothing to leak. Rotating AUTH_SECRET
-   invalidates every session at once, which is the whole of
-   revocation here.
+   No sessions table, no roles, no JWT library, no OAuth. A
+   passphrase session is a signed expiry -- nothing about it is
+   stored anywhere, so there is nothing to look up and nothing
+   to leak. Rotating AUTH_SECRET invalidates every session at
+   once.
 
-   That is a deliberate trade, not an oversight: a shared
-   credential gives no per-person accountability and cannot be
-   revoked for one individual. The cost is recorded in README
-   beside the other production items.
+   An ACCOUNT session (`a1.<expiry>.<account id>.<session
+   version>.<signature>`) names its account, and is checked
+   against user_accounts on every request: an account that has
+   been deactivated, whose password was reset (session version
+   bumped) or whose staff member is no longer active is refused
+   at once. That is the per-person revocation the shared
+   passphrase cannot give. Every account has full access -- the
+   API has no roles to restrict it (see lib/accounts.js).
+
+   The gate records WHO passed it (principalOf), so a route that
+   must authorize -- /api/accounts -- can ask.
 
    ---- fail closed ----
 
@@ -49,6 +56,7 @@
    ============================================================ */
 
 import { fail } from './http.js';
+import { loadSessionAccount, ACCOUNT_ID } from './accounts.js';
 
 /** The methods that can change data. Kept exported: routes still ask. */
 export const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -61,6 +69,9 @@ const SESSION_HOURS = 12;
 
 /** Bumped if the cookie's shape ever changes; an old shape then fails to verify. */
 const SESSION_VERSION = 'v1';
+
+/** An account session's shape: a1.<expiry>.<account id>.<session version>.<signature>. */
+const ACCOUNT_SESSION = 'a1';
 
 // The scheme is case-insensitive per RFC 7235 and may be followed by more
 // than one space; the TOKEN after it is matched exactly, and nothing about it
@@ -129,6 +140,30 @@ async function mintSession(secret, nowSeconds) {
   return `${payload}.${await sign(payload, secret)}`;
 }
 
+/** An account session: the account and its session version are inside the signature. */
+async function mintAccountSession(secret, nowSeconds, accountId, sessionVersion) {
+  const expires = nowSeconds + SESSION_HOURS * 3600;
+  const payload = `${ACCOUNT_SESSION}.${expires}.${accountId}.${sessionVersion}`;
+  return `${payload}.${await sign(payload, secret)}`;
+}
+
+/**
+ * The account an account session claims, once its shape, signature and expiry
+ * check out -- or null. Whether that account may still sign in is the
+ * database's answer (loadSessionAccount), asked separately.
+ */
+async function accountSessionClaim(value, secret, nowSeconds) {
+  if (typeof value !== 'string') return null;
+  const parts = value.split('.');
+  if (parts.length !== 5) return null;
+  const [kind, expires, accountId, version, signature] = parts;
+  if (kind !== ACCOUNT_SESSION || !/^\d{1,15}$/.test(expires) || !ACCOUNT_ID.test(accountId) || !/^\d{1,9}$/.test(version)) return null;
+  const expected = await sign(`${kind}.${expires}.${accountId}.${version}`, secret);
+  if (!constantTimeEqual(signature, expected)) return null;
+  if (Number(expires) <= nowSeconds) return null;
+  return { accountId, sessionVersion: Number(version) };
+}
+
 /** Verify shape, then signature, then expiry -- in that order. */
 async function sessionIsValid(value, secret, nowSeconds) {
   if (typeof value !== 'string') return false;
@@ -187,6 +222,12 @@ export async function issueSessionCookie(env, now = Date.now()) {
   return `${SESSION_COOKIE}=${value}; ${cookieAttributes(SESSION_HOURS * 3600)}`;
 }
 
+/** The cookie for an account that has just signed in. */
+export async function issueAccountSessionCookie(env, account, now = Date.now()) {
+  const value = await mintAccountSession(env.AUTH_SECRET, Math.floor(now / 1000), account.id, account.sessionVersion);
+  return `${SESSION_COOKIE}=${value}; ${cookieAttributes(SESSION_HOURS * 3600)}`;
+}
+
 /** The same cookie, already expired: the browser drops it. */
 export function clearSessionCookie() {
   return `${SESSION_COOKIE}=; ${cookieAttributes(0)}`;
@@ -241,6 +282,34 @@ function notConfigured() {
 }
 
 /* ---------------------------------------------------------------
+   Who passed the gate
+   --------------------------------------------------------------- */
+
+// One entry per authenticated request, dropped with the request.
+const principals = new WeakMap();
+
+/**
+ * Who this request was authenticated as, once checkAuth has let it through:
+ *   { kind: 'token' }                         the machine token
+ *   { kind: 'passphrase' }                    a workshop-passphrase session
+ *   { kind: 'account', id, username, role }   a staff member's account session
+ * null if the request has not passed the gate.
+ */
+export function principalOf(request) {
+  return principals.get(request) || null;
+}
+
+/** The principal behind this request's session cookie, or null. */
+async function sessionPrincipal(request, env, config, nowSeconds) {
+  const cookie = readCookie(request, SESSION_COOKIE);
+  if (!cookie) return null;
+  if (await sessionIsValid(cookie, config.secret, nowSeconds)) return { kind: 'passphrase' };
+  const claim = await accountSessionClaim(cookie, config.secret, nowSeconds);
+  if (!claim) return null;
+  return loadSessionAccount(env, claim.accountId, claim.sessionVersion);
+}
+
+/* ---------------------------------------------------------------
    The gate
    --------------------------------------------------------------- */
 
@@ -263,12 +332,16 @@ export async function checkAuth(request, env, now = Date.now()) {
   if (config.token !== '') {
     const header = request.headers.get('authorization');
     const match = header ? BEARER.exec(header) : null;
-    if (match && constantTimeEqual(match[1], config.token)) return null;
+    if (match && constantTimeEqual(match[1], config.token)) {
+      principals.set(request, { kind: 'token' });
+      return null;
+    }
   }
 
   if (config.sessions) {
-    const cookie = readCookie(request, SESSION_COOKIE);
-    if (cookie && await sessionIsValid(cookie, config.secret, Math.floor(now / 1000))) {
+    const who = await sessionPrincipal(request, env, config, Math.floor(now / 1000));
+    if (who) {
+      principals.set(request, who);
       return null;
     }
   }
@@ -286,9 +359,12 @@ export function passphraseMatches(supplied, env) {
 
 /** Does this request already carry a valid session? Used by GET /api/session. */
 export async function hasValidSession(request, env, now = Date.now()) {
+  return (await currentSession(request, env, now)) !== null;
+}
+
+/** The session this request carries (passphrase or account), or null. Used by GET /api/session. */
+export async function currentSession(request, env, now = Date.now()) {
   const config = authConfig(env);
-  if (!config.sessions) return false;
-  const cookie = readCookie(request, SESSION_COOKIE);
-  if (!cookie) return false;
-  return sessionIsValid(cookie, config.secret, Math.floor(now / 1000));
+  if (!config.sessions) return null;
+  return sessionPrincipal(request, env, config, Math.floor(now / 1000));
 }

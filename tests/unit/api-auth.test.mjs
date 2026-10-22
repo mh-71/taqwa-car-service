@@ -291,8 +291,10 @@ console.log('\n-- 3. The whole route surface, derived from the registry --');
   ok_('health stays public', (await call('/api/health', { env: authed() })).status === 200);
   const sess = await call('/api/session', { env: authed() });
   ok_('GET /api/session stays public', sess.status === 200, `got ${sess.status}`);
-  check('   ...and says only whether this caller is signed in',
-    Object.keys((await sess.json()).data).sort(), ['authenticated', 'passphrase']);
+  // `accounts` (0009): whether a staff member may sign in with their own
+  // account here. Still nothing about who is signed in for a caller without one.
+  check('   ...and says only whether this caller is signed in, and how signing in works here',
+    Object.keys((await sess.json()).data).sort(), ['accounts', 'authenticated', 'passphrase']);
 }
 {
   // Health is a GET; the gate never sees it, and a wrong method there is

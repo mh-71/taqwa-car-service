@@ -774,7 +774,7 @@ console.log('\n-- 10. The money and the links are left alone --');
 {
   const routes = (await (await call('/api/health', { DB: stubDB() }, 'GET')).json()).data.routes;
   check('health advertises the status route', routes.includes('POST /api/job-cards/:id/status'), true);
-  check('   ...and the registry is 97 routes', routes.length, 97);
+  check('   ...and the registry is 102 routes', routes.length, 102);
   // C-7 added voiding an invoice and C-8 voiding and linking a payment.
   // Every action route is a POST under a record, and no collection has more
   // than the ones it declares.
@@ -792,7 +792,9 @@ console.log('\n-- 10. The money and the links are left alone --');
       // 0007: sending, recording a decision, cancelling and converting an estimate.
       'POST /api/estimates/:id/send', 'POST /api/estimates/:id/approve',
       'POST /api/estimates/:id/reject', 'POST /api/estimates/:id/cancel',
-      'POST /api/estimates/:id/convert']);
+      'POST /api/estimates/:id/convert',
+      // 0009: an administrator setting an account's password.
+      'POST /api/accounts/:id/password']);
   ok_('   ...and no PUT or DELETE on it',
     !routes.includes('PUT /api/job-cards/:id/status')
       && !routes.includes('DELETE /api/job-cards/:id/status'), routes);

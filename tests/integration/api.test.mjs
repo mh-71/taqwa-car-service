@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 97 routes', routes.length === 97, routes);
+  t('advertises 102 routes', routes.length === 102, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('37 GET, 34 POST, 15 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 37, POST: 34, PUT: 15, DELETE: 11 }), byMethod);
+    t('39 GET, 36 POST, 16 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 39, POST: 36, PUT: 16, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -91,7 +91,8 @@ sec('1. Health');
         'POST /api/follow-up-tasks/:id/start', 'POST /api/follow-up-tasks/:id/complete',
         'POST /api/follow-up-tasks/:id/cancel',
         'POST /api/estimates/:id/send', 'POST /api/estimates/:id/approve', 'POST /api/estimates/:id/reject',
-        'POST /api/estimates/:id/cancel', 'POST /api/estimates/:id/convert']), routes);
+        'POST /api/estimates/:id/cancel', 'POST /api/estimates/:id/convert',
+        'POST /api/accounts/:id/password']), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
@@ -4691,8 +4692,9 @@ sec('21. Authentication: every mutation is gated, against the real Worker');
     const sess = await sendAnon('GET', '/api/session');
     t('GET /api/session stays public, because it is how you get a credential',
       sess.status === 200, sess.status);
-    t('   ...and reports only whether this caller is signed in',
-      JSON.stringify(Object.keys(sess.body.data).sort()) === '["authenticated","passphrase"]',
+    // `accounts` (0009): whether a staff member may sign in with their own account here.
+    t('   ...and reports only whether this caller is signed in, and how signing in works',
+      JSON.stringify(Object.keys(sess.body.data).sort()) === '["accounts","authenticated","passphrase"]',
       sess.body.data);
   }
 
@@ -5539,6 +5541,76 @@ sec('28. Staff (0008): one roster of mechanics and other employees, against real
   t('28e without credentials every staff route is 401', anon.status === 401 && anonW.status === 401, [anon.status, anonW.status]);
 
   // cleanup.sql removes these rows (staff first) and resets the counters.
+}
+
+sec('29. User accounts (0009): sign-in for a staff member, against the real Worker');
+{
+  const PW = 'Integration-Pass-1';
+  const SECRET_RE = /pbkdf2|password_hash|passwordHash|session_version|sessionVersion|failed_logins/i;
+  const login = async (body) => {
+    const res = await fetch(BASE + '/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: res.status, cookie: (res.headers.get('set-cookie') || '').split(';')[0] };
+  };
+  const as = async (method, path, cookie, body) => {
+    const res = await fetch(BASE + path, { method, headers: { cookie, ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    let parsed = null; try { parsed = await res.json(); } catch { parsed = null; }
+    return { status: res.status, body: parsed };
+  };
+
+  // 29a. create, for an existing active staff member
+  const made = await send('POST', '/api/accounts', { staffId: 'MEC-9001', username: 'It.Mechanic', role: 'Administrator', password: PW });
+  const A = made.body?.data?.id;
+  t('29a create -> 201 with a USR id, the username in lower case, linked to the mechanic by its MEC id',
+    made.status === 201 && /^USR-\d+$/.test(A ?? '') && made.body?.data?.username === 'it.mechanic' && made.body?.data?.staffId === 'MEC-9001', made.body);
+  t('   ...the response carries no password, hash or session value', !SECRET_RE.test(JSON.stringify(made.body)) && !JSON.stringify(made.body).includes(PW), made.body);
+  const again = await send('POST', '/api/accounts', { staffId: 'MEC-9001', username: 'it.other', role: 'Administrator', password: PW });
+  t('   ...a second account for the same person -> 409 naming the first', again.status === 409 && again.body?.error?.conflictsWith === A, again.body);
+  const forged = await send('POST', '/api/accounts', { staffId: 'MEC-9001', username: 'it.forged', role: 'Administrator', password: PW, id: 'USR-0999', status: 'Inactive', passwordHash: 'x' });
+  t('   ...unsupported properties (id, status, a hash) -> 422 naming each', forged.status === 422 && ['id', 'passwordHash', 'status'].every((k) => k in (forged.body?.error?.fields ?? {})), forged.body);
+  const role = await send('POST', '/api/accounts', { staffId: 'MEC-9001', username: 'it.role', role: 'Mechanic', password: PW });
+  t('   ...a role the Worker cannot enforce -> 422', role.status === 422 && 'role' in (role.body?.error?.fields ?? {}), role.body);
+
+  // 29b. sign in with it
+  const s1 = await login({ username: 'IT.MECHANIC', password: PW });
+  t('29b username + password -> 204 and an account session cookie', s1.status === 204 && s1.cookie.startsWith('taqwa_session=a1.'), s1);
+  t('   ...the cookie does not carry the password', !s1.cookie.includes(PW));
+  const read = await as('GET', '/api/customers', s1.cookie);
+  t('   ...the gate accepts it for business data', read.status === 200, read.status);
+  const me = await as('GET', '/api/session', s1.cookie);
+  t('   ...GET /api/session names the account (id, username, role only)',
+    me.body?.data?.account?.id === A && me.body?.data?.account?.username === 'it.mechanic' && Object.keys(me.body?.data?.account ?? {}).sort().join() === 'id,role,username', me.body);
+  const list = await as('GET', '/api/accounts', s1.cookie);
+  t('   ...an Administrator account may list accounts; its own row is marked, nothing secret',
+    list.status === 200 && list.body?.data?.some((a) => a.id === A && a.self === true) && !SECRET_RE.test(JSON.stringify(list.body)), list.body);
+  const wrong = await login({ username: 'it.mechanic', password: 'Wrong-Password-9' });
+  const nobody = await login({ username: 'it.nobody', password: PW });
+  t('   ...a wrong password and an unknown username are the same 401, with no cookie', wrong.status === 401 && nobody.status === 401 && !wrong.cookie && !nobody.cookie, [wrong, nobody]);
+  const pass = await login({ passphrase: process.env.TAQWA_PASSPHRASE || '' });
+  t('   ...the workshop passphrase still signs in', pass.status === 204 && pass.cookie.startsWith('taqwa_session=v1.'), pass.status);
+  const self = await as('PUT', `/api/accounts/${A}`, s1.cookie, { status: 'Inactive' });
+  t('   ...nobody can deactivate their own account (409)', self.status === 409, self.body);
+
+  // 29c. revocation and a new password
+  const off = await send('PUT', `/api/accounts/${A}`, { status: 'Inactive' });
+  const after = await as('GET', '/api/customers', s1.cookie);
+  t('29c deactivate -> 200, and the account session stops working at once', off.status === 200 && off.body?.data?.status === 'Inactive' && after.status === 401, [off.status, after.status]);
+  const on = await send('PUT', `/api/accounts/${A}`, { status: 'Active' });
+  const stillOff = await as('GET', '/api/customers', s1.cookie);
+  t('   ...re-activated: the old session stays dead', on.status === 200 && stillOff.status === 401, [on.status, stillOff.status]);
+  const reset = await send('POST', `/api/accounts/${A}/password`, { password: 'Integration-Pass-2' });
+  t('   ...a new password is set (200, nothing secret returned)', reset.status === 200 && !SECRET_RE.test(JSON.stringify(reset.body)), reset.body);
+  t('   ...the old password no longer signs in, the new one does',
+    (await login({ username: 'it.mechanic', password: PW })).status === 401 && (await login({ username: 'it.mechanic', password: 'Integration-Pass-2' })).status === 204);
+
+  // 29d. the gate, and the people the account belongs to
+  const anonList = await sendAnon('GET', '/api/accounts');
+  const anonMake = await sendAnon('POST', '/api/accounts', { staffId: 'MEC-9001', username: 'x.y', role: 'Administrator', password: PW });
+  t('29d without credentials every account route is 401', anonList.status === 401 && anonMake.status === 401, [anonList.status, anonMake.status]);
+  const mech = await get('/api/mechanics/MEC-9001');
+  t('   ...the mechanic is unchanged: same id, pay and name', mech.status === 200 && mech.body?.data?.salary === 32000 && mech.body?.data?.name === 'B5 Full Mechanic', mech.body);
+  t('   ...there is no DELETE for accounts (405)', (await send('DELETE', `/api/accounts/${A}`)).status === 405);
+
+  // cleanup.sql removes the account (user_accounts first) and resets the counters.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

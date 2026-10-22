@@ -1,0 +1,81 @@
+/* ============================================================
+   staff-accounts.css — Staff Management › User Accounts only
+   ------------------------------------------------------------
+   Everything is scoped to [data-page="staff-accounts"]; the shared
+   look (crumbs, header, stats, toolbar, table) comes from css/staff.css.
+   ============================================================ */
+
+[data-page="staff-accounts"] .uac-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+[data-page="staff-accounts"] .uac-muted { color: var(--text-3); font-weight: 400; }
+[data-page="staff-accounts"] .uac-table td { vertical-align: middle; }
+[data-page="staff-accounts"] .uac-table .badge { margin-right: 4px; }
+[data-page="staff-accounts"] .uac-danger { color: var(--bad); }
+[data-page="staff-accounts"] .row-actions .icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+[data-page="staff-accounts"] .uac-toolbar .select { min-width: 150px; }
+
+/* ---------- how accounts work ---------- */
+[data-page="staff-accounts"] .uac-note {
+  margin: 0 0 16px; padding: 14px 18px; border: 1px solid var(--line); border-left: 4px solid var(--info);
+  border-radius: var(--radius-sm); background: color-mix(in srgb, var(--info) 6%, var(--surface));
+}
+[data-page="staff-accounts"] .uac-note__title { margin: 0 0 6px; font-size: .9rem; font-weight: 700; color: var(--text-1); }
+[data-page="staff-accounts"] .uac-note__list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: .84rem; color: var(--text-2); }
+[data-page="staff-accounts"] .uac-note__who { margin: 8px 0 0; font-size: .8rem; color: var(--text-3); }
+[data-page="staff-accounts"] .uac-note__who:empty { display: none; }
+
+/* ---------- loading, empty, no results, error ---------- */
+[data-page="staff-accounts"] .uac-state-row td { padding: 0; }
+[data-page="staff-accounts"] .uac-state { display: flex; align-items: flex-start; gap: 14px; padding: 28px 20px; text-align: left; }
+[data-page="staff-accounts"] .uac-state__icon {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  background: color-mix(in srgb, var(--text-3) 14%, var(--surface)); color: var(--text-2);
+}
+[data-page="staff-accounts"] .uac-state__icon svg { width: 20px; height: 20px; }
+[data-page="staff-accounts"] .uac-state--bad .uac-state__icon { background: var(--bad-soft); color: var(--bad); }
+[data-page="staff-accounts"] .uac-state__text h3 { margin: 0 0 4px; font-size: .95rem; }
+[data-page="staff-accounts"] .uac-state__text p { margin: 0; font-size: .85rem; color: var(--text-2); max-width: 64ch; }
+[data-page="staff-accounts"] .uac-state__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px !important; }
+[data-page="staff-accounts"] .uac-skel-row td { padding: 14px 12px; }
+[data-page="staff-accounts"] .uac-skel {
+  display: block; height: 10px; width: 80%; border-radius: var(--radius-sm); background: var(--line);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-page="staff-accounts"] .uac-skel { animation: none; }
+}
+
+/* ---------- dialogs (rendered inside the page body) ---------- */
+[data-page="staff-accounts"] .uac-hint { margin: 6px 0 0; font-size: .76rem; color: var(--text-3); }
+[data-page="staff-accounts"] form > .uac-hint:first-child { margin: 0 0 14px; font-size: .82rem; color: var(--text-2); }
+[data-page="staff-accounts"] .detail-grid + .uac-hint { margin-top: 16px; }
+[data-page="staff-accounts"] .detail-item strong .badge { display: inline-block; margin: 0 4px 0 0; font-size: .74rem; }
+[data-page="staff-accounts"] .field [aria-invalid="true"] { border-color: var(--bad); }
+[data-page="staff-accounts"] .modal__foot { position: sticky; bottom: 0; z-index: 2; background: var(--surface); }
+
+/* ---------- compact (below 1000px): each account becomes a card ---------- */
+@media (max-width: 999px) {
+  [data-page="staff-accounts"] .uac-table thead { display: none; }
+  [data-page="staff-accounts"] .uac-table tbody tr:not(.uac-state-row) {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+  }
+  [data-page="staff-accounts"] .uac-table tbody tr:not(.uac-state-row) td {
+    display: block; padding: 0; border: 0; min-width: 0; white-space: normal;
+  }
+  [data-page="staff-accounts"] .uac-table tbody tr:not(.uac-state-row) td[data-label]::before {
+    content: attr(data-label); display: block;
+    font-size: .68rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--text-3);
+  }
+  [data-page="staff-accounts"] .uac-table tbody tr:not(.uac-state-row) td[data-label="Employee"],
+  [data-page="staff-accounts"] .uac-table tbody tr:not(.uac-state-row) td[data-label="Actions"] { grid-column: 1 / -1; }
+  [data-page="staff-accounts"] .uac-table tbody tr:not(.uac-state-row) td[data-label="Employee"]::before,
+  [data-page="staff-accounts"] .uac-table tbody tr:not(.uac-state-row) td[data-label="Actions"]::before { display: none; }
+  [data-page="staff-accounts"] .uac-table .row-actions .icon-btn--sm { width: 40px; height: 40px; }
+  [data-page="staff-accounts"] .uac-skel-row td:nth-child(n+4) { display: none; }
+}
+@media (max-width: 640px) {
+  [data-page="staff-accounts"] .uac-state { flex-direction: column; gap: 10px; }
+}

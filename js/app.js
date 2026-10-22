@@ -143,21 +143,37 @@ const App = (() => {
      It is a screen rather than a banner on purpose: there is nothing behind
      it to look at, because nothing has been read.                        */
 
-  function renderSignIn(canSignIn) {
+  function renderSignIn(canSignIn, accountSignIn = false) {
     const gate = document.createElement('div');
     gate.className = 'app-gate';
+    // Two ways in, one form: the workshop passphrase (as always) or, where the
+    // server offers it, a staff member's own username and password. Only one
+    // set of fields is visible -- and sent -- at a time.
     gate.innerHTML = `
       <form class="card app-gate__card" id="signInForm">
         <img class="app-gate__logo" src="${document.body.dataset.root || ''}assets/logo/logo-white.png" alt="Taqwa Automobile">
         <h1 class="app-gate__title">Workshop sign in</h1>
         ${canSignIn ? `
-          <div class="field">
+          <div class="field" data-mode="passphrase">
             <label for="gate-passphrase">Passphrase</label>
             <input class="input" type="password" id="gate-passphrase" autocomplete="current-password"
                    autofocus required>
             <span class="field__error" data-err="passphrase"></span>
           </div>
-          <button class="btn btn--primary app-gate__submit" type="button" data-signin>Sign in</button>`
+          ${accountSignIn ? `
+          <div data-mode="account" hidden>
+            <div class="field">
+              <label for="gate-username">Username</label>
+              <input class="input" type="text" id="gate-username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32">
+            </div>
+            <div class="field">
+              <label for="gate-password">Password</label>
+              <input class="input" type="password" id="gate-password" autocomplete="current-password" maxlength="128">
+              <span class="field__error" data-err="account"></span>
+            </div>
+          </div>` : ''}
+          <button class="btn btn--primary app-gate__submit" type="button" data-signin>Sign in</button>
+          ${accountSignIn ? `<button class="btn btn--ghost btn--sm app-gate__switch" type="button" data-switch aria-pressed="false">Sign in with my staff account</button>` : ''}`
         : `<p class="muted-note">This server has no passphrase configured, so there is no way to
              sign in from a browser. An administrator needs to set one.</p>`}
       </form>`;
@@ -168,6 +184,24 @@ const App = (() => {
     const input = gate.querySelector('#gate-passphrase');
     const err = gate.querySelector('[data-err="passphrase"]');
     const button = gate.querySelector('[data-signin]');
+    const switcher = gate.querySelector('[data-switch]');
+    const user = gate.querySelector('#gate-username');
+    const pass = gate.querySelector('#gate-password');
+    const accountErr = gate.querySelector('[data-err="account"]');
+    let useAccount = false;
+    if (switcher) {
+      switcher.addEventListener('click', () => {
+        useAccount = !useAccount;
+        gate.querySelector('[data-mode="passphrase"]').hidden = useAccount;
+        gate.querySelector('[data-mode="account"]').hidden = !useAccount;
+        switcher.textContent = useAccount ? 'Sign in with the workshop passphrase' : 'Sign in with my staff account';
+        switcher.setAttribute('aria-pressed', useAccount ? 'true' : 'false');
+        // Nothing typed for one way in is kept when switching to the other.
+        input.value = ''; user.value = ''; pass.value = '';
+        err.textContent = ''; accountErr.textContent = '';
+        (useAccount ? user : input).focus();
+      });
+    }
 
     // The work hangs off the BUTTON's click, not the form's submit. A submit
     // handler wrapped in Utils.saving cannot stop the navigation: the wrapper
@@ -177,6 +211,19 @@ const App = (() => {
     // rather than the form, which it would otherwise overwrite with "Saving…".
     const submit = Utils.saving(async () => {
       err.textContent = '';
+      if (accountErr) accountErr.textContent = '';
+      if (useAccount) {
+        const res = await Storage.signInWithAccount(user.value, pass.value);
+        // Like the passphrase, the password is never held: cleared either way.
+        pass.value = '';
+        if (!res.ok) {
+          accountErr.textContent = res.message || 'That username and password were not accepted.';
+          pass.focus();
+          return;
+        }
+        location.reload();
+        return;
+      }
       const res = await Storage.signIn(input.value);
       // The passphrase is never held anywhere, including here: the field is
       // cleared whether it worked or not.
@@ -632,7 +679,7 @@ const App = (() => {
       const shell = earlyShell && document.querySelector('.shell');
       if (shell) shell.inert = true;
       rememberSource();
-      renderSignIn(hydration.canSignIn !== false);
+      renderSignIn(hydration.canSignIn !== false, hydration.accountSignIn === true);
       return;
     }
     Storage.seedIfEmpty();

@@ -1,7 +1,7 @@
-/* staff-management-ui — Staff Management: the sidebar group, its seven
-   UI-preview pages, and the static shape of the two real pages (Staff List
-   and Add Staff, whose behaviour is tested in staff-list.test.cjs and
-   staff-add.test.cjs).
+/* staff-management-ui — Staff Management: the sidebar group, its six
+   UI-preview pages, and the static shape of the three real pages (Staff
+   List, Add Staff and User Accounts, whose behaviour is tested in
+   staff-list.test.cjs, staff-add.test.cjs and staff-accounts.test.cjs).
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
@@ -17,14 +17,15 @@
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
         stylesheets aside), declares its own page key and has no file or
-        password input, inline handler or inline script. The seven previews
+        password input, inline handler or inline script. The six previews
         have no form, every button is type="button", they say plainly that
         their content is not saved or sent and load exactly the shared shell
-        scripts plus js/staff-ui.js. Staff List and Add Staff are NOT
-        previews: no preview notice, no Demo badge, no preview-only control,
-        and js/staff-form.js plus their own script in place of
-        js/staff-ui.js. Add Staff is the one page with a form: one submit
-        button (Save Staff), no pay, password or photo field.
+        scripts plus js/staff-ui.js. Staff List, Add Staff and User Accounts
+        are NOT previews: no preview notice, no Demo badge, no preview-only
+        control, and their own scripts in place of js/staff-ui.js. Add Staff
+        is the one page with a form: one submit button (Save Staff), no pay,
+        password or photo field. User Accounts shows no password column and
+        says plainly what an account can do.
      4. js/staff-ui.js never touches the database, browser storage or the
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
@@ -153,7 +154,12 @@ const head = s => s.slice(0, s.indexOf('</head>'));
 const settingsHead = head(read('pages/settings.html'));
 const SCRIPTS = ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../js/utils.js', '../js/app.js', '../js/staff-ui.js'];
 const pages = {};
-const REAL = { 'staff-list': ['staff-list.css', 'staff-list.js'], 'staff-add': ['staff-add.css', 'staff-add.js'] };
+// Each real page: its stylesheet and the scripts it loads after the shared shell.
+const REAL = {
+  'staff-list': ['staff-list.css', ['staff-form.js', 'staff-list.js']],
+  'staff-add': ['staff-add.css', ['staff-form.js', 'staff-add.js']],
+  'staff-accounts': ['staff-accounts.css', ['staff-accounts.js']],
+};
 for (const [key, label] of ENTRIES) {
   const html = read(`pages/${key}.html`);
   const body = html.slice(html.indexOf('<body data-page='));
@@ -170,8 +176,8 @@ for (const [key, label] of ENTRIES) {
   if (real) {
     ok('   ...is NOT a preview: no preview notice, Demo badge, empty-state switch or preview-only control',
       !/stf-preview|Preview:|>Demo<|data-empty-toggle|data-preview|not saved or sent/.test(body), '');
-    check(`   ...loads the shared shell scripts plus js/staff-form.js and js/${real[1]} (never staff-ui.js), last`, scripts,
-      [...SCRIPTS.slice(0, -1), '../js/staff-form.js', `../js/${real[1]}`]);
+    check(`   ...loads the shared shell scripts plus ${real[1].map(f => `js/${f}`).join(' and ')} (never staff-ui.js), last`, scripts,
+      [...SCRIPTS.slice(0, -1), ...real[1].map(f => `../js/${f}`)]);
   } else {
     ok('   ...says it is a preview and that nothing is saved or sent',
       /<div class="stf-preview" role="note">/.test(body) && /<strong>Preview: [^<]+<\/strong>/.test(body) && /Nothing on this page is saved or sent/.test(body), '');
@@ -225,11 +231,15 @@ for (const [key, label] of ENTRIES) {
   ok('   ...a page-level alert and a polite status line', a.includes('id="saAlert" role="alert"') && a.includes('id="saStatus" role="status" aria-live="polite"'), '');
   ok('   ...every field\'s message is tied to its input', [...a.matchAll(/<p class="field__error" id="([^"]+)-err"/g)].every(m => new RegExp(`id="${m[1]}"[^>]*aria-describedby="[^"]*${m[1]}-err`).test(a)), '');
   const u = pages['staff-accounts'];
-  ok('User Accounts: says accounts are not active and passwords are never shown',
-    /not active yet: the workshop still signs in with the shared passphrase/.test(u) && /Passwords are never shown/.test(u), '');
-  check('   ...the requested columns, with no password column', [...u.matchAll(/<th>([^<]+)<\/th>/g)].map(m => m[1]),
-    ['Staff', 'Username', 'Role', 'Account Status', 'Actions']);
-  ok('   ...Create Account only explains it is a preview', u.includes('data-preview="Create Account"'), '');
+  ok('User Accounts: explains what an account is, that every account has full access, and that there is no e-mail recovery',
+    /<h2 class="uac-note__title" id="uacNoteTitle">How accounts work<\/h2>/.test(u) && /full access \(Administrator\)/.test(u)
+      && /Password recovery by e-mail is not available/.test(u) && /shared workshop passphrase, which keeps working/.test(u), '');
+  check('   ...the requested columns, with no password column', [...u.matchAll(/<th scope="col">(?:<span class="uac-sr-only">)?([^<]+)/g)].map(m => m[1]),
+    ['Employee', 'Staff ID', 'Username', 'Role', 'Account Status', 'Last Sign-in', 'Actions']);
+  ok('   ...search, role and status filters, Clear filters and Create Account, all disabled until the data loads',
+    ['uacSearch', 'uacRole', 'uacStatus', 'uacClear', 'uacCreate'].every(id => new RegExp(`id="${id}"[^>]*\\sdisabled`).test(u)), '');
+  ok('   ...the four summary cards', ['uacTotal', 'uacActive', 'uacInactive', 'uacNone'].every(id => u.includes(`id="${id}"`)), '');
+  ok('   ...no password, hash or token anywhere in the markup', !/type="password"|password_hash|passwordHash|token/i.test(u), '');
   const r = pages['staff-roles'];
   ok('Roles & Permissions: says the permissions are an example and not applied', /<strong>not applied<\/strong>/.test(r), '');
   check('   ...a matrix with View, Create, Edit and Delete', [...r.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]),
@@ -284,9 +294,9 @@ check('it never reaches the database, browser storage or the network',
     .filter(t => code.includes(t)), []);
 check('it never writes HTML', ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function'].filter(t => code.includes(t)), []);
 ok('it does not format the demo amounts with Utils.money (which reads the workshop settings)', !code.includes('Utils.money'), '');
-check('it renders exactly the preview Staff pages (Staff List is real and has its own script)',
+check('it renders exactly the preview Staff pages (Staff List, Add Staff and User Accounts are real and have their own scripts)',
   [...code.match(/const RENDER = \{([\s\S]*?)\};/)[1].matchAll(/'([a-z-]+)':/g)].map(m => m[1]),
-  ENTRIES.map(([k]) => k).filter(k => k !== 'staff-add' && k !== 'staff-list'));
+  ENTRIES.map(([k]) => k).filter(k => !REAL[k]));
 ok('every action button it creates is type="button" and only explains it is a preview',
   /type: 'button', class: `icon-btn icon-btn--sm\$\{extraClass\}`, title: label, 'aria-label': label, 'data-preview': label/.test(code)
     && /Preview only: .* is not available yet\. Nothing was saved or sent\./.test(code), '');

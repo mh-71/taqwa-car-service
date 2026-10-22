@@ -199,6 +199,7 @@ COUNTS=$(d1 "SELECT (SELECT count(*) FROM services) + (SELECT count(*) FROM cust
                     + (SELECT count(*) FROM estimates) + (SELECT count(*) FROM estimate_services)
                     + (SELECT count(*) FROM estimate_parts) + (SELECT count(*) FROM estimate_events)
                     + (SELECT count(*) FROM staff)
+                    + (SELECT count(*) FROM user_accounts)
                     + (SELECT count(*) FROM settings)
                     + (SELECT sum(last_value) FROM id_counters) AS n" \
          | grep -oE '"n": *[0-9]+' | grep -oE '[0-9]+')

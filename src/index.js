@@ -105,6 +105,9 @@ import { getSettings, updateSettings } from './routes/settings.js';
 // Staff Management › Staff List. No delete -- an employee who leaves is set
 // Inactive, so every record that names them keeps its meaning.
 import { listStaff, getStaff, createStaff, updateStaff } from './routes/staff.js';
+// User accounts (0009): a sign-in for one existing staff member. Every route
+// also authorizes -- only an administrator may manage accounts.
+import { listAccounts, getAccount, createAccount, updateAccount, setAccountPassword } from './routes/accounts.js';
 import { getWebsiteBookings } from './routes/website-bookings.js';
 
 /**
@@ -211,6 +214,12 @@ const COLLECTIONS = {
   staff: {
     list: listStaff, detail: getStaff,
     create: createStaff, update: updateStaff,
+  },
+  // No remove: an account is deactivated, never deleted.
+  accounts: {
+    list: listAccounts, detail: getAccount,
+    create: createAccount, update: updateAccount,
+    actions: { password: setAccountPassword },
   },
 };
 

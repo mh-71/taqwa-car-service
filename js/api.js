@@ -249,19 +249,38 @@ const Api = (() => {
     return res;
   }
 
+  /**
+   * Sign in with a staff member's own account. Like login(), nothing is kept:
+   * the username and password go straight to the server, and a refusal says
+   * no more than that they were not accepted (the server gives one answer for
+   * an unknown name, a wrong password, an inactive account and a paused one).
+   */
+  async function loginAccount(username, password) {
+    const res = await post('/session', { username, password });
+    if (!res.ok && res.status === 401) {
+      return { ok: false, code: 'unauthorized', message: 'That username and password were not accepted.' };
+    }
+    return res;
+  }
+
   /** End this browser's session. */
   const logout = () => request('DELETE', '/session');
 
   /**
    * Ask whether this browser is signed in, without provoking a 401.
-   * Resolves to { authenticated, passphrase } -- the second saying whether
-   * signing in is possible here at all, so the app knows to offer a form.
+   * Resolves to { authenticated, passphrase, accounts, account } -- whether
+   * signing in is possible here at all (so the app knows to offer a form),
+   * whether a staff member may use their own account, and, for an account
+   * session only, that account's id, username and role.
    */
   async function session() {
     const res = await get('/session');
-    if (!res.ok) return { ok: false, authenticated: false, passphrase: false, code: res.code };
+    if (!res.ok) return { ok: false, authenticated: false, passphrase: false, accounts: false, account: null, code: res.code };
     const data = res.data || {};
-    return { ok: true, authenticated: data.authenticated === true, passphrase: data.passphrase === true };
+    const account = data.account && typeof data.account === 'object'
+      ? { id: String(data.account.id || ''), username: String(data.account.username || ''), role: String(data.account.role || '') }
+      : null;
+    return { ok: true, authenticated: data.authenticated === true, passphrase: data.passphrase === true, accounts: data.accounts === true, account };
   }
 
   /**
@@ -279,7 +298,7 @@ const Api = (() => {
   }
 
   return { configure, hasToken, request, get, post, put, delete: del, probe,
-           login, logout, session,
+           login, loginAccount, logout, session,
            get baseUrl() { return base(); } };
 })();
 
