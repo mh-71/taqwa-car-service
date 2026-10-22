@@ -1,0 +1,103 @@
+/* ============================================================
+   staff-list.css — Staff Management › Staff List only
+   ------------------------------------------------------------
+   Everything is scoped to [data-page="staff-list"]; the shared
+   look (crumbs, header, toolbar, table, avatars, pager) comes from
+   css/staff.css, which the other Staff Management pages also use.
+   ============================================================ */
+
+[data-page="staff-list"] .stl-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+[data-page="staff-list"] .stl-muted { color: var(--text-3); font-weight: 400; }
+[data-page="staff-list"] .stl-email { max-width: 220px; overflow-wrap: anywhere; }
+[data-page="staff-list"] .stl-table td { vertical-align: middle; }
+[data-page="staff-list"] .stl-danger { color: var(--bad); }
+
+/* ---------- toolbar and pager ---------- */
+[data-page="staff-list"] .stl-toolbar .select { min-width: 150px; }
+[data-page="staff-list"] .stl-pagesize { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--text-3); }
+[data-page="staff-list"] .stl-pagesize .select { width: auto; min-width: 72px; padding-top: 4px; padding-bottom: 4px; }
+
+/* ---------- loading, empty, no results, error ---------- */
+[data-page="staff-list"] .stl-state-row td { padding: 0; }
+[data-page="staff-list"] .stl-state {
+  display: flex; align-items: flex-start; gap: 14px; padding: 28px 20px; text-align: left;
+}
+[data-page="staff-list"] .stl-state__icon {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  background: color-mix(in srgb, var(--text-3) 14%, var(--surface)); color: var(--text-2);
+}
+[data-page="staff-list"] .stl-state__icon svg { width: 20px; height: 20px; }
+[data-page="staff-list"] .stl-state--bad .stl-state__icon { background: var(--bad-soft); color: var(--bad); }
+[data-page="staff-list"] .stl-state__text h3 { margin: 0 0 4px; font-size: .95rem; }
+[data-page="staff-list"] .stl-state__text p { margin: 0; font-size: .85rem; color: var(--text-2); max-width: 64ch; }
+[data-page="staff-list"] .stl-state__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px !important; }
+
+[data-page="staff-list"] .stl-skel-row td { padding: 14px 12px; }
+[data-page="staff-list"] .stl-skel {
+  display: block; height: 10px; width: 80%; border-radius: var(--radius-sm); background: var(--line);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+[data-page="staff-list"] .stl-skel-row td:nth-child(2) .stl-skel { width: 100%; height: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  [data-page="staff-list"] .stl-skel { animation: none; }
+}
+
+/* ---------- dialogs (rendered inside the page body) ---------- */
+[data-page="staff-list"] .stl-type {
+  margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--amber, #f59e0b) 6%, var(--surface));
+}
+[data-page="staff-list"] .stl-check { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: .88rem; cursor: pointer; }
+[data-page="staff-list"] .stl-check input { width: 18px; height: 18px; }
+[data-page="staff-list"] .stl-hint { margin: 6px 0 0; font-size: .76rem; color: var(--text-3); }
+[data-page="staff-list"] .stl-type-note { margin: 0 0 14px; font-size: .82rem; color: var(--text-2); }
+[data-page="staff-list"] .detail-grid + .stl-type-note { margin: 16px 0 0; }
+/* .detail-item span is the grey label style; values inside <strong> keep their own look. */
+[data-page="staff-list"] .detail-item strong .badge { display: inline-block; margin: 0; font-size: .74rem; }
+[data-page="staff-list"] .detail-item strong .badge--good { color: var(--good); }
+[data-page="staff-list"] .detail-item strong .badge--bad { color: var(--bad); }
+[data-page="staff-list"] .detail-item strong .stl-muted { display: inline; margin: 0; font-size: .87rem; }
+[data-page="staff-list"] .field[hidden] { display: none; }
+/* The form is taller than a phone screen: keep Cancel / Save in reach while it scrolls. */
+[data-page="staff-list"] .modal__foot { position: sticky; bottom: 0; z-index: 2; background: var(--surface); }
+[data-page="staff-list"] .field [aria-invalid="true"] { border-color: var(--bad); }
+
+/* ---------- compact (below 1100px): each employee becomes a card ---------- */
+/* Nine columns need about 1000px. Below that the heading row is hidden and
+   every cell keeps its value, its label (from data-label) and its actions. */
+@media (max-width: 1099px) {
+  [data-page="staff-list"] .stl-table thead { display: none; }
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: row dense;
+    gap: 8px 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) td {
+    display: block; padding: 0; border: 0; min-width: 0; max-width: none; white-space: normal;
+  }
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: .68rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+    color: var(--text-3);
+  }
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) td[data-label="Name"],
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) td[data-label="Actions"] { grid-column: 1 / -1; }
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) td[data-label="Name"]::before,
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) td[data-label="Actions"]::before { display: none; }
+  [data-page="staff-list"] .stl-table .row-actions .icon-btn--sm { width: 40px; height: 40px; }
+  [data-page="staff-list"] .stl-skel-row td:nth-child(n+5) { display: none; }
+}
+@media (max-width: 640px) {
+  [data-page="staff-list"] .stl-state { flex-direction: column; gap: 10px; }
+  [data-page="staff-list"] .stl-table tbody tr:not(.stl-state-row) td[data-label="Email"] { grid-column: 1 / -1; }
+  [data-page="staff-list"] .stl-pagesize { white-space: nowrap; }
+  [data-page="staff-list"] .stf-pager__btns { width: 100%; flex-wrap: wrap; }
+  [data-page="staff-list"] .stl-skel-row td:nth-child(n+3) { display: none; }
+}

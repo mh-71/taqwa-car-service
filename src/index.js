@@ -101,6 +101,10 @@ import {
 // dispatched directly below, beside /api/health, rather than joining
 // COLLECTIONS — see routes/settings.js for why.
 import { getSettings, updateSettings } from './routes/settings.js';
+// The whole staff roster (0008): mechanics plus every other employee, for
+// Staff Management › Staff List. No delete -- an employee who leaves is set
+// Inactive, so every record that names them keeps its meaning.
+import { listStaff, getStaff, createStaff, updateStaff } from './routes/staff.js';
 import { getWebsiteBookings } from './routes/website-bookings.js';
 
 /**
@@ -203,6 +207,10 @@ const COLLECTIONS = {
       send: sendEstimate, approve: approveEstimate, reject: rejectEstimate,
       cancel: cancelEstimate, convert: convertEstimate,
     },
+  },
+  staff: {
+    list: listStaff, detail: getStaff,
+    create: createStaff, update: updateStaff,
   },
 };
 

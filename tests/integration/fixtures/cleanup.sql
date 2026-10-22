@@ -24,6 +24,10 @@
 -- run.sh refuses to start unless all of these tables are empty, so anything
 -- present here was created by this run and is safe to remove. Order follows
 -- the foreign keys.
+-- 0008: staff rows reference mechanics (a mechanic's profile, CASCADE) or
+-- nothing at all (anyone else), so they can go first; removing them here also
+-- covers the employees the suite creates, which no mechanic delete would.
+DELETE FROM staff;
 -- 0007: estimates reference customers, vehicles, catalogue services, parts and
 -- job cards (all RESTRICT); their lines and history reference the estimate, so
 -- they go first of all, children before the estimates.

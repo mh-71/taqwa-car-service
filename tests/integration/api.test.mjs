@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 93 routes', routes.length === 93, routes);
+  t('advertises 97 routes', routes.length === 97, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('35 GET, 33 POST, 14 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 35, POST: 33, PUT: 14, DELETE: 11 }), byMethod);
+    t('37 GET, 34 POST, 15 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 37, POST: 34, PUT: 15, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -5475,6 +5475,64 @@ sec('27. Estimates (0007): server totals, idempotent creates, the lifecycle and 
   t('   ...without credentials every estimate route is 401', anon.status === 401 && anonL.status === 401, [anon.status, anonL.status]);
 
   // cleanup.sql removes these rows (estimates first) and resets the counters.
+}
+
+sec('28. Staff (0008): one roster of mechanics and other employees, against real D1');
+{
+  // 28a. every mechanic is on the roster, with no profile needed and no pay
+  const list = await get('/api/staff?limit=1000');
+  const ids = (list.body?.data ?? []).map((s) => s.id);
+  t('28a GET /api/staff -> 200, listing the seeded mechanics as mechanics',
+    list.status === 200 && ['MEC-9001', 'MEC-9002', 'MEC-9003'].every((id) => ids.includes(id))
+      && list.body.data.filter((s) => /^MEC-9/.test(s.id)).every((s) => s.isMechanic === true && s.designation === 'Mechanic'), list.body);
+  t('   ...and no pay anywhere, though MEC-9001 has a salary and commission', !/salary|commission/i.test(JSON.stringify(list.body)), '');
+
+  // 28b. an employee who is not a mechanic
+  const body = { name: 'Integration Accountant', phone: '01755000101', email: 'acct@example.test', employeeCode: 'IT-101',
+    designation: 'Accountant', department: 'Accounts', joiningDate: '2025-01-15' };
+  const c = await send('POST', '/api/staff', body);
+  const S = c.body?.data?.id;
+  t('28b create -> 201 with an STF id', c.status === 201 && /^STF-\d+$/.test(S ?? '') && c.body?.data?.isMechanic === false, c.body);
+  const again = await get(`/api/staff?q=${encodeURIComponent('integration acc')}`);
+  t('   ...a later read finds it (it was persisted)', again.status === 200 && again.body?.data?.length === 1 && again.body.data[0].id === S, again.body);
+  const dupCode = await send('POST', '/api/staff', { ...body, phone: '01755000102', employeeCode: 'it-101' });
+  t('   ...a duplicate employee code, any case -> 409 on employeeCode', dupCode.status === 409 && dupCode.body?.error?.field === 'employeeCode', dupCode.body);
+  const dupPhone = await send('POST', '/api/staff', { ...body, employeeCode: 'IT-102', phone: '01911000001' });
+  t('   ...an active mechanic\'s phone -> 409 naming the mechanic', dupPhone.status === 409 && dupPhone.body?.error?.conflictsWith === 'MEC-9001', dupPhone.body);
+  const bad = await send('POST', '/api/staff', { name: 'X', phone: '01755000103', salary: 1 });
+  t('   ...missing designation/department and a pay field -> 422 naming each',
+    bad.status === 422 && ['designation', 'department', 'salary'].every((k) => k in (bad.body?.error?.fields ?? {})), bad.body);
+
+  // 28c. deactivate, filter, no delete
+  const off = await send('PUT', `/api/staff/${S}`, { status: 'Inactive' });
+  const inactive = await get('/api/staff?status=Inactive');
+  t('28c deactivate -> 200 Inactive, and the status filter finds it',
+    off.status === 200 && off.body?.data?.status === 'Inactive' && inactive.body?.data?.some((s) => s.id === S), [off.body, inactive.body]);
+  const del = await send('DELETE', `/api/staff/${S}`);
+  t('   ...staff are never deleted (405, Allow: GET, PUT)', del.status === 405 && del.allow === 'GET, PUT', [del.status, del.allow]);
+
+  // 28d. a mechanic, edited from the staff list, is the same record the Mechanics page shows
+  const e = await send('PUT', '/api/staff/MEC-9001', { employeeCode: 'IT-001', department: 'Workshop', designation: 'Head Mechanic' });
+  const mech = await get('/api/mechanics/MEC-9001');
+  t('28d editing a mechanic\'s profile -> 200; the Mechanics record keeps its name and pay',
+    e.status === 200 && e.body?.data?.designation === 'Head Mechanic' && mech.body?.data?.name === 'B5 Full Mechanic' && mech.body?.data?.salary === 32000, [e.body, mech.body]);
+  const m = await send('POST', '/api/staff', { isMechanic: true, name: 'Integration Mechanic', phone: '01755000104', specialization: 'Tyres', employeeCode: 'IT-104' });
+  const MID = m.body?.data?.id;
+  const viaMech = await get(`/api/mechanics/${MID}`);
+  t('   ...a mechanic added from the staff list gets a MEC id the Mechanics API returns',
+    m.status === 201 && /^MEC-\d+$/.test(MID ?? '') && viaMech.status === 200 && viaMech.body?.data?.specialization === 'Tyres', [m.body, viaMech.body]);
+  const gone = await send('DELETE', `/api/mechanics/${MID}`);
+  const after = await get(`/api/staff/${MID}`);
+  t('   ...deleting that unused mechanic on the Mechanics page also removes its profile', gone.status === 200 && after.status === 404, [gone.status, after.status]);
+  const used = await send('DELETE', '/api/mechanics/MEC-9001');
+  t('   ...a mechanic with job cards still cannot be deleted (409), profile and all', used.status === 409 && (await get('/api/staff/MEC-9001')).status === 200, used.body);
+
+  // 28e. the gate
+  const anon = await sendAnon('GET', '/api/staff');
+  const anonW = await sendAnon('POST', '/api/staff', body);
+  t('28e without credentials every staff route is 401', anon.status === 401 && anonW.status === 401, [anon.status, anonW.status]);
+
+  // cleanup.sql removes these rows (staff first) and resets the counters.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);

@@ -1,9 +1,13 @@
 /* ============================================================
    staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by the nine Staff Management pages. Each page says which
-   it is through <body data-page="...">, and this file fills in
-   that page from the DEMO data below.
+   Loaded by eight of the Staff Management pages. Each page says
+   which it is through <body data-page="...">, and this file fills
+   in that page from the DEMO data below.
+
+   The ninth, Staff List, is NOT a preview: it reads and writes the
+   workshop database through js/staff-list.js and never loads this
+   file, so nothing here can reach it.
 
    What this file deliberately does NOT do:
      - read or write the workshop database (no Api, no Storage);
@@ -446,43 +450,6 @@ const StaffUI = (() => {
       h('td', {}, h('div', { class: 'row-actions' }, previewBtn('more', `More actions for ${m.name}`))))));
   }
 
-  /* ---------- Staff List ---------- */
-
-  function renderStaffList() {
-    const PAGE = 8;
-    const state = { page: 1, empty: false };
-    const q = $('stfSearch'), role = $('stfRole'), dept = $('stfDept'), status = $('stfStatus');
-    options(role, ROLE_ORDER);
-    options(dept, [...new Set(DEMO_STAFF.map(s => s.department))].sort());
-
-    function draw() {
-      const source = state.empty ? [] : DEMO_STAFF;
-      const list = filterStaff(source, { q: q.value, role: role.value, department: dept.value, status: status.value });
-      const res = paginate(list, state.page, PAGE);
-      state.page = res.page;
-      $('stfListEmpty').hidden = source.length > 0;
-      $('stfListCard').hidden = source.length === 0;
-      $('stfListCount').textContent = `${list.length} of ${source.length} staff`;
-      fill($('stfListBody'), ...(res.rows.length ? res.rows.map(m => h('tr', {},
-        h('td', { class: 'stf-nowrap', text: m.id }),
-        h('td', {}, person(m, null)),
-        h('td', { text: m.designation }),
-        h('td', { text: m.department }),
-        h('td', { class: 'stf-nowrap', text: m.phone }),
-        h('td', { text: m.email }),
-        h('td', {}, statusBadge(m.status)),
-        h('td', { class: 'stf-nowrap', text: fmtDay(m.joined) }),
-        h('td', {}, h('div', { class: 'row-actions' },
-          previewBtn('view', `View ${m.name}`), previewBtn('edit', `Edit ${m.name}`), previewBtn('more', `More actions for ${m.name}`)))))
-        : [emptyRow(9, 'No staff match these filters', 'Try a different search, or clear the filters.')]));
-      pager('stfList', res, p => { state.page = p; draw(); });
-    }
-    [q, role, dept, status].forEach(c => c.addEventListener(c === q ? 'input' : 'change', () => { state.page = 1; draw(); }));
-    $('stfListClear').addEventListener('click', () => { q.value = ''; role.value = 'all'; dept.value = 'all'; status.value = 'all'; state.page = 1; draw(); });
-    emptyToggle(empty => { state.empty = empty; state.page = 1; draw(); });
-    draw();
-  }
-
   /* ---------- User Accounts ---------- */
 
   function renderAccounts() {
@@ -760,7 +727,6 @@ const StaffUI = (() => {
 
   const RENDER = {
     'staff-management': renderOverview,
-    'staff-list': renderStaffList,
     'staff-accounts': renderAccounts,
     'staff-roles': renderRoles,
     'staff-attendance': renderAttendance,

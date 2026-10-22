@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
   <link rel="stylesheet" href="../css/staff.css">
+  <link rel="stylesheet" href="../css/staff-list.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -37,8 +38,9 @@
 
   <div id="page-content">
 
-    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
-         writes the workshop database or browser storage, and no button saves or sends anything. -->
+    <!-- Staff List. Filled in by js/staff-list.js from the workshop database
+         (GET /api/staff) and nothing else: with no database, a failed read or
+         a signed-out browser, the table says so and shows no one. -->
 
     <nav class="stf-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -47,52 +49,47 @@
       </ol>
     </nav>
     <div class="stf-head">
-      <p class="page-subtitle">Every staff member, with search and filters.</p>
-      <div class="stf-head__actions"><a class="btn btn--primary" href="staff-add.html"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add Staff</span></a></div>
+      <p class="page-subtitle">Every employee in the workshop database: mechanics and all other staff.</p>
+      <div class="stf-head__actions"><button type="button" class="btn btn--primary" id="stlAdd" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add Staff</span></button></div>
     </div>
-    <div class="stf-preview" role="note">
-      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="stf-preview__text"><strong>Preview: demo data, not real staff records.</strong> Nothing on this page is saved or sent.</p>
-      <button type="button" class="btn btn--ghost btn--sm stf-preview__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
+    <div class="toolbar stf-toolbar stl-toolbar" role="search" aria-label="Find staff">
+      <input type="search" class="input toolbar__search" id="stlSearch" placeholder="Search name, ID, code, phone, email&#8230;" aria-label="Search staff" autocomplete="off" maxlength="100" disabled>
+      <select class="select" id="stlDesignation" aria-label="Filter by designation" disabled><option value="all">All designations</option></select>
+      <select class="select" id="stlDepartment" aria-label="Filter by department" disabled><option value="all">All departments</option></select>
+      <select class="select" id="stlStatus" aria-label="Filter by status" disabled><option value="all">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
+      <select class="select" id="stlSort" aria-label="Sort staff" disabled>
+        <option value="name-asc">Name (A&#8211;Z)</option>
+        <option value="name-desc">Name (Z&#8211;A)</option>
+        <option value="joined-desc">Joining date (newest)</option>
+        <option value="joined-asc">Joining date (oldest)</option>
+        <option value="status">Status (Active first)</option>
+      </select>
+      <button type="button" class="btn btn--ghost btn--sm" id="stlClear" disabled>Clear filters</button>
+      <span class="toolbar__count" id="stlCount" aria-live="polite"></span>
     </div>
-    <div class="toolbar stf-toolbar" role="search" aria-label="Find staff">
-      <input type="search" class="input toolbar__search" id="stfSearch" placeholder="Search name, ID, designation or email&#8230;" aria-label="Search staff" autocomplete="off">
-      <select class="select" id="stfRole" aria-label="Filter by role"><option value="all">All roles</option></select>
-      <select class="select" id="stfDept" aria-label="Filter by department"><option value="all">All departments</option></select>
-      <select class="select" id="stfStatus" aria-label="Filter by status"><option value="all">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
-      <button type="button" class="btn btn--ghost btn--sm" id="stfListClear">Clear filters</button>
-      <span class="toolbar__count" id="stfListCount"></span>
-    </div>
-    <section class="card stf-table-card" id="stfListCard" aria-labelledby="stfListTitle">
+    <section class="card stf-table-card" aria-labelledby="stlTitle">
       <div class="card__head">
-        <h2 id="stfListTitle">Staff</h2>
-        <span class="badge badge--neutral">Demo</span>
+        <h2 id="stlTitle">Staff</h2>
       </div>
       <div class="table-wrap">
-        <table class="table table--compact stf-table">
+        <table class="table table--compact stf-table stl-table" id="stlTable" aria-describedby="stlCount" aria-busy="true">
+          <caption class="stl-sr-only">Staff members</caption>
           <thead>
-            <tr><th>Staff ID</th><th>Name</th><th>Designation</th><th>Department</th><th>Phone</th><th>Email</th><th>Status</th><th>Joining Date</th><th>Actions</th></tr>
+            <tr><th scope="col">Staff ID / Code</th><th scope="col">Name</th><th scope="col">Designation</th><th scope="col">Department</th><th scope="col">Phone</th><th scope="col">Email</th><th scope="col">Status</th><th scope="col">Joining Date</th><th scope="col"><span class="stl-sr-only">Actions</span></th></tr>
           </thead>
-          <tbody id="stfListBody"></tbody>
+          <tbody id="stlBody"></tbody>
         </table>
       </div>
-      <div class="card__body stf-card-foot">
+      <div class="card__body stf-card-foot" id="stlFoot" hidden>
         <div class="stf-pager" role="navigation" aria-label="Staff list pages">
-          <span class="stf-pager__range" id="stfListRange" aria-live="polite"></span>
+          <span class="stf-pager__range" id="stlRange" aria-live="polite"></span>
           <div class="stf-pager__btns">
-            <button type="button" class="btn btn--ghost btn--sm" id="stfListPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
-            <button type="button" class="btn btn--ghost btn--sm" id="stfListNext"><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
+            <label class="stl-pagesize"><span>Rows per page</span>
+              <select class="select" id="stlPageSize"><option value="10">10</option><option value="25" selected>25</option><option value="50">50</option><option value="100">100</option></select>
+            </label>
+            <button type="button" class="btn btn--ghost btn--sm" id="stlPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="stlNext"><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
           </div>
-        </div>
-      </div>
-    </section>
-    <section class="card" id="stfListEmpty" aria-labelledby="stfListEmptyTitle" hidden>
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M16.5 12c1.38 0 2.49-1.12 2.49-2.5S17.88 7 16.5 7C15.12 7 14 8.12 14 9.5s1.12 2.5 2.5 2.5zM9 11c1.66 0 2.99-1.34 2.99-3S10.66 5 9 5C7.34 5 6 6.34 6 8s1.34 3 3 3zm7.5 3c-1.83 0-5.5.92-5.5 2.75V19h11v-2.25c0-1.83-3.67-2.75-5.5-2.75zM9 13c-2.33 0-7 1.17-7 3.5V19h7v-2.25c0-.85.33-2.34 2.37-3.47C10.5 13.1 9.66 13 9 13z"/></svg>
-          <h3 id="stfListEmptyTitle">No staff yet</h3>
-          <p>Staff members appear here once they are added.</p>
-          <a class="btn btn--primary" href="staff-add.html"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add Staff</span></a>
         </div>
       </div>
     </section>
@@ -104,7 +101,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/staff-ui.js"></script>
+  <script src="../js/staff-list.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>
