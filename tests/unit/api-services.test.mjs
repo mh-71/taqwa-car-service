@@ -383,6 +383,8 @@ console.log('\n-- 11. Routing --');
     'POST /api/estimates/:id/cancel', 'POST /api/estimates/:id/convert',
     // 0008: staff have no DELETE (deactivate instead) and no actions.
     'GET /api/staff', 'POST /api/staff', 'GET /api/staff/:id', 'PUT /api/staff/:id',
+    // 0009: accounts have no DELETE (deactivate instead); setting a new password is an action.
+    'GET /api/accounts', 'POST /api/accounts', 'GET /api/accounts/:id', 'PUT /api/accounts/:id', 'POST /api/accounts/:id/password',
     // Settings is a singleton: a read and a write, and no /:id — there is
     // no create or delete for a row that is permanently id 1.
     'GET /api/settings', 'PUT /api/settings',
@@ -393,7 +395,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 97);
+  check('404 advertises every route', body.error.available.length, 102);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

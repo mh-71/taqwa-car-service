@@ -24,6 +24,9 @@
 -- run.sh refuses to start unless all of these tables are empty, so anything
 -- present here was created by this run and is safe to remove. Order follows
 -- the foreign keys.
+-- 0009: accounts reference mechanics or staff (CASCADE), and nothing
+-- references them, so they go first of all.
+DELETE FROM user_accounts;
 -- 0008: staff rows reference mechanics (a mechanic's profile, CASCADE) or
 -- nothing at all (anyone else), so they can go first; removing them here also
 -- covers the employees the suite creates, which no mechanic delete would.

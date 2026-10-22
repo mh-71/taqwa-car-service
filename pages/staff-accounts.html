@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
   <link rel="stylesheet" href="../css/staff.css">
+  <link rel="stylesheet" href="../css/staff-accounts.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -37,8 +38,10 @@
 
   <div id="page-content">
 
-    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
-         writes the workshop database or browser storage, and no button saves or sends anything. -->
+    <!-- User Accounts. Filled in by js/staff-accounts.js from the workshop database
+         (GET /api/accounts and /api/staff) and nothing else. Every change goes through
+         the Worker, which allows it only to an administrator. No password, hash or
+         session value is ever shown, sent back or kept in the browser. -->
 
     <nav class="stf-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -47,27 +50,33 @@
       </ol>
     </nav>
     <div class="stf-head">
-      <p class="page-subtitle">Sign-in accounts for staff members.</p>
-      <div class="stf-head__actions"><button type="button" class="btn btn--primary" data-preview="Create Account"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Create Account</span></button></div>
+      <p class="page-subtitle">Give a staff member their own sign-in, see who can sign in, and switch an account off when someone leaves.</p>
+      <div class="stf-head__actions"><button type="button" class="btn btn--primary" id="uacCreate" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Create Account</span></button></div>
     </div>
-    <div class="stf-preview" role="note">
-      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="stf-preview__text"><strong>Preview: demo data, not real staff records.</strong> Nothing on this page is saved or sent. Individual sign-in accounts are not active yet: the workshop still signs in with the shared passphrase. Passwords are never shown.</p>
-    </div>
-    <section class="stats-grid stf-stats" aria-label="Account summary (demo data)">
+    <section class="uac-note" aria-labelledby="uacNoteTitle">
+      <h2 class="uac-note__title" id="uacNoteTitle">How accounts work</h2>
+      <ul class="uac-note__list">
+        <li>An account lets one staff member sign in with <strong>their own username and password</strong> instead of the shared workshop passphrase, which keeps working.</li>
+        <li>Every account has <strong>full access (Administrator)</strong>. Restricted roles such as Mechanic or Accountant need Roles &amp; Permissions to be enforced first, so they cannot be given yet.</li>
+        <li>Deactivating an account, or setting a new password, <strong>signs that person out everywhere</strong> straight away. Someone whose staff record is inactive cannot sign in.</li>
+        <li>Password recovery by e-mail is not available. An administrator sets a new password here instead.</li>
+      </ul>
+      <p class="uac-note__who" id="uacWho" aria-live="polite"></p>
+    </section>
+    <section class="stats-grid stf-stats" aria-label="Account summary">
       <div class="stat stf-stat">
         <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Total Accounts</div>
-          <div class="stat__value" id="stfAccTotal"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Demo</div>
+          <div class="stat__value" id="uacTotal"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">From the workshop database</div>
         </div>
       </div>
       <div class="stat stf-stat">
         <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11 7L9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Active Accounts</div>
-          <div class="stat__value" id="stfAccActive"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="uacActive"><span aria-hidden="true">&#8212;</span></div>
           <div class="stf-stat__sub">Can sign in</div>
         </div>
       </div>
@@ -75,40 +84,38 @@
         <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Inactive Accounts</div>
-          <div class="stat__value" id="stfAccInactive"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="uacInactive"><span aria-hidden="true">&#8212;</span></div>
           <div class="stf-stat__sub">Cannot sign in</div>
         </div>
       </div>
       <div class="stat stf-stat">
         <div class="stat__icon stf-icon--neutral"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">Staff Without an Account</div>
-          <div class="stat__value" id="stfAccNone"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">No sign-in</div>
+          <div class="stat__label">Active Staff Without an Account</div>
+          <div class="stat__value" id="uacNone"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Sign in with the passphrase only</div>
         </div>
       </div>
     </section>
-    <div class="toolbar stf-toolbar" role="search" aria-label="Find accounts">
-      <input type="search" class="input toolbar__search" id="stfAccSearch" placeholder="Search name, ID or username&#8230;" aria-label="Search accounts" autocomplete="off">
-      <select class="select" id="stfAccRole" aria-label="Filter by role"><option value="all">All roles</option></select>
-      <select class="select" id="stfAccStatus" aria-label="Filter by account status"><option value="all">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
-      <span class="toolbar__count" id="stfAccCount"></span>
+    <div class="toolbar stf-toolbar uac-toolbar" role="search" aria-label="Find accounts">
+      <input type="search" class="input toolbar__search" id="uacSearch" placeholder="Search name, staff ID or username&#8230;" aria-label="Search accounts" autocomplete="off" maxlength="100" disabled>
+      <select class="select" id="uacRole" aria-label="Filter by role" disabled><option value="all">All roles</option></select>
+      <select class="select" id="uacStatus" aria-label="Filter by account status" disabled><option value="all">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
+      <button type="button" class="btn btn--ghost btn--sm" id="uacClear" disabled>Clear filters</button>
+      <span class="toolbar__count" id="uacCount" aria-live="polite"></span>
     </div>
-    <section class="card stf-table-card" aria-labelledby="stfAccTitle">
+    <section class="card stf-table-card" aria-labelledby="uacTitle">
       <div class="card__head">
-        <h2 id="stfAccTitle">Accounts</h2>
-        <span class="badge badge--neutral">Demo</span>
+        <h2 id="uacTitle">Accounts</h2>
       </div>
       <div class="table-wrap">
-        <table class="table stf-table">
+        <table class="table table--compact stf-table uac-table" id="uacTable" aria-describedby="uacCount" aria-busy="true">
+          <caption class="uac-sr-only">User accounts</caption>
           <thead>
-            <tr><th>Staff</th><th>Username</th><th>Role</th><th>Account Status</th><th>Actions</th></tr>
+            <tr><th scope="col">Employee</th><th scope="col">Staff ID</th><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Account Status</th><th scope="col">Last Sign-in</th><th scope="col"><span class="uac-sr-only">Actions</span></th></tr>
           </thead>
-          <tbody id="stfAccBody"></tbody>
+          <tbody id="uacBody"></tbody>
         </table>
-      </div>
-      <div class="card__body stf-card-foot">
-        <p class="stf-muted">Reset Password and Activate / Deactivate are shown for layout only. Passwords are never displayed on this page.</p>
       </div>
     </section>
 
@@ -119,7 +126,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/staff-ui.js"></script>
+  <script src="../js/staff-accounts.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>

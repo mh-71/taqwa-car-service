@@ -456,6 +456,8 @@ a.nav__sub:hover { background: rgba(255, 255, 255, .06); color: #fff; text-decor
   margin: 0 0 4px; color: var(--text-1);
 }
 .app-gate__submit { width: 100%; justify-content: center; }
+/* Offered only where staff accounts can sign in (User Accounts, 0009). */
+.app-gate__switch { align-self: center; margin-top: 2px; }
 
 /* No server answering: the records on screen live in this browser only. */
 .sidebar__foot-dot--local {

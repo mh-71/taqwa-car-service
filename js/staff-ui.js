@@ -1,13 +1,14 @@
 /* ============================================================
    staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by eight of the Staff Management pages. Each page says
+   Loaded by six of the Staff Management pages. Each page says
    which it is through <body data-page="...">, and this file fills
    in that page from the DEMO data below.
 
-   The ninth, Staff List, is NOT a preview: it reads and writes the
-   workshop database through js/staff-list.js and never loads this
-   file, so nothing here can reach it.
+   Staff List, Add Staff and User Accounts are NOT previews: they
+   read and write the workshop database through js/staff-list.js,
+   js/staff-add.js and js/staff-accounts.js and never load this
+   file, so nothing here can reach them.
 
    What this file deliberately does NOT do:
      - read or write the workshop database (no Api, no Storage);
@@ -450,39 +451,6 @@ const StaffUI = (() => {
       h('td', {}, h('div', { class: 'row-actions' }, previewBtn('more', `More actions for ${m.name}`))))));
   }
 
-  /* ---------- User Accounts ---------- */
-
-  function renderAccounts() {
-    const s = summary();
-    $('stfAccTotal').textContent = String(s.accounts);
-    $('stfAccActive').textContent = String(s.accountsActive);
-    $('stfAccInactive').textContent = String(s.accountsInactive);
-    $('stfAccNone').textContent = String(s.total - s.accounts);
-    const withAccount = DEMO_STAFF.filter(m => m.account);
-    const q = $('stfAccSearch'), role = $('stfAccRole'), status = $('stfAccStatus');
-    options(role, ROLE_ORDER.filter(r => withAccount.some(m => m.role === r)));
-
-    function draw() {
-      const needle = q.value.trim().toLowerCase();
-      const list = withAccount.filter(m =>
-        (!needle || [m.name, m.id, m.username].some(v => v.toLowerCase().includes(needle)))
-        && (role.value === 'all' || m.role === role.value)
-        && (status.value === 'all' || m.account === status.value));
-      $('stfAccCount').textContent = `${list.length} of ${withAccount.length} accounts`;
-      fill($('stfAccBody'), ...(list.length ? list.map(m => h('tr', {},
-        h('td', {}, person(m)),
-        h('td', { class: 'stf-mono', text: m.username }),
-        h('td', {}, roleBadge(m.role)),
-        h('td', {}, statusBadge(m.account)),
-        h('td', {}, h('div', { class: 'row-actions' },
-          previewBtn('key', `Reset password for ${m.name}`),
-          previewBtn('power', `${m.account === 'Active' ? 'Deactivate' : 'Activate'} the account of ${m.name}`)))))
-        : [emptyRow(5, 'No accounts match these filters', 'Try a different search, or clear the filters.')]));
-    }
-    [q, role, status].forEach(c => c.addEventListener(c === q ? 'input' : 'change', draw));
-    draw();
-  }
-
   /* ---------- Roles & Permissions ---------- */
 
   function renderRoles() {
@@ -727,7 +695,6 @@ const StaffUI = (() => {
 
   const RENDER = {
     'staff-management': renderOverview,
-    'staff-accounts': renderAccounts,
     'staff-roles': renderRoles,
     'staff-attendance': renderAttendance,
     'staff-leave': renderLeave,

@@ -7,22 +7,26 @@
    gate that requires one.
 
      POST   /api/session   { passphrase }  -> 204 + Set-Cookie
+                           { username, password }  (a staff member's account)
      DELETE /api/session                   -> 204 + cleared cookie
-     GET    /api/session                   -> { authenticated }
+     GET    /api/session                   -> { authenticated, passphrase, accounts, account? }
 
    Being public is exactly why each is written to give nothing
    away. The POST answers a wrong passphrase with the same 401
    the rest of the API uses, after a constant-time comparison,
    and never says whether a passphrase is configured at all.
-   The GET reports a boolean and no more -- not when the session
-   expires, not who holds it, because there is no who.
+   The GET reports a boolean -- and, for an account session only,
+   that account's own id, username and role, so the app can say who
+   is signed in. A passphrase session has no who. A wrong username
+   and a wrong password are one and the same 401.
    ============================================================ */
 
 import { ok, fail, methodNotAllowed, SECURITY_HEADERS } from '../lib/http.js';
 import { readJsonBody } from '../lib/write.js';
 import {
-  authConfig, issueSessionCookie, clearSessionCookie, passphraseMatches, hasValidSession,
+  authConfig, issueSessionCookie, issueAccountSessionCookie, clearSessionCookie, passphraseMatches, currentSession,
 } from '../lib/auth.js';
+import { checkAccountSignIn } from '../lib/accounts.js';
 
 /** 204: there is nothing to say, and a body would only be a place to leak. */
 function noContent(cookie) {
@@ -52,6 +56,16 @@ async function createSession(request, env) {
 
   const body = await readJsonBody(request);
   if (body.error) return fail('invalid_body', body.error, 400);
+
+  // A staff member's account: username + password. Every failure -- no such
+  // user, wrong password, inactive, paused after too many tries -- is the same
+  // 401 as a wrong passphrase.
+  if (body.value && typeof body.value === 'object' && body.value.username !== undefined) {
+    if (!config.sessions) return fail('unauthorized', 'Authentication required.', 401);
+    const account = await checkAccountSignIn(env, body.value.username, body.value.password);
+    if (!account) return fail('unauthorized', 'Authentication required.', 401);
+    return noContent(await issueAccountSessionCookie(env, account));
+  }
 
   // Read it without trusting the type: `passphrase: {}` must not reach the
   // comparison as an object.
@@ -85,13 +99,19 @@ function destroySession() {
  */
 async function readSession(request, env) {
   const config = authConfig(env);
+  const who = await currentSession(request, env);
   return ok(
     {
-      authenticated: await hasValidSession(request, env),
+      authenticated: who !== null,
       // Whether signing in is even possible here. A deployment with only a
       // machine token has no login form to offer, and the app needs to know
       // that without guessing from a failure.
       passphrase: config.sessions,
+      // Whether a staff member may sign in with their own account here.
+      accounts: config.sessions && Boolean(env && env.DB),
+      // Who is signed in -- only for an account session, and only the
+      // account's own id, username and role.
+      ...(who && who.kind === 'account' ? { account: { id: who.id, username: who.username, role: who.role } } : {}),
     },
     {},
     200
