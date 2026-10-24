@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
   <link rel="stylesheet" href="../css/staff.css">
+  <link rel="stylesheet" href="../css/staff-roles.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -37,8 +38,10 @@
 
   <div id="page-content">
 
-    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
-         writes the workshop database or browser storage, and no button saves or sends anything. -->
+    <!-- Roles & Permissions. Filled in by js/staff-roles.js from the Worker: the routes it
+         really serves (GET /api/health) and, for an administrator, the accounts that hold
+         each role (GET /api/accounts). Read-only: nothing here changes who may do what,
+         and the page says plainly which rules the server enforces and which it does not. -->
 
     <nav class="stf-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -47,44 +50,52 @@
       </ol>
     </nav>
     <div class="stf-head">
-      <p class="page-subtitle">What each role would be able to see and change.</p>
+      <p class="page-subtitle">Which roles exist, what each one can do in the app, and which of those rules the server enforces.</p>
     </div>
-    <div class="stf-preview" role="note">
-      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="stf-preview__text"><strong>Preview: demo data, not real staff records.</strong> Nothing on this page is saved or sent. These permissions are an example layout and are <strong>not applied</strong>: access is not restricted by role in this release.</p>
-    </div>
+    <section class="rop-note" aria-labelledby="ropNoteTitle">
+      <h2 class="rop-note__title" id="ropNoteTitle">How access works today</h2>
+      <ul class="rop-note__list">
+        <li>There is <strong>one role: Administrator</strong>, with <strong>full access</strong> to everything the app can do. Every user account has it.</li>
+        <li>The shared workshop passphrase also gives full access. Every part of the app needs a sign-in first.</li>
+        <li>The one rule the server checks by role: <strong>only an administrator can manage user accounts</strong>.</li>
+        <li>Restricted roles such as Mechanic or Accountant are <strong>not available</strong>: the server does not check narrower permissions yet, so they could not be honoured. This page changes nothing.</li>
+      </ul>
+      <p class="rop-note__who" id="ropWho" aria-live="polite"></p>
+    </section>
+    <div class="rop-alert" id="ropAlert" role="alert" hidden></div>
     <div class="stf-roles">
-      <section class="card stf-roles__list" aria-labelledby="stfRolesTitle">
+      <section class="card stf-roles__list" aria-labelledby="ropRolesTitle">
         <div class="card__head">
           <span class="stf-card-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg></span>
-          <h2 id="stfRolesTitle">Roles</h2>
+          <h2 id="ropRolesTitle">Roles</h2>
         </div>
         <div class="card__body">
-          <div class="stf-rolelist" id="stfRoleList" role="group" aria-label="Choose a role"></div>
+          <div class="stf-rolelist" id="ropRoleList" role="group" aria-label="Roles" aria-busy="true"></div>
         </div>
       </section>
-      <section class="card stf-roles__detail" aria-labelledby="stfRoleName" aria-live="polite">
+      <section class="card stf-roles__detail" aria-labelledby="ropRoleName">
         <div class="card__head stf-role-head">
           <div>
-            <h2 id="stfRoleName"><span aria-hidden="true">&#8212;</span></h2>
-            <p class="stf-muted" id="stfRoleDesc"></p>
+            <h2 id="ropRoleName"><span aria-hidden="true">&#8212;</span></h2>
+            <p class="stf-muted" id="ropRoleDesc"></p>
           </div>
           <span class="spacer"></span>
-          <span class="badge badge--neutral" id="stfRoleMembers"></span>
-          <button type="button" class="btn btn--ghost btn--sm" data-preview="Edit permissions"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M3 17.2V21h3.8l11-11.1-3.7-3.7L3 17.2zM20.7 7c.4-.4.4-1 0-1.4l-2.3-2.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.7 3.7L20.7 7z"/></svg><span>Edit permissions</span></button>
+          <span class="badge badge--neutral" id="ropRoleMembers" aria-live="polite"></span>
+          <button type="button" class="btn btn--ghost btn--sm" id="ropEdit" aria-disabled="true" aria-describedby="ropEditWhy"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M3 17.2V21h3.8l11-11.1-3.7-3.7L3 17.2zM20.7 7c.4-.4.4-1 0-1.4l-2.3-2.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.7 3.7L20.7 7z"/></svg><span>Edit permissions</span></button>
+          <span class="rop-sr-only" id="ropEditWhy">Not available: permissions cannot be edited until the server enforces them.</span>
         </div>
         <div class="card__body">
-          <ul class="stf-rolenotes" id="stfRoleNotes" aria-label="Key rules for this role"></ul>
+          <ul class="stf-rolenotes" id="ropRoleNotes" aria-label="Key rules for this role"></ul>
           <div class="table-wrap">
-            <table class="table stf-matrix">
-              <caption class="stf-sr-only">Example permissions for the selected role</caption>
+            <table class="table stf-matrix rop-matrix" id="ropMatrix" aria-busy="true" aria-describedby="ropCount">
+              <caption class="rop-sr-only">What the selected role can do in each part of the app</caption>
               <thead>
-                <tr><th scope="col">Module</th><th scope="col">View</th><th scope="col">Create</th><th scope="col">Edit</th><th scope="col">Delete</th></tr>
+                <tr><th scope="col">Area</th><th scope="col">View</th><th scope="col">Create</th><th scope="col">Edit</th><th scope="col">Delete</th><th scope="col">Other actions</th><th scope="col">Who can use it</th></tr>
               </thead>
-              <tbody id="stfMatrixBody"></tbody>
+              <tbody id="ropBody"></tbody>
             </table>
           </div>
-          <p class="stf-muted stf-matrix__key"><span class="stf-perm__mark is-yes" aria-hidden="true"></span> allowed &nbsp; <span class="stf-perm__mark is-no" aria-hidden="true"></span> not allowed &nbsp;&middot;&nbsp; example only, not enforced</p>
+          <p class="stf-muted stf-matrix__key"><span class="stf-perm__mark is-yes" aria-hidden="true"></span> allowed &nbsp; <span class="stf-perm__mark is-no" aria-hidden="true"></span> the app has no such action &nbsp;&middot;&nbsp; <span id="ropCount" aria-live="polite"></span></p>
         </div>
       </section>
     </div>
@@ -96,7 +107,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/staff-ui.js"></script>
+  <script src="../js/staff-roles.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>

@@ -1,7 +1,8 @@
-/* staff-management-ui — Staff Management: the sidebar group, its six
-   UI-preview pages, and the static shape of the three real pages (Staff
-   List, Add Staff and User Accounts, whose behaviour is tested in
-   staff-list.test.cjs, staff-add.test.cjs and staff-accounts.test.cjs).
+/* staff-management-ui — Staff Management: the sidebar group, its five
+   UI-preview pages, and the static shape of the four real pages (Staff
+   List, Add Staff, User Accounts and Roles & Permissions, whose behaviour
+   is tested in staff-list.test.cjs, staff-add.test.cjs,
+   staff-accounts.test.cjs and staff-roles.test.cjs).
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
@@ -17,15 +18,16 @@
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
         stylesheets aside), declares its own page key and has no file or
-        password input, inline handler or inline script. The six previews
+        password input, inline handler or inline script. The five previews
         have no form, every button is type="button", they say plainly that
         their content is not saved or sent and load exactly the shared shell
-        scripts plus js/staff-ui.js. Staff List, Add Staff and User Accounts
-        are NOT previews: no preview notice, no Demo badge, no preview-only
+        scripts plus js/staff-ui.js. Staff List, Add Staff, User Accounts and
+        Roles & Permissions are NOT previews: no preview notice, no Demo badge, no preview-only
         control, and their own scripts in place of js/staff-ui.js. Add Staff
         is the one page with a form: one submit button (Save Staff), no pay,
         password or photo field. User Accounts shows no password column and
-        says plainly what an account can do.
+        says plainly what an account can do. Roles & Permissions says plainly
+        which rules the server enforces and offers no way to change them.
      4. js/staff-ui.js never touches the database, browser storage or the
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
@@ -159,6 +161,7 @@ const REAL = {
   'staff-list': ['staff-list.css', ['staff-form.js', 'staff-list.js']],
   'staff-add': ['staff-add.css', ['staff-form.js', 'staff-add.js']],
   'staff-accounts': ['staff-accounts.css', ['staff-accounts.js']],
+  'staff-roles': ['staff-roles.css', ['staff-roles.js']],
 };
 for (const [key, label] of ENTRIES) {
   const html = read(`pages/${key}.html`);
@@ -241,9 +244,15 @@ for (const [key, label] of ENTRIES) {
   ok('   ...the four summary cards', ['uacTotal', 'uacActive', 'uacInactive', 'uacNone'].every(id => u.includes(`id="${id}"`)), '');
   ok('   ...no password, hash or token anywhere in the markup', !/type="password"|password_hash|passwordHash|token/i.test(u), '');
   const r = pages['staff-roles'];
-  ok('Roles & Permissions: says the permissions are an example and not applied', /<strong>not applied<\/strong>/.test(r), '');
-  check('   ...a matrix with View, Create, Edit and Delete', [...r.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]),
-    ['Module', 'View', 'Create', 'Edit', 'Delete']);
+  ok('Roles & Permissions: says there is one role (Administrator, full access), what the server checks, and that restricted roles are not available',
+    /<h2 class="rop-note__title" id="ropNoteTitle">How access works today<\/h2>/.test(r) && /<strong>one role: Administrator<\/strong>/.test(r)
+      && /<strong>only an administrator can manage user accounts<\/strong>/.test(r) && /are <strong>not available<\/strong>/.test(r) && /This page changes nothing/.test(r), '');
+  check('   ...a matrix of what can be done in each area, and who can use it', [...r.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]),
+    ['Area', 'View', 'Create', 'Edit', 'Delete', 'Other actions', 'Who can use it']);
+  ok('   ...Edit permissions is marked unavailable and says why', /<button type="button" class="btn btn--ghost btn--sm" id="ropEdit" aria-disabled="true" aria-describedby="ropEditWhy">/.test(r)
+    && /id="ropEditWhy">Not available: permissions cannot be edited until the server enforces them\.</.test(r), '');
+  ok('   ...the role list, matrix body, alert and count are filled by its script', ['ropRoleList', 'ropBody', 'ropAlert', 'ropCount', 'ropWho', 'ropRoleMembers'].every(id => r.includes(`id="${id}"`)), '');
+  ok('   ...no "example" or "demo" wording is left', !/example|demo/i.test(r.replace(/<!--[\s\S]*?-->/g, '')), '');
   const g = pages['staff-activity-log'];
   ok('Activity Log: says logging is not active and the entries are examples', /Activity logging is not active yet/.test(g), '');
   ok('   ...search, date range, user and action filters, details panel, pager, empty state',
@@ -331,12 +340,7 @@ check('activity: the date range is inclusive at both ends',
   S.filterActivity(S.DEMO_ACTIVITY, { from: '2026-10-17', to: '2026-10-17' }).length, 4);
 check('activity: user and action filters', [S.filterActivity(S.DEMO_ACTIVITY, { action: 'Sign in' }).length, S.filterActivity(S.DEMO_ACTIVITY, { user: 'Demo Staff H' }).length], [4, 3]);
 check('dates read as day, month, year', S.fmtDay('2024-01-08'), '08 Jan 2024');
-check('five example roles', S.ROLES.map(r => r.name), ['Admin', 'Manager', 'Service Advisor', 'Mechanic', 'Accountant']);
-ok('   ...each lists all eleven modules with only V, C, E and D',
-  S.MODULES.length === 11 && S.ROLES.every(r => S.MODULES.every(m => typeof r.perms[m] === 'string' && /^V?C?E?D?$/.test(r.perms[m]))), '');
-ok('   ...following the recorded decisions (no counter payments for advisors, no money for mechanics, no staff data for accountants)',
-  !S.ROLES[2].perms.Payments.includes('C') && S.ROLES[3].perms.Payments === '' && S.ROLES[3].perms.Invoices === ''
-    && S.ROLES[4].perms['Staff Management'] === '', '');
+ok('the example roles are gone (Roles & Permissions is real; js/staff-roles.js)', S.ROLES === undefined && S.MODULES === undefined && !/renderRoles|stfMatrixBody/.test(code), '');
 
 // Attendance (demo week)
 const activeIds = S.DEMO_STAFF.filter(s => s.status === 'Active').map(s => s.id).sort();
