@@ -162,6 +162,7 @@ const SCRIPTS = ['../js/api.js', '../js/seed-data.js', '../js/storage.js', '../j
 const pages = {};
 // Each real page: its stylesheet and the scripts it loads after the shared shell.
 const REAL = {
+  'staff-management': ['staff-overview.css', ['staff-overview.js']],
   'staff-list': ['staff-list.css', ['staff-form.js', 'staff-list.js']],
   'staff-add': ['staff-add.css', ['staff-form.js', 'staff-add.js']],
   'staff-accounts': ['staff-accounts.css', ['staff-accounts.js']],
@@ -206,12 +207,15 @@ for (const [key, label] of ENTRIES) {
 }
 {
   const o = pages['staff-management'];
-  ok('Overview: four summary cards, two charts with legends and the Recent Staff table',
-    ['stfTotal', 'stfActive', 'stfInactive', 'stfAccounts', 'stfRoleChart', 'stfRoleLegend', 'stfStatusChart', 'stfStatusLegend', 'stfRecentBody']
-      .every(id => o.includes(`id="${id}"`)), '');
-  ok('   ...the subtitle and a View All Staff link to the list',
-    o.includes('<p class="page-subtitle">Manage workshop staff and employee information.</p>') && /<a class="btn btn--ghost btn--sm" href="staff-list.html"><span>View All Staff<\/span>/.test(o), '');
-  ok('   ...every card that shows data is badged "Demo"', (o.match(/<span class="badge badge--neutral">Demo<\/span>/g) || []).length === 3, '');
+  check('Overview: six summary cards, from the database', [...o.matchAll(/<div class="stat__value" id="sov-([a-z]+)">/g)].map(m => m[1]),
+    ['total', 'active', 'present', 'late', 'absent', 'pending']);
+  check('   ...the four sections, each with a link to its page',
+    [...o.matchAll(/<h2 id="sov(\w+)Title">([^<]+)<\/h2>[\s\S]*?<a class="btn btn--ghost btn--sm" href="([^"]+)">/g)].map(m => [m[2], m[3]]),
+    [['Attendance', 'staff-attendance.html'], ['Pending Leave Requests', 'staff-leave.html'], ['Recently Added Staff', 'staff-list.html'], ['Recent Activity', 'staff-activity-log.html']]);
+  ok('   ...the subtitle, Add Staff, and a day picker that starts disabled',
+    o.includes('<p class="page-subtitle">Manage workshop staff and employee information.</p>') && /<a class="btn btn--primary" href="staff-add.html">/.test(o)
+      && /<input type="date" class="input sov-day" id="sovDay" disabled>/.test(o), '');
+  ok('   ...no Demo badge, demo staff or chart of demo data is left', !/>Demo<|DEMO-|stfRoleChart|stfRecentBody|demo/i.test(o.replace(/<!--[\s\S]*?-->/g, '')), '');
   const l = pages['staff-list'];
   ok('Staff List: search, designation, department, status and sort controls, page size and pager',
     ['stlSearch', 'stlDesignation', 'stlDepartment', 'stlStatus', 'stlSort', 'stlClear', 'stlAdd', 'stlPageSize', 'stlPrev', 'stlNext', 'stlBody'].every(id => l.includes(`id="${id}"`)), '');
@@ -327,9 +331,7 @@ ok('it does not format the demo amounts with Utils.money (which reads the worksh
 check('it renders exactly the preview Staff pages (Staff List, Add Staff and User Accounts are real and have their own scripts)',
   [...code.match(/const RENDER = \{([\s\S]*?)\};/)[1].matchAll(/'([a-z-]+)':/g)].map(m => m[1]),
   ENTRIES.map(([k]) => k).filter(k => !REAL[k]));
-ok('every action button it creates is type="button" and only explains it is a preview',
-  /type: 'button', class: `icon-btn icon-btn--sm\$\{extraClass\}`, title: label, 'aria-label': label, 'data-preview': label/.test(code)
-    && /Preview only: .* is not available yet\. Nothing was saved or sent\./.test(code), '');
+ok('it creates no action button (the Performance preview has none)', !/'data-preview'|icon-btn|Utils\.toast/.test(code), '');
 
 /* ---------- 5. demo data and helpers ---------- */
 console.log('\n-- 5. demo data --');
@@ -344,10 +346,8 @@ ok('   ...every email address is on example.com', S.DEMO_STAFF.every(s => /^[a-z
 ok('   ...every phone number is masked', S.DEMO_STAFF.every(s => /^01XXX-XXX\d{3}$/.test(s.phone)), '');
 ok('   ...no record has a password field, and no password appears anywhere in the data',
   S.DEMO_STAFF.every(s => !Object.keys(s).some(k => /pass/i.test(k))) && !/password\s*:/i.test(code), '');
-const sum = S.summary();
-check('the summary the Overview shows', [sum.total, sum.active, sum.inactive, sum.accounts, sum.accountsActive, sum.accountsInactive],
-  [12, 10, 2, 10, 9, 1]);
-ok('   ...the role breakdown adds up to every staff member', sum.byRole.reduce((t, r) => t + r.n, 0) === 12 && sum.byRole.every(r => r.n > 0), JSON.stringify(sum.byRole));
+ok('the demo Overview is gone (the Overview is real; js/staff-overview.js)',
+  S.summary === undefined && !/renderOverview|stfRecentBody|stfRoleChart|'staff-management'/.test(code), '');
 check('filter: by role', S.filterStaff(S.DEMO_STAFF, { role: 'Mechanic' }).length, 5);
 check('filter: by status', S.filterStaff(S.DEMO_STAFF, { status: 'Inactive' }).map(s => s.id), ['DEMO-005', 'DEMO-012']);
 check('filter: search is case-insensitive over ID, name, designation, email and department',

@@ -1,0 +1,95 @@
+/* ============================================================
+   staff-overview.css — Staff Management › Overview only
+   ------------------------------------------------------------
+   Everything is scoped to [data-page="staff-management"]; the shared
+   look (header, summary cards, cards, badges) comes from css/staff.css.
+   ============================================================ */
+
+/* Six cards in one row (dashboard.css's four-column .stats-grid would otherwise win over .stats-grid--wide). */
+[data-page="staff-management"] .sov-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+[data-page="staff-management"] .sov-stat { padding: 14px; gap: 12px; }
+[data-page="staff-management"] .sov-stat .stat__icon { width: 38px; height: 38px; }
+[data-page="staff-management"] .sov-stats .stat__value { font-size: 1.5rem; }
+[data-page="staff-management"] .sov-stat .stf-stat__sub { line-height: 1.35; }
+
+/* ---------- session ended ---------- */
+[data-page="staff-management"] .sov-alert {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 16px; padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line)); border-radius: var(--radius-sm); background: var(--bad-soft);
+}
+[data-page="staff-management"] .sov-alert[hidden] { display: none; }
+[data-page="staff-management"] .sov-alert p { margin: 0; font-size: .86rem; color: var(--text); }
+
+/* ---------- section cards ---------- */
+[data-page="staff-management"] .sov-card { display: flex; flex-direction: column; min-width: 0; }
+[data-page="staff-management"] .sov-card__body { flex: 1; padding-top: 6px; padding-bottom: 6px; }
+[data-page="staff-management"] .sov-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+[data-page="staff-management"] .sov-foot__note { font-size: .78rem; color: var(--text-3); }
+[data-page="staff-management"] .sov-foot .btn { margin-left: auto; }
+[data-page="staff-management"] .sov-day { width: auto; min-width: 150px; padding-top: 6px; padding-bottom: 6px; }
+
+/* ---------- lists (recent staff, pending leave, recent activity) ---------- */
+[data-page="staff-management"] .sov-list { margin: 0; padding: 0; list-style: none; }
+[data-page="staff-management"] .sov-row {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 11px 0; border-bottom: 1px solid var(--line);
+}
+[data-page="staff-management"] .sov-row:last-child { border-bottom: 0; }
+[data-page="staff-management"] .sov-row--act { grid-template-columns: minmax(0, 1fr) auto; }
+[data-page="staff-management"] .sov-row__main,
+[data-page="staff-management"] .sov-row__meta { display: flex; flex-direction: column; min-width: 0; }
+[data-page="staff-management"] .sov-row .cell-main,
+[data-page="staff-management"] .sov-row .cell-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-page="staff-management"] .sov-row--act .cell-main,
+[data-page="staff-management"] .sov-row--act .cell-sub { white-space: normal; overflow-wrap: anywhere; }
+[data-page="staff-management"] .sov-row__end { justify-self: end; }
+
+/* ---------- attendance tiles ---------- */
+[data-page="staff-management"] .sov-lead { margin: 8px 0 12px; font-size: .86rem; color: var(--text-2); }
+[data-page="staff-management"] .sov-tiles {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none;
+}
+[data-page="staff-management"] .sov-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface);
+}
+[data-page="staff-management"] .sov-tile__n { font-size: 1.25rem; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text); }
+[data-page="staff-management"] .sov-tile--missing { border-style: dashed; background: var(--paper); }
+[data-page="staff-management"] .sov-tile__label { font-size: .74rem; font-weight: 600; color: var(--text-2); padding: 3px 0; }
+[data-page="staff-management"] .sov-hint { margin: 12px 0 6px; font-size: .78rem; color: var(--text-3); }
+
+/* ---------- loading, empty, error ---------- */
+[data-page="staff-management"] .sov-state { display: flex; align-items: flex-start; gap: 12px; padding: 18px 0; }
+[data-page="staff-management"] .sov-state__icon {
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  background: color-mix(in srgb, var(--text-3) 14%, var(--surface)); color: var(--text-2);
+}
+[data-page="staff-management"] .sov-state--bad .sov-state__icon { background: var(--bad-soft); color: var(--bad); }
+[data-page="staff-management"] .sov-state__text h3 { margin: 0 0 4px; font-size: .92rem; }
+[data-page="staff-management"] .sov-state__text p { margin: 0; font-size: .84rem; color: var(--text-2); }
+[data-page="staff-management"] .sov-state__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px !important; }
+[data-page="staff-management"] .sov-row--skel { grid-template-columns: 1fr; gap: 8px; }
+[data-page="staff-management"] .sov-skel {
+  display: block; height: 10px; width: 70%; border-radius: var(--radius-sm); background: var(--line);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+[data-page="staff-management"] .sov-skel--short { width: 40%; }
+@media (prefers-reduced-motion: reduce) {
+  [data-page="staff-management"] .sov-skel { animation: none; }
+}
+
+/* ---------- narrower screens ---------- */
+@media (max-width: 1599px) {
+  [data-page="staff-management"] .sov-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  [data-page="staff-management"] .stf-grid-2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  [data-page="staff-management"] .sov-row { grid-template-columns: minmax(0, 1fr) auto; }
+  [data-page="staff-management"] .sov-row__meta { grid-column: 1 / -1; grid-row: 2; }
+  [data-page="staff-management"] .card__head { flex-wrap: wrap; }
+  [data-page="staff-management"] .sov-day { min-width: 0; width: 100%; }
+  [data-page="staff-management"] .sov-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  [data-page="staff-management"] .sov-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

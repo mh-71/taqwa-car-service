@@ -1,15 +1,15 @@
 /* ============================================================
-   staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
+   staff-ui.js — Staff Management › Performance (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by two of the Staff Management pages (Overview and Performance). Each page says
+   Loaded by one Staff Management page (Performance). The page says
    which it is through <body data-page="...">, and this file fills
-   in that page from the DEMO data below.
+   it in from the DEMO data below.
 
-   Staff List, Add Staff, User Accounts, Roles & Permissions,
+   Overview, Staff List, Add Staff, User Accounts, Roles & Permissions,
    Attendance, Leave Management and Activity Log are NOT previews:
-   they work from the workshop database through js/staff-list.js,
-   js/staff-add.js, js/staff-accounts.js, js/staff-roles.js,
-   js/staff-attendance.js, js/staff-leave.js and
+   they work from the workshop database through js/staff-overview.js,
+   js/staff-list.js, js/staff-add.js, js/staff-accounts.js,
+   js/staff-roles.js, js/staff-attendance.js, js/staff-leave.js and
    js/staff-activity-log.js and never load this file, so nothing here
    can reach them.
 
@@ -20,11 +20,10 @@
      - create staff, accounts, passwords, permissions or activity entries;
      - measure performance.
 
-   Every action button carries data-preview and only explains that
-   it is not available yet. Search, filters and paging work on the
-   demo list in memory, so the layout can be judged with realistic
-   amounts of content. All content is built with textContent --
-   nothing from the data is parsed as HTML.
+   Sorting and the empty-state switch work on the demo list in
+   memory, so the layout can be judged with realistic amounts of
+   content. All content is built with textContent -- nothing from
+   the data is parsed as HTML.
    ============================================================ */
 
 const StaffUI = (() => {
@@ -76,15 +75,6 @@ const StaffUI = (() => {
 
   const count = (list, pred) => list.filter(pred).length;
   const pct = (n, total) => (total ? Math.round((n / total) * 100) : 0);
-
-  function summary(staff = DEMO_STAFF) {
-    const total = staff.length;
-    const active = count(staff, s => s.status === 'Active');
-    const accounts = count(staff, s => !!s.account);
-    const accountsActive = count(staff, s => s.account === 'Active');
-    const byRole = ROLE_ORDER.map(role => ({ role, n: count(staff, s => s.role === role) })).filter(r => r.n);
-    return { total, active, inactive: total - active, accounts, accountsActive, accountsInactive: accounts - accountsActive, byRole };
-  }
 
   /** Staff matching a search text and the three filters ('all' = no filter). */
   function filterStaff(list, { q = '', role = 'all', department = 'all', status = 'all' } = {}) {
@@ -139,31 +129,6 @@ const StaffUI = (() => {
 
   /* ---------- DOM helpers (text only, never HTML) ---------- */
 
-  const SVG_NS = 'http://www.w3.org/2000/svg';
-  const ICONS = {
-    view: 'M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5zm0-8c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3z',
-    edit: 'M3 17.2V21h3.8l11-11.1-3.7-3.7L3 17.2zM20.7 7c.4-.4.4-1 0-1.4l-2.3-2.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.7 3.7L20.7 7z',
-    more: 'M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z',
-    key: 'M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z',
-    power: 'M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z',
-    check: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
-    dash: 'M19 13H5v-2h14v2z',
-    close: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
-  };
-
-  function svgIcon(name, size = 16) {
-    const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('width', String(size));
-    svg.setAttribute('height', String(size));
-    svg.setAttribute('fill', 'currentColor');
-    svg.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('d', ICONS[name]);
-    svg.appendChild(path);
-    return svg;
-  }
-
   /** h('td', { class: 'num', text: '5' }, child, ...) -- attributes and text, never innerHTML. */
   function h(tag, props = {}, ...children) {
     const el = document.createElement(tag);
@@ -181,8 +146,6 @@ const StaffUI = (() => {
   const $ = id => document.getElementById(id);
   function fill(el, ...nodes) { if (!el) return; el.textContent = ''; nodes.forEach(n => el.appendChild(n)); }
 
-  const STATUS_BADGE = { Active: 'badge--good', Inactive: 'badge--bad' };
-  const statusBadge = status => h('span', { class: `badge ${STATUS_BADGE[status] || 'badge--neutral'}`, text: status });
   const roleBadge = role => h('span', { class: `stf-role stf-role--${roleSlot(role)}`, text: role });
 
   /** Avatar and name; `sub` (the staff ID unless told otherwise) underneath, or nothing. */
@@ -192,32 +155,6 @@ const StaffUI = (() => {
       h('span', { class: 'stf-person__text' },
         h('span', { class: 'cell-main', text: s.name }),
         sub ? h('span', { class: 'cell-sub', text: sub }) : null));
-  }
-
-  /** An icon button that only explains it is a preview. */
-  function previewBtn(icon, label, extraClass = '') {
-    return h('button', { type: 'button', class: `icon-btn icon-btn--sm${extraClass}`, title: label, 'aria-label': label, 'data-preview': label }, svgIcon(icon));
-  }
-
-  /** A donut chart: one conic-gradient ring plus a legend that carries the numbers. */
-  function donut(container, legend, parts, centreLabel, describe) {
-    const total = parts.reduce((t, p) => t + p.n, 0);
-    let at = 0;
-    const stops = parts.map(p => {
-      const start = at; at += total ? (p.n / total) * 100 : 0;
-      return `var(--stf-c${p.slot}) ${start.toFixed(2)}% ${at.toFixed(2)}%`;
-    });
-    const ring = h('div', { class: 'stf-donut__ring', role: 'img', 'aria-label': describe },
-      h('div', { class: 'stf-donut__hole' },
-        h('strong', { class: 'stf-donut__total', text: String(total) }),
-        h('span', { text: centreLabel })));
-    ring.style.background = total ? `conic-gradient(${stops.join(', ')})` : 'var(--line)';
-    fill(container, ring);
-    fill(legend, ...parts.map(p => h('li', { class: 'stf-legend__row' },
-      h('span', { class: `stf-dot stf-dot--${p.slot}`, 'aria-hidden': 'true' }),
-      h('span', { class: 'stf-legend__label', text: p.label }),
-      h('span', { class: 'stf-legend__n', text: String(p.n) }),
-      h('span', { class: 'stf-legend__pct', text: `${pct(p.n, total)}%` }))));
   }
 
   /** The "show the empty state" switch in a page's preview notice. */
@@ -236,41 +173,6 @@ const StaffUI = (() => {
   function options(select, values) {
     if (!select) return;
     values.forEach(v => select.appendChild(h('option', { value: v, text: v })));
-  }
-
-  /* ---------- Overview ---------- */
-
-  function renderOverview() {
-    const s = summary();
-    $('stfTotal').textContent = String(s.total);
-    $('stfTotalSub').textContent = `${s.byRole.length} roles`;
-    $('stfActive').textContent = String(s.active);
-    $('stfActiveSub').textContent = `${pct(s.active, s.total)}% of total`;
-    $('stfInactive').textContent = String(s.inactive);
-    $('stfInactiveSub').textContent = `${pct(s.inactive, s.total)}% of total`;
-    $('stfAccounts').textContent = String(s.accounts);
-    $('stfAccountsSub').textContent = `${pct(s.accounts, s.total)}% have an account`;
-    $('stfActiveBar').style.width = `${pct(s.active, s.total)}%`;
-    $('stfInactiveBar').style.width = `${pct(s.inactive, s.total)}%`;
-    $('stfAccountsBar').style.width = `${pct(s.accounts, s.total)}%`;
-
-    donut($('stfRoleChart'), $('stfRoleLegend'),
-      s.byRole.map(r => ({ label: r.role, n: r.n, slot: roleSlot(r.role) })), 'Staff',
-      `Demo staff by role: ${s.byRole.map(r => `${r.role} ${r.n}`).join(', ')}.`);
-    donut($('stfStatusChart'), $('stfStatusLegend'),
-      [{ label: 'Active', n: s.active, slot: 'active' }, { label: 'Inactive', n: s.inactive, slot: 'inactive' }], 'Staff',
-      `Demo staff status: ${s.active} active, ${s.inactive} inactive.`);
-
-    const recent = DEMO_STAFF.slice().sort((a, b) => b.joined.localeCompare(a.joined)).slice(0, 6);
-    fill($('stfRecentBody'), ...recent.map(m => h('tr', {},
-      h('td', {}, person(m)),
-      h('td', {}, roleBadge(m.role)),
-      h('td', { text: m.department }),
-      h('td', { class: 'stf-nowrap', text: m.phone }),
-      h('td', { text: m.email }),
-      h('td', {}, statusBadge(m.status)),
-      h('td', { class: 'stf-nowrap', text: fmtDay(m.joined) }),
-      h('td', {}, h('div', { class: 'row-actions' }, previewBtn('more', `More actions for ${m.name}`))))));
   }
 
   /* ---------- Performance ---------- */
@@ -314,26 +216,16 @@ const StaffUI = (() => {
   /* ---------- every page ---------- */
 
   const RENDER = {
-    'staff-management': renderOverview,
     'staff-performance': renderPerformance,
   };
-
-  // Every action that would change something only says it is not available.
-  function explainPreview(e) {
-    const btn = e.target.closest('[data-preview]');
-    if (!btn) return;
-    e.preventDefault();
-    Utils.toast(`Preview only: "${btn.getAttribute('data-preview')}" is not available yet. Nothing was saved or sent.`, 'info');
-  }
 
   function init() {
     const page = document.body.dataset.page || '';
     if (!page.startsWith('staff-')) return;
-    document.addEventListener('click', explainPreview);
     if (RENDER[page]) RENDER[page]();
   }
 
-  return { DEMO_STAFF, ROLE_ORDER, summary, filterStaff, paginate, fmtDay, init,
+  return { DEMO_STAFF, ROLE_ORDER, filterStaff, paginate, fmtDay, init,
     PERFORMANCE_PERIOD, DEMO_PERFORMANCE, performanceRows, performanceSummary, sortPerformance, taka };
 })();
 
