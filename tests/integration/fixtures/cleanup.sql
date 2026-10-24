@@ -24,6 +24,9 @@
 -- run.sh refuses to start unless all of these tables are empty, so anything
 -- present here was created by this run and is safe to remove. Order follows
 -- the foreign keys.
+-- 0010: attendance references mechanics or staff (CASCADE), and nothing
+-- references it, so it goes first of all.
+DELETE FROM attendance;
 -- 0009: accounts reference mechanics or staff (CASCADE), and nothing
 -- references them, so they go first of all.
 DELETE FROM user_accounts;

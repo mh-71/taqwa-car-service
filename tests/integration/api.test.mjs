@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 102 routes', routes.length === 102, routes);
+  t('advertises 106 routes', routes.length === 106, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('39 GET, 36 POST, 16 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 39, POST: 36, PUT: 16, DELETE: 11 }), byMethod);
+    t('41 GET, 37 POST, 17 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 41, POST: 37, PUT: 17, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -5611,6 +5611,29 @@ sec('29. User accounts (0009): sign-in for a staff member, against the real Work
   t('   ...there is no DELETE for accounts (405)', (await send('DELETE', `/api/accounts/${A}`)).status === 405);
 
   // cleanup.sql removes the account (user_accounts first) and resets the counters.
+}
+
+sec('30. Attendance (0010): one record per staff member per day, against real D1');
+{
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const made = await send('POST', '/api/attendance', { staffId: 'MEC-9001', date: today, status: 'Present', checkIn: '09:00', checkOut: '18:00', notes: 'integration' });
+  t('30a record a day -> 201, a server id, the mechanic joined in', made.status === 201 && /^ATT-\d{4,}$/.test(made.body?.data?.id || '')
+    && made.body?.data?.staffName === 'B5 Full Mechanic' && made.body?.data?.date === today, made.body);
+  const R = made.body?.data;
+  const dup = await send('POST', '/api/attendance', { staffId: 'MEC-9001', date: today, status: 'Absent' });
+  t('   ...a second record for the same person and day -> 409, naming the first', dup.status === 409 && dup.body?.error?.conflictsWith === R?.id, dup.body);
+  const future = await send('POST', '/api/attendance', { staffId: 'MEC-9001', date: '2999-01-01', status: 'Present' });
+  const forged = await send('POST', '/api/attendance', { staffId: 'MEC-9001', date: today, status: 'Present', id: 'ATT-0999', updatedAt: 'x' });
+  t('   ...a future day and unknown properties -> 422', future.status === 422 && forged.status === 422, [future.status, forged.status]);
+  const list = await get(`/api/attendance?date=${today}`);
+  t('30b list one day -> the record', list.status === 200 && (list.body?.data ?? []).some((a) => a.id === R?.id), list.body);
+  const edit = await send('PUT', `/api/attendance/${R?.id}`, { status: 'Late', checkIn: '10:00', expectedUpdatedAt: R?.updatedAt });
+  t('30c correct it with the updatedAt it was made from -> 200', edit.status === 200 && edit.body?.data?.status === 'Late' && edit.body?.data?.checkIn === '10:00', edit.body);
+  const stale = await send('PUT', `/api/attendance/${R?.id}`, { status: 'Absent', checkIn: '', checkOut: '', expectedUpdatedAt: R?.updatedAt });
+  t('   ...a second edit made from the old copy -> 409, the correction stays', stale.status === 409 && (await get(`/api/attendance/${R?.id}`)).body?.data?.status === 'Late', stale.body);
+  const anon = await sendAnon('GET', '/api/attendance');
+  t('30d without credentials -> 401; there is no DELETE (405)', anon.status === 401 && (await send('DELETE', `/api/attendance/${R?.id}`)).status === 405, anon.status);
+  // cleanup.sql removes the record (attendance first) and resets the counters.
 }
 
 console.log(`\nAPI integration: ${pass} passed, ${fail} failed`);
