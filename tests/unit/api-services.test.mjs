@@ -390,6 +390,8 @@ console.log('\n-- 11. Routing --');
     // 0011: leave requests have no PUT or DELETE (decided once, kept); approving and rejecting are actions.
     'GET /api/leave-requests', 'POST /api/leave-requests', 'GET /api/leave-requests/:id',
     'POST /api/leave-requests/:id/approve', 'POST /api/leave-requests/:id/reject',
+    // 0012: the activity log is read-only; the Worker writes its entries itself.
+    'GET /api/activity-log', 'GET /api/activity-log/:id',
     // Settings is a singleton: a read and a write, and no /:id — there is
     // no create or delete for a row that is permanently id 1.
     'GET /api/settings', 'PUT /api/settings',
@@ -400,7 +402,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 111);
+  check('404 advertises every route', body.error.available.length, 113);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);
