@@ -1,8 +1,9 @@
-/* staff-management-ui — Staff Management: the sidebar group, its four
-   UI-preview pages, and the static shape of the five real pages (Staff
-   List, Add Staff, User Accounts, Roles & Permissions and Attendance, whose
-   behaviour is tested in staff-list.test.cjs, staff-add.test.cjs,
-   staff-accounts.test.cjs, staff-roles.test.cjs and staff-attendance.test.cjs).
+/* staff-management-ui — Staff Management: the sidebar group, its three
+   UI-preview pages, and the static shape of the six real pages (Staff
+   List, Add Staff, User Accounts, Roles & Permissions, Attendance and Leave
+   Management, whose behaviour is tested in staff-list.test.cjs,
+   staff-add.test.cjs, staff-accounts.test.cjs, staff-roles.test.cjs,
+   staff-attendance.test.cjs and staff-leave.test.cjs).
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
@@ -18,24 +19,24 @@
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
         stylesheets aside), declares its own page key and has no file or
-        password input, inline handler or inline script. The four previews
+        password input, inline handler or inline script. The three previews
         have no form, every button is type="button", they say plainly that
         their content is not saved or sent and load exactly the shared shell
         scripts plus js/staff-ui.js. Staff List, Add Staff, User Accounts,
-        Roles & Permissions and Attendance are NOT previews: no preview notice, no Demo badge, no preview-only
+        Roles & Permissions, Attendance and Leave Management are NOT previews: no preview notice, no Demo badge, no preview-only
         control, and their own scripts in place of js/staff-ui.js. Add Staff
         is the one page with a form: one submit button (Save Staff), no pay,
         password or photo field. User Accounts shows no password column and
         says plainly what an account can do. Roles & Permissions says plainly
         which rules the server enforces and offers no way to change them.
         Attendance says a day with no record is not counted as absent.
+        Leave Management says approving leave changes nothing else.
      4. js/staff-ui.js never touches the database, browser storage or the
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
         addresses, masked phones), holds no password, and the summaries,
         filters and paging the pages show are computed from it correctly --
-        including the leave requests and the sample
-        performance figures.
+        including the sample performance figures.
      6. css/staff.css reaches the Staff pages only.
 
    Drives the REAL js/app.js through the shared harness; js/staff-ui.js is
@@ -68,7 +69,7 @@ const REF_ICONS = [
   ['staff-performance', '<path d="M4 18v3"/><path d="M8 14v7"/><path d="M12 16v5"/><path d="M16 14v7"/><path d="M20 10v11"/><path d="m22 3-8.65 8.65a.5.5 0 0 1-.7 0L9.35 8.35a.5.5 0 0 0-.7 0L2 15"/>'],
   ['staff-activity-log', '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'],
 ];
-const NEW_KEYS = ['staff-leave', 'staff-performance'];
+const NEW_KEYS = ['staff-performance'];
 
 /** Render the shell for one page; return the HTML the shell wrote. */
 function shellFor(page, root = '', sessionHint = null) {
@@ -164,6 +165,7 @@ const REAL = {
   'staff-accounts': ['staff-accounts.css', ['staff-accounts.js']],
   'staff-roles': ['staff-roles.css', ['staff-roles.js']],
   'staff-attendance': ['staff-attendance.css', ['staff-attendance.js']],
+  'staff-leave': ['staff-leave.css', ['staff-leave.js']],
 };
 for (const [key, label] of ENTRIES) {
   const html = read(`pages/${key}.html`);
@@ -278,14 +280,17 @@ for (const [key, label] of ENTRIES) {
     ['Present', 'Late', 'Half-day', 'Absent', 'On Leave', 'Holiday', 'Recorded days']);
   ok('   ...no Demo badge, demo week or empty-state switch is left', !/>Demo<|stfWeek|data-empty-toggle|demo/i.test(t.replace(/<!--[\s\S]*?-->/g, '')), '');
   const v = pages['staff-leave'];
-  ok('Leave Management: says leave cannot be requested, approved or rejected yet',
-    /<strong>Preview: demo data, not real leave requests\.<\/strong>/.test(v) && /Leave cannot be requested, approved or rejected yet/.test(v), '');
-  ok('   ...New Leave Request only explains it is a preview', /<button type="button" class="btn btn--primary" data-preview="New Leave Request">/.test(v), '');
-  ok('   ...Pending, Approved, Rejected and approved-days cards, both charts, filters, pager, empty state',
-    ['stfLvPending', 'stfLvApproved', 'stfLvRejected', 'stfLvDays', 'stfLvTypeChart', 'stfLvTypeLegend', 'stfLvStatusChart', 'stfLvStatusLegend',
-      'stfLvSearch', 'stfLvType', 'stfLvStatus', 'stfLvClear', 'stfLvPrev', 'stfLvNext', 'stfLvEmpty'].every(id => v.includes(`id="${id}"`)), '');
-  check('   ...the requested columns', cols(v), ['Request', 'Staff', 'Leave Type', 'Dates', 'Days', 'Reason', 'Status', 'Actions']);
-  check('   ...every data card is badged "Demo"', demoBadges(v), 3);
+  ok('Leave Management: explains overlap, that only an administrator decides once, and that approving changes nothing else',
+    /<h2 class="lv-note__title" id="lvNoteTitle">How leave requests work<\/h2>/.test(v) && /It may not overlap another <strong>Pending<\/strong> or <strong>Approved<\/strong> request/.test(v)
+      && /An administrator approves or rejects a pending request once/.test(v) && /Approving leave changes nothing else: attendance is not marked/.test(v), '');
+  check('   ...Pending, Approved, Rejected and approved-days cards, from the requests',
+    [...v.matchAll(/<div class="stat__value" id="lv-([a-z-]+)">/g)].map(m => m[1]), ['pending', 'approved', 'rejected', 'days']);
+  ok('   ...both charts, the table body and the pager are filled by its script',
+    ['lvTypeChart', 'lvTypeLegend', 'lvStatusChart', 'lvStatusLegend', 'lvBody', 'lvPrev', 'lvNext', 'lvRange'].every(id => v.includes(`id="${id}"`)), '');
+  ok('   ...search, type and status filters, Clear filters and New Leave Request, all disabled until the data loads',
+    ['lvSearch', 'lvType', 'lvStatus', 'lvClear', 'lvNew'].every(id => new RegExp(`id="${id}"[^>]*\\sdisabled`).test(v)), '');
+  check('   ...the requested columns', cols(v), ['Staff', 'Department', 'Leave Type', 'Dates', 'Days', 'Reason', 'Submitted', 'Status', 'Actions']);
+  ok('   ...no Demo badge, demo request or empty-state switch is left', !/>Demo<|LV-DEMO|data-empty-toggle|demo/i.test(v.replace(/<!--[\s\S]*?-->/g, '')), '');
   const f = pages['staff-performance'];
   ok('Performance: says every figure is a sample and performance is not measured yet',
     /<strong>Preview: sample figures, not real performance\.<\/strong>/.test(f) && /Every number here is demo data: performance is not measured yet/.test(f), '');
@@ -297,7 +302,7 @@ for (const [key, label] of ENTRIES) {
     ['stfPerfSort', 'stfPerfPeriod', 'stfPerfBody', 'stfPerfEmpty'].every(id => f.includes(`id="${id}"`))
       && ['jobs', 'onTime', 'turnaround', 'labour'].every(o => f.includes(`<option value="${o}">`)), '');
   check('   ...the table is badged "Demo"', demoBadges(f), 1);
-  ok('the two Phase 1 preview pages each have an empty-state switch in their preview notice',
+  ok('the Phase 1 preview page has an empty-state switch in its preview notice',
     NEW_KEYS.every(k => /<div class="stf-preview" role="note">[\s\S]*?data-empty-toggle aria-pressed="false">Show the empty state<\/button>/.test(pages[k])), '');
 }
 
@@ -351,28 +356,8 @@ ok('the example roles are gone (Roles & Permissions is real; js/staff-roles.js)'
 
 ok('the demo attendance week is gone (Attendance is real; js/staff-attendance.js)', S.DEMO_WEEK === undefined && S.attendanceFor === undefined && !/renderAttendance|stfAttBody/.test(code), '');
 
-// Leave Management
-check('ten demo leave requests', S.DEMO_LEAVE.length, 10);
-ok('   ...each belongs to a demo staff member and its reason says (demo)',
-  S.DEMO_LEAVE.every(l => S.DEMO_STAFF.some(s => s.id === l.staffId) && /\(demo\)\.$/.test(l.reason) && /^LV-DEMO-\d{3}$/.test(l.id)), '');
-check('   ...the four leave types and three statuses', [S.LEAVE_TYPES, S.LEAVE_STATUSES], [['Casual', 'Sick', 'Annual', 'Unpaid'], ['Pending', 'Approved', 'Rejected']]);
-ok('   ...every type and every status appears',
-  S.LEAVE_TYPES.every(t => S.DEMO_LEAVE.some(l => l.type === t)) && S.LEAVE_STATUSES.every(st => S.DEMO_LEAVE.some(l => l.status === st)), '');
-ok('   ...only decided requests carry a decision, made by a demo person',
-  S.DEMO_LEAVE.every(l => (l.status === 'Pending') === (l.decidedBy === null && l.note === null)
-    && (l.decidedBy === null || /^Demo Staff [A-L]$/.test(l.decidedBy))), '');
-ok('   ...no request ends before it starts', S.DEMO_LEAVE.every(l => l.from <= l.to), '');
-const ls = S.leaveSummary();
-check('the leave summary: by status, by type, approved days',
-  [ls.byStatus.map(b => b.n), ls.byType.map(b => b.n), ls.approvedDays], [[4, 4, 2], [3, 2, 3, 2], 12]);
-check('leave days include both ends, across a month end too',
-  [S.leaveDays('2026-10-13', '2026-10-15'), S.leaveDays('2026-10-27', '2026-10-27'), S.leaveDays('2026-10-31', '2026-11-02')], [3, 1, 3]);
-check('leave filters: type, status, search, combined',
-  [S.filterLeave(S.DEMO_LEAVE, { type: 'Sick' }).length, S.filterLeave(S.DEMO_LEAVE, { status: 'Pending' }).length,
-    S.filterLeave(S.DEMO_LEAVE, { q: 'lv-demo-006' }).length, S.filterLeave(S.DEMO_LEAVE, { type: 'Annual', status: 'Approved' }).length],
-  [2, 4, 1, 1]);
-const casual = S.DEMO_LEAVE.find(l => l.staffId === 'DEMO-007');
-ok('the approved casual leave covers 13-15 October', casual.status === 'Approved' && casual.from === '2026-10-13' && casual.to === '2026-10-15', '');
+ok('the demo leave requests are gone (Leave Management is real; js/staff-leave.js)',
+  S.DEMO_LEAVE === undefined && S.leaveSummary === undefined && S.filterLeave === undefined && !/renderLeave|stfLvBody|LV-DEMO/.test(code), '');
 
 // Performance (sample figures)
 check('sample performance for five workshop staff', S.DEMO_PERFORMANCE.map(p => p.staffId), ['DEMO-001', 'DEMO-002', 'DEMO-003', 'DEMO-004', 'DEMO-011']);
