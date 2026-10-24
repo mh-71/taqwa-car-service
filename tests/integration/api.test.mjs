@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 106 routes', routes.length === 106, routes);
+  t('advertises 111 routes', routes.length === 111, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('41 GET, 37 POST, 17 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 41, POST: 37, PUT: 17, DELETE: 11 }), byMethod);
+    t('43 GET, 40 POST, 17 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 43, POST: 40, PUT: 17, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));

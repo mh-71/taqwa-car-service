@@ -1,22 +1,23 @@
 /* ============================================================
    staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by four of the Staff Management pages. Each page says
+   Loaded by three of the Staff Management pages. Each page says
    which it is through <body data-page="...">, and this file fills
    in that page from the DEMO data below.
 
-   Staff List, Add Staff, User Accounts, Roles & Permissions and
-   Attendance are NOT previews: they work from the workshop database
-   through js/staff-list.js, js/staff-add.js, js/staff-accounts.js,
-   js/staff-roles.js and js/staff-attendance.js and never load this
-   file, so nothing here can reach them.
+   Staff List, Add Staff, User Accounts, Roles & Permissions,
+   Attendance and Leave Management are NOT previews: they work from
+   the workshop database through js/staff-list.js, js/staff-add.js,
+   js/staff-accounts.js, js/staff-roles.js, js/staff-attendance.js
+   and js/staff-leave.js and never load this file, so nothing here
+   can reach them.
 
    What this file deliberately does NOT do:
      - read or write the workshop database (no Api, no Storage);
      - read or write browser storage;
      - send anything anywhere, or read a chosen file;
      - create staff, accounts, passwords, permissions or log entries;
-     - submit or decide leave, or measure performance.
+     - measure performance.
 
    Every action button carries data-preview and only explains that
    it is not available yet. Search, filters and paging work on the
@@ -79,25 +80,6 @@ const StaffUI = (() => {
     ['2026-10-16 08:55', 'Demo Staff I', 'Sign in', 'Session',    'Signed in.'],
   ].map(([when, user, action, module, description], i) =>
     ({ id: `ACT-DEMO-${String(i + 1).padStart(3, '0')}`, when, user, action, module, description }));
-
-  // Example leave requests. Leave cannot be requested or approved yet; none of
-  // this happened.
-  const LEAVE_TYPES = ['Casual', 'Sick', 'Annual', 'Unpaid'];
-  const LEAVE_STATUSES = ['Pending', 'Approved', 'Rejected'];
-  const DEMO_LEAVE = [
-    ['DEMO-007', 'Casual', '2026-10-13', '2026-10-15', 'Family event (demo).',           'Approved', 'Approved for the demo.'],
-    ['DEMO-001', 'Annual', '2026-11-02', '2026-11-06', 'Annual holiday (demo).',         'Pending',  null],
-    ['DEMO-003', 'Sick',   '2026-10-05', '2026-10-06', 'Unwell (demo).',                 'Approved', 'Approved for the demo.'],
-    ['DEMO-008', 'Casual', '2026-10-27', '2026-10-27', 'Personal errand (demo).',        'Pending',  null],
-    ['DEMO-004', 'Unpaid', '2026-11-10', '2026-11-14', 'Travel to home district (demo).', 'Pending', null],
-    ['DEMO-011', 'Casual', '2026-10-20', '2026-10-20', 'Personal errand (demo).',        'Rejected', 'Workshop short-staffed that day (demo).'],
-    ['DEMO-006', 'Annual', '2026-12-20', '2026-12-24', 'Annual holiday (demo).',         'Approved', 'Approved for the demo.'],
-    ['DEMO-010', 'Sick',   '2026-09-28', '2026-09-29', 'Unwell (demo).',                 'Approved', 'Approved for the demo.'],
-    ['DEMO-002', 'Unpaid', '2026-09-21', '2026-09-23', 'Personal reasons (demo).',       'Rejected', 'Overlaps a busy week (demo).'],
-    ['DEMO-009', 'Annual', '2026-10-29', '2026-10-31', 'Annual holiday (demo).',         'Pending',  null],
-  ].map(([staffId, type, from, to, reason, status, note], i) =>
-    ({ id: `LV-DEMO-${String(i + 1).padStart(3, '0')}`, staffId, type, from, to, reason, status,
-      decidedBy: status === 'Pending' ? null : 'Demo Staff I', note }));
 
   // Sample performance figures for the workshop's demo staff. Nothing is measured
   // yet; every number is invented so the layout can be judged.
@@ -162,30 +144,6 @@ const StaffUI = (() => {
   }
 
   const byId = id => DEMO_STAFF.find(s => s.id === id);
-
-  /** Calendar days from one date to another, both included. */
-  function leaveDays(from, to) {
-    const t = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
-    return Math.round((t(to) - t(from)) / 86400000) + 1;
-  }
-
-  function leaveSummary(list = DEMO_LEAVE) {
-    const byStatus = LEAVE_STATUSES.map(status => ({ status, n: count(list, l => l.status === status) }));
-    const byType = LEAVE_TYPES.map(type => ({ type, n: count(list, l => l.type === type) }));
-    const approvedDays = list.filter(l => l.status === 'Approved').reduce((t, l) => t + leaveDays(l.from, l.to), 0);
-    return { total: list.length, byStatus, byType, approvedDays };
-  }
-
-  /** Leave requests matching a search text, a type and a status ('all' = no filter). */
-  function filterLeave(list, { q = '', type = 'all', status = 'all' } = {}) {
-    const needle = q.trim().toLowerCase();
-    return list.filter(l => {
-      const s = byId(l.staffId);
-      return (!needle || [l.id, s.name, s.id, l.reason].some(v => v.toLowerCase().includes(needle)))
-        && (type === 'all' || l.type === type)
-        && (status === 'all' || l.status === status);
-    });
-  }
 
   /** Each staff member's sample figures plus their on-time percentage. */
   function performanceRows(list = DEMO_PERFORMANCE) {
@@ -259,9 +217,6 @@ const StaffUI = (() => {
   const statusBadge = status => h('span', { class: `badge ${STATUS_BADGE[status] || 'badge--neutral'}`, text: status });
   const roleBadge = role => h('span', { class: `stf-role stf-role--${roleSlot(role)}`, text: role });
   const ACTION_BADGE = { Create: 'badge--good', Update: 'badge--info', Delete: 'badge--bad', Payment: 'badge--warn', 'Sign in': 'badge--neutral' };
-  const LEAVE_BADGE = { Pending: 'badge--warn', Approved: 'badge--good', Rejected: 'badge--bad' };
-  // The colour slot of each leave type (the same palette as the roles).
-  const LEAVE_SLOT = { Casual: 1, Sick: 3, Annual: 2, Unpaid: 5 };
 
   /** Avatar and name; `sub` (the staff ID unless told otherwise) underneath, or nothing. */
   function person(s, sub = s.id) {
@@ -367,61 +322,6 @@ const StaffUI = (() => {
       h('td', {}, h('div', { class: 'row-actions' }, previewBtn('more', `More actions for ${m.name}`))))));
   }
 
-  /* ---------- Leave Management ---------- */
-
-  function renderLeave() {
-    const PAGE = 8;
-    const state = { page: 1, empty: false };
-    const s = leaveSummary();
-    const n = st => s.byStatus.find(b => b.status === st).n;
-    $('stfLvPending').textContent = String(n('Pending'));
-    $('stfLvApproved').textContent = String(n('Approved'));
-    $('stfLvRejected').textContent = String(n('Rejected'));
-    $('stfLvDays').textContent = String(s.approvedDays);
-    donut($('stfLvTypeChart'), $('stfLvTypeLegend'),
-      s.byType.map(t => ({ label: `${t.type} Leave`, n: t.n, slot: LEAVE_SLOT[t.type] })), 'Requests',
-      `Demo leave requests by type: ${s.byType.map(t => `${t.type} ${t.n}`).join(', ')}.`);
-    donut($('stfLvStatusChart'), $('stfLvStatusLegend'),
-      s.byStatus.map(b => ({ label: b.status, n: b.n, slot: { Pending: 3, Approved: 2, Rejected: 4 }[b.status] })), 'Requests',
-      `Demo leave requests by status: ${s.byStatus.map(b => `${b.status} ${b.n}`).join(', ')}.`);
-    const q = $('stfLvSearch'), type = $('stfLvType'), status = $('stfLvStatus');
-    LEAVE_TYPES.forEach(t => type.appendChild(h('option', { value: t, text: `${t} Leave` })));
-    options(status, LEAVE_STATUSES);
-
-    function draw() {
-      const source = state.empty ? [] : DEMO_LEAVE;
-      const list = filterLeave(source, { q: q.value, type: type.value, status: status.value });
-      const res = paginate(list, state.page, PAGE);
-      state.page = res.page;
-      $('stfLvEmpty').hidden = source.length > 0;
-      $('stfLvCard').hidden = source.length === 0;
-      $('stfLvCount').textContent = `${list.length} of ${source.length} requests`;
-      fill($('stfLvBody'), ...(res.rows.length ? res.rows.map(l => {
-        const m = byId(l.staffId);
-        const days = leaveDays(l.from, l.to);
-        return h('tr', {},
-          h('td', { class: 'stf-nowrap', text: l.id }),
-          h('td', {}, person(m)),
-          h('td', {}, h('span', { class: `stf-role stf-role--${LEAVE_SLOT[l.type]}`, text: `${l.type} Leave` })),
-          h('td', { class: 'stf-nowrap' }, h('span', { text: fmtDay(l.from) }), h('span', { class: 'cell-sub', text: `to ${fmtDay(l.to)}` })),
-          h('td', { class: 'num', text: String(days) }),
-          // The decision is named under the reason; a rejection also says why.
-          h('td', { class: 'stf-reason' }, h('span', { text: l.reason }),
-            l.decidedBy ? h('span', { class: 'cell-sub', text: `${l.status} by ${l.decidedBy.replace(/ /g, '\u00a0')}${l.status === 'Rejected' ? `: ${l.note}` : ''}` }) : null),
-          h('td', {}, h('span', { class: `badge ${LEAVE_BADGE[l.status]}`, text: l.status })),
-          h('td', {}, h('div', { class: 'row-actions' },
-            l.status === 'Pending' ? previewBtn('check', `Approve ${l.id}`) : null,
-            l.status === 'Pending' ? previewBtn('close', `Reject ${l.id}`) : null,
-            previewBtn('view', `View ${l.id}`))));
-      }) : [emptyRow(8, 'No leave requests match these filters', 'Try a different search, or clear the filters.')]));
-      pager('stfLv', res, p => { state.page = p; draw(); });
-    }
-    [q, type, status].forEach(c => c.addEventListener(c === q ? 'input' : 'change', () => { state.page = 1; draw(); }));
-    $('stfLvClear').addEventListener('click', () => { q.value = ''; type.value = 'all'; status.value = 'all'; state.page = 1; draw(); });
-    emptyToggle(empty => { state.empty = empty; state.page = 1; draw(); });
-    draw();
-  }
-
   /* ---------- Performance ---------- */
 
   function renderPerformance() {
@@ -518,7 +418,6 @@ const StaffUI = (() => {
 
   const RENDER = {
     'staff-management': renderOverview,
-    'staff-leave': renderLeave,
     'staff-performance': renderPerformance,
     'staff-activity-log': renderActivity,
   };
@@ -539,7 +438,6 @@ const StaffUI = (() => {
   }
 
   return { DEMO_STAFF, DEMO_ACTIVITY, ROLE_ORDER, summary, filterStaff, filterActivity, paginate, fmtDay, init,
-    LEAVE_TYPES, LEAVE_STATUSES, DEMO_LEAVE, leaveDays, leaveSummary, filterLeave,
     PERFORMANCE_PERIOD, DEMO_PERFORMANCE, performanceRows, performanceSummary, sortPerformance, taka };
 })();
 

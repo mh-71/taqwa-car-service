@@ -387,6 +387,9 @@ console.log('\n-- 11. Routing --');
     'GET /api/accounts', 'POST /api/accounts', 'GET /api/accounts/:id', 'PUT /api/accounts/:id', 'POST /api/accounts/:id/password',
     // 0010: attendance has no DELETE (a record is corrected through PUT).
     'GET /api/attendance', 'POST /api/attendance', 'GET /api/attendance/:id', 'PUT /api/attendance/:id',
+    // 0011: leave requests have no PUT or DELETE (decided once, kept); approving and rejecting are actions.
+    'GET /api/leave-requests', 'POST /api/leave-requests', 'GET /api/leave-requests/:id',
+    'POST /api/leave-requests/:id/approve', 'POST /api/leave-requests/:id/reject',
     // Settings is a singleton: a read and a write, and no /:id — there is
     // no create or delete for a row that is permanently id 1.
     'GET /api/settings', 'PUT /api/settings',
@@ -397,7 +400,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 106);
+  check('404 advertises every route', body.error.available.length, 111);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

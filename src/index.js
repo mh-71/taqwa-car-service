@@ -111,6 +111,11 @@ import { listAccounts, getAccount, createAccount, updateAccount, setAccountPassw
 // Attendance (0010): one record per staff member per day. No delete -- a
 // wrong record is corrected through PUT, which refuses a stale edit.
 import { listAttendance, getAttendance, createAttendance, updateAttendance } from './routes/attendance.js';
+// Leave requests (0011): submitted, then approved or rejected once by an
+// administrator. No update and no delete -- a decided request is kept as it is.
+import {
+  listLeaveRequests, getLeaveRequest, createLeaveRequest, approveLeaveRequest, rejectLeaveRequest,
+} from './routes/leave-requests.js';
 import { getWebsiteBookings } from './routes/website-bookings.js';
 
 /**
@@ -227,6 +232,11 @@ const COLLECTIONS = {
   attendance: {
     list: listAttendance, detail: getAttendance,
     create: createAttendance, update: updateAttendance,
+  },
+  'leave-requests': {
+    list: listLeaveRequests, detail: getLeaveRequest,
+    create: createLeaveRequest,
+    actions: { approve: approveLeaveRequest, reject: rejectLeaveRequest },
   },
 };
 

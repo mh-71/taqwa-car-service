@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
   <link rel="stylesheet" href="../css/staff.css">
+  <link rel="stylesheet" href="../css/staff-leave.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -37,8 +38,12 @@
 
   <div id="page-content">
 
-    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
-         writes the workshop database or browser storage, and no button saves or sends anything. -->
+    <!-- Leave Management. Filled in by js/staff-leave.js from the workshop database
+         (GET /api/leave-requests, GET /api/staff for the people) and nothing else.
+         Submitting, approving and rejecting go through the Worker, which checks every
+         field, refuses a request that overlaps another pending or approved one, lets
+         only an administrator decide, and decides a request once. Approving leave
+         changes nothing else: no attendance record, balance or pay. -->
 
     <nav class="stf-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -49,20 +54,23 @@
     <div class="stf-head">
       <p class="page-subtitle">Leave requests and their decisions.</p>
       <div class="stf-head__actions">
-        <button type="button" class="btn btn--primary" data-preview="New Leave Request"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>New Leave Request</span></button>
+        <button type="button" class="btn btn--primary" id="lvNew" disabled><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>New Leave Request</span></button>
       </div>
     </div>
-    <div class="stf-preview" role="note">
-      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="stf-preview__text"><strong>Preview: demo data, not real leave requests.</strong> Nothing on this page is saved or sent. Leave cannot be requested, approved or rejected yet: these requests are examples.</p>
-      <button type="button" class="btn btn--ghost btn--sm stf-preview__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
-    </div>
-    <section class="stats-grid stf-stats" aria-label="Leave summary (demo data)">
+    <section class="lv-note" aria-labelledby="lvNoteTitle">
+      <h2 class="lv-note__title" id="lvNoteTitle">How leave requests work</h2>
+      <ul class="lv-note__list">
+        <li>A request names one active staff member, a leave type (Casual, Sick, Annual or Unpaid), the first and last day and a reason. It may not overlap another <strong>Pending</strong> or <strong>Approved</strong> request of the same person.</li>
+        <li>An administrator approves or rejects a pending request once; a rejection says why. A decision cannot be changed, and requests are not deleted.</li>
+        <li>Approving leave changes nothing else: attendance is not marked, and no balance or pay is calculated.</li>
+      </ul>
+    </section>
+    <section class="stats-grid stf-stats" aria-label="Leave summary">
       <div class="stat stf-stat">
         <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Pending</div>
-          <div class="stat__value" id="stfLvPending"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="lv-pending"><span aria-hidden="true">&#8212;</span></div>
           <div class="stf-stat__sub">Waiting for a decision</div>
         </div>
       </div>
@@ -70,89 +78,71 @@
         <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Approved</div>
-          <div class="stat__value" id="stfLvApproved"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Demo</div>
+          <div class="stat__value" id="lv-approved"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">All requests</div>
         </div>
       </div>
       <div class="stat stf-stat">
         <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Rejected</div>
-          <div class="stat__value" id="stfLvRejected"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Demo</div>
+          <div class="stat__value" id="lv-rejected"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">All requests</div>
         </div>
       </div>
       <div class="stat stf-stat">
         <div class="stat__icon stf-icon--violet"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Approved Days</div>
-          <div class="stat__value" id="stfLvDays"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="lv-days"><span aria-hidden="true">&#8212;</span></div>
           <div class="stf-stat__sub">Calendar days of approved leave</div>
         </div>
       </div>
     </section>
     <div class="stf-grid-2">
-      <section class="card" aria-labelledby="stfLvTypeTitle">
-        <div class="card__head">
-          <h2 id="stfLvTypeTitle">Requests by Leave Type</h2>
-          <span class="badge badge--neutral">Demo</span>
-        </div>
+      <section class="card" aria-labelledby="lvTypeTitle">
+        <div class="card__head"><h2 id="lvTypeTitle">Requests by Leave Type</h2></div>
         <div class="card__body">
           <div class="stf-donut">
-            <div class="stf-donut__chart" id="stfLvTypeChart"></div>
-            <ul class="stf-legend" id="stfLvTypeLegend" aria-label="Leave types"></ul>
+            <div class="stf-donut__chart" id="lvTypeChart"></div>
+            <ul class="stf-legend" id="lvTypeLegend" aria-label="Leave types"></ul>
           </div>
         </div>
       </section>
-      <section class="card" aria-labelledby="stfLvStatusTitle">
-        <div class="card__head">
-          <h2 id="stfLvStatusTitle">Requests by Status</h2>
-          <span class="badge badge--neutral">Demo</span>
-        </div>
+      <section class="card" aria-labelledby="lvStatusTitle">
+        <div class="card__head"><h2 id="lvStatusTitle">Requests by Status</h2></div>
         <div class="card__body">
           <div class="stf-donut">
-            <div class="stf-donut__chart" id="stfLvStatusChart"></div>
-            <ul class="stf-legend" id="stfLvStatusLegend" aria-label="Request statuses"></ul>
+            <div class="stf-donut__chart" id="lvStatusChart"></div>
+            <ul class="stf-legend" id="lvStatusLegend" aria-label="Request statuses"></ul>
           </div>
         </div>
       </section>
     </div>
-    <div class="toolbar stf-toolbar" role="search" aria-label="Find leave requests">
-      <input type="search" class="input toolbar__search" id="stfLvSearch" placeholder="Search request, staff or reason&#8230;" aria-label="Search leave requests" autocomplete="off">
-      <select class="select" id="stfLvType" aria-label="Filter by leave type"><option value="all">All leave types</option></select>
-      <select class="select" id="stfLvStatus" aria-label="Filter by status"><option value="all">All statuses</option></select>
-      <button type="button" class="btn btn--ghost btn--sm" id="stfLvClear">Clear filters</button>
-      <span class="toolbar__count" id="stfLvCount"></span>
+    <div class="toolbar stf-toolbar lv-toolbar" role="search" aria-label="Find leave requests">
+      <input type="search" class="input toolbar__search" id="lvSearch" placeholder="Search name, staff ID, request or reason&#8230;" aria-label="Search leave requests" autocomplete="off" maxlength="100" disabled>
+      <select class="select" id="lvType" aria-label="Filter by leave type" disabled><option value="all">All leave types</option></select>
+      <select class="select" id="lvStatus" aria-label="Filter by status" disabled><option value="all">All statuses</option></select>
+      <button type="button" class="btn btn--ghost btn--sm" id="lvClear" disabled>Clear filters</button>
+      <span class="toolbar__count" id="lvCount" aria-live="polite"></span>
     </div>
-    <section class="card stf-table-card" id="stfLvCard" aria-labelledby="stfLvTitle">
-      <div class="card__head">
-        <h2 id="stfLvTitle">Leave Requests</h2>
-        <span class="badge badge--neutral">Demo</span>
-      </div>
+    <section class="card stf-table-card" aria-labelledby="lvTitle">
+      <div class="card__head"><h2 id="lvTitle">Leave Requests</h2></div>
       <div class="table-wrap">
-        <table class="table stf-table">
+        <table class="table stf-table lv-table" id="lvTable" aria-busy="true">
           <thead>
-            <tr><th>Request</th><th>Staff</th><th>Leave Type</th><th>Dates</th><th class="num">Days</th><th>Reason</th><th>Status</th><th>Actions</th></tr>
+            <tr><th>Staff</th><th>Department</th><th>Leave Type</th><th>Dates</th><th class="num">Days</th><th>Reason</th><th>Submitted</th><th>Status</th><th>Actions</th></tr>
           </thead>
-          <tbody id="stfLvBody"></tbody>
+          <tbody id="lvBody"></tbody>
         </table>
       </div>
       <div class="card__body stf-card-foot">
         <div class="stf-pager" role="navigation" aria-label="Leave request pages">
-          <span class="stf-pager__range" id="stfLvRange" aria-live="polite"></span>
+          <span class="stf-pager__range" id="lvRange" aria-live="polite"></span>
           <div class="stf-pager__btns">
-            <button type="button" class="btn btn--ghost btn--sm" id="stfLvPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
-            <button type="button" class="btn btn--ghost btn--sm" id="stfLvNext"><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="lvPrev" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="lvNext" disabled><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
           </div>
-        </div>
-      </div>
-    </section>
-    <section class="card" id="stfLvEmpty" aria-labelledby="stfLvEmptyTitle" hidden>
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-          <h3 id="stfLvEmptyTitle">No leave requests yet</h3>
-          <p>Leave requests will be listed here once leave management is available.</p>
         </div>
       </div>
     </section>
@@ -164,7 +154,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/staff-ui.js"></script>
+  <script src="../js/staff-leave.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>
