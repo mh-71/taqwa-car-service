@@ -108,6 +108,9 @@ import { listStaff, getStaff, createStaff, updateStaff } from './routes/staff.js
 // User accounts (0009): a sign-in for one existing staff member. Every route
 // also authorizes -- only an administrator may manage accounts.
 import { listAccounts, getAccount, createAccount, updateAccount, setAccountPassword } from './routes/accounts.js';
+// Attendance (0010): one record per staff member per day. No delete -- a
+// wrong record is corrected through PUT, which refuses a stale edit.
+import { listAttendance, getAttendance, createAttendance, updateAttendance } from './routes/attendance.js';
 import { getWebsiteBookings } from './routes/website-bookings.js';
 
 /**
@@ -220,6 +223,10 @@ const COLLECTIONS = {
     list: listAccounts, detail: getAccount,
     create: createAccount, update: updateAccount,
     actions: { password: setAccountPassword },
+  },
+  attendance: {
+    list: listAttendance, detail: getAttendance,
+    create: createAttendance, update: updateAttendance,
   },
 };
 

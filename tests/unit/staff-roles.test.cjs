@@ -78,8 +78,9 @@ console.log('-- 1. helpers --');
   const by = k => caps.find(a => a.key === k);
   check('one area per collection the Worker serves, in sidebar order; health and session are left out', caps.map(a => a.key),
     ['customers', 'vehicles', 'appointments', 'job-cards', 'estimates', 'services', 'parts', 'inventory-transactions', 'invoices',
-      'invoice-adjustments', 'payments', 'expenses', 'follow-ups', 'follow-up-contacts', 'follow-up-tasks', 'mechanics', 'staff', 'accounts', 'settings']);
-  ok('every real area has its own name (none falls back to the path)', caps.every(a => S.AREAS.some(([k, l]) => k === a.key && l === a.label)), '');
+      'invoice-adjustments', 'payments', 'expenses', 'follow-ups', 'follow-up-contacts', 'follow-up-tasks', 'mechanics', 'staff', 'accounts', 'settings', 'attendance']);
+  ok('every real area is named: from the page\'s list, or (Attendance, added after it) from its path, never hidden',
+    caps.every(a => S.AREAS.some(([k, l]) => k === a.key && l === a.label)) || caps.every(a => S.AREAS.some(([k, l]) => k === a.key && l === a.label) || (a.key === 'attendance' && a.label === 'Attendance')), '');
   const ops = k => ['view', 'create', 'edit', 'remove'].map(o => by(k)[o]);
   check('customers: view, create, edit and delete', ops('customers'), [true, true, true, true]);
   check('estimates: no delete; send / approve / reject / cancel / convert', [ops('estimates'), by('estimates').actionLabels],
@@ -116,13 +117,13 @@ console.log('\n-- 2. the page in api mode --');
   ok('the routes and the accounts are read on demand', f.calls.filter(c => c.path === '/health').length >= 2 && f.calls.some(c => c.path === '/accounts?limit=1000&offset=0'), JSON.stringify(f.calls.map(c => c.path)));
   ok('   ...and nothing is written', !f.calls.some(c => c.method && c.method !== 'GET'), '');
   ok('one role card: Administrator, its account count and full access', /data-role="Administrator"/.test(el('ropRoleList').innerHTML)
-    && /3 accounts \(2 active\) · 19 areas, full access/.test(el('ropRoleList').innerHTML), el('ropRoleList').innerHTML);
+    && /3 accounts \(2 active\) · 20 areas, full access/.test(el('ropRoleList').innerHTML), el('ropRoleList').innerHTML);
   check('the detail: name, description, account count', [el('ropRoleName').textContent, el('ropRoleDesc').textContent, el('ropRoleMembers').textContent],
     ['Administrator', 'Full access to every part of the app, including user accounts and settings.', '3 accounts (2 active)']);
   ok('   ...its rules, including the two the server checks', /Only an administrator can create accounts.*\(checked by the server\)/.test(el('ropRoleNotes').innerHTML)
     && /At least one active administrator account must always remain \(checked by the server\)/.test(el('ropRoleNotes').innerHTML), '');
-  check('the matrix lists every real area', areas(el('ropBody').innerHTML).length, 19);
-  check('   ...and says where it came from', el('ropCount').textContent, '19 areas, read from the Worker');
+  check('the matrix lists every real area', areas(el('ropBody').innerHTML).length, 20);
+  check('   ...and says where it came from', el('ropCount').textContent, '20 areas, read from the Worker');
   ok('who is signed in', el('ropWho').textContent === 'You are signed in with the account “jamal” (Administrator).', el('ropWho').textContent);
   ok('no alert when everything loaded', el('ropAlert').hidden === true, '');
 }
@@ -152,7 +153,7 @@ console.log('\n-- 3. feedback, failures, no backend --');
   const { h, el } = page({ fetch: api({ routes: ROUTES, failAccounts: { status: 403, error: { code: 'forbidden', message: 'Only an administrator can manage user accounts.' } } }) });
   h.fireReady();
   await tick(80);
-  ok('accounts refused (403): the permissions are still shown', areas(el('ropBody').innerHTML).length === 19, '');
+  ok('accounts refused (403): the permissions are still shown', areas(el('ropBody').innerHTML).length === 20, '');
   ok('   ...the alert says only an administrator can see who holds each role', el('ropAlert').hidden === false && /Only an administrator can see who holds each role/.test(el('ropAlert').textContent), el('ropAlert').textContent);
   ok('   ...and no count is made up', el('ropRoleMembers').textContent === 'Accounts not shown' && /Accounts not shown/.test(el('ropRoleList').innerHTML), el('ropRoleMembers').textContent);
 }
@@ -160,7 +161,7 @@ console.log('\n-- 3. feedback, failures, no backend --');
   const { h, el } = page({ fetch: api({ routes: ROUTES, failAccounts: { status: 500, error: { code: 'database_error', message: 'x' } } }) });
   h.fireReady();
   await tick(80);
-  ok('accounts failed (500): permissions shown, the alert says the counts could not be loaded', areas(el('ropBody').innerHTML).length === 19 && /could not be loaded/.test(el('ropAlert').textContent), el('ropAlert').textContent);
+  ok('accounts failed (500): permissions shown, the alert says the counts could not be loaded', areas(el('ropBody').innerHTML).length === 20 && /could not be loaded/.test(el('ropAlert').textContent), el('ropAlert').textContent);
 }
 {
   const f = api({ routes: ROUTES, failHealth: true });

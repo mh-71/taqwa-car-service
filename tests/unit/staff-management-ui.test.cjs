@@ -1,8 +1,8 @@
-/* staff-management-ui — Staff Management: the sidebar group, its five
-   UI-preview pages, and the static shape of the four real pages (Staff
-   List, Add Staff, User Accounts and Roles & Permissions, whose behaviour
-   is tested in staff-list.test.cjs, staff-add.test.cjs,
-   staff-accounts.test.cjs and staff-roles.test.cjs).
+/* staff-management-ui — Staff Management: the sidebar group, its four
+   UI-preview pages, and the static shape of the five real pages (Staff
+   List, Add Staff, User Accounts, Roles & Permissions and Attendance, whose
+   behaviour is tested in staff-list.test.cjs, staff-add.test.cjs,
+   staff-accounts.test.cjs, staff-roles.test.cjs and staff-attendance.test.cjs).
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
@@ -18,22 +18,23 @@
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
         stylesheets aside), declares its own page key and has no file or
-        password input, inline handler or inline script. The five previews
+        password input, inline handler or inline script. The four previews
         have no form, every button is type="button", they say plainly that
         their content is not saved or sent and load exactly the shared shell
-        scripts plus js/staff-ui.js. Staff List, Add Staff, User Accounts and
-        Roles & Permissions are NOT previews: no preview notice, no Demo badge, no preview-only
+        scripts plus js/staff-ui.js. Staff List, Add Staff, User Accounts,
+        Roles & Permissions and Attendance are NOT previews: no preview notice, no Demo badge, no preview-only
         control, and their own scripts in place of js/staff-ui.js. Add Staff
         is the one page with a form: one submit button (Save Staff), no pay,
         password or photo field. User Accounts shows no password column and
         says plainly what an account can do. Roles & Permissions says plainly
         which rules the server enforces and offers no way to change them.
+        Attendance says a day with no record is not counted as absent.
      4. js/staff-ui.js never touches the database, browser storage or the
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
         addresses, masked phones), holds no password, and the summaries,
         filters and paging the pages show are computed from it correctly --
-        including the attendance week, the leave requests and the sample
+        including the leave requests and the sample
         performance figures.
      6. css/staff.css reaches the Staff pages only.
 
@@ -67,7 +68,7 @@ const REF_ICONS = [
   ['staff-performance', '<path d="M4 18v3"/><path d="M8 14v7"/><path d="M12 16v5"/><path d="M16 14v7"/><path d="M20 10v11"/><path d="m22 3-8.65 8.65a.5.5 0 0 1-.7 0L9.35 8.35a.5.5 0 0 0-.7 0L2 15"/>'],
   ['staff-activity-log', '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'],
 ];
-const NEW_KEYS = ['staff-attendance', 'staff-leave', 'staff-performance'];
+const NEW_KEYS = ['staff-leave', 'staff-performance'];
 
 /** Render the shell for one page; return the HTML the shell wrote. */
 function shellFor(page, root = '', sessionHint = null) {
@@ -162,6 +163,7 @@ const REAL = {
   'staff-add': ['staff-add.css', ['staff-form.js', 'staff-add.js']],
   'staff-accounts': ['staff-accounts.css', ['staff-accounts.js']],
   'staff-roles': ['staff-roles.css', ['staff-roles.js']],
+  'staff-attendance': ['staff-attendance.css', ['staff-attendance.js']],
 };
 for (const [key, label] of ENTRIES) {
   const html = read(`pages/${key}.html`);
@@ -262,14 +264,19 @@ for (const [key, label] of ENTRIES) {
   const cols = body => [...body.matchAll(/<th(?: class="num")?>([^<]+)<\/th>/g)].map(m => m[1]);
   const demoBadges = body => (body.match(/<span class="badge badge--neutral">Demo<\/span>/g) || []).length;
   const t = pages['staff-attendance'];
-  ok('Attendance: says attendance is not recorded yet and the week is only an example',
-    /<strong>Preview: demo data, not real attendance records\.<\/strong>/.test(t) && /Attendance is not recorded yet/.test(t), '');
-  check('   ...a summary card for each of the six statuses, in order',
-    [...t.matchAll(/<div class="stat__value" id="stfAtt-([a-z-]+)">/g)].map(m => m[1]), ['present', 'late', 'half-day', 'absent', 'on-leave', 'holiday']);
-  ok('   ...day picker, search, status and department filters, the week grid with its key, empty state',
-    ['stfAttDay', 'stfAttSearch', 'stfAttStatus', 'stfAttDept', 'stfAttClear', 'stfAttBody', 'stfWeekHead', 'stfWeekBody', 'stfWeekKey', 'stfAttEmpty'].every(id => t.includes(`id="${id}"`)), '');
-  check('   ...the daily columns', cols(t), ['Staff', 'Department', 'Status', 'Check-in', 'Check-out', 'Hours', 'Actions']);
-  check('   ...both data cards are badged "Demo"', demoBadges(t), 2);
+  ok('Attendance: explains one record per person per day, that an unrecorded day is not absent, and that nothing is calculated',
+    /<h2 class="att-note__title" id="attNoteTitle">How attendance works<\/h2>/.test(t) && /it is not counted as absent/.test(t)
+      && /Nothing is calculated from attendance: no pay, overtime or leave balance\./.test(t), '');
+  check('   ...a summary card for each of the six statuses, in order, from the records',
+    [...t.matchAll(/<div class="stat__value" id="att-([a-z-]+)">/g)].map(m => m[1]), ['present', 'late', 'half-day', 'absent', 'on-leave', 'holiday']);
+  ok('   ...day picker, search, status and department filters, Clear filters and Record Attendance, all disabled until the data loads',
+    ['attDay', 'attSearch', 'attStatus', 'attDept', 'attClear', 'attRecord'].every(id => new RegExp(`id="${id}"[^>]*\\sdisabled`).test(t)), '');
+  ok('   ...the day picker is a real date input (any day, not a demo week)', /<input type="date" class="input" id="attDay"/.test(t), '');
+  check('   ...the daily columns', [...t.matchAll(/<th scope="col">(?:<span class="att-sr-only">)?([^<]+)/g)].map(m => m[1]).slice(0, 7),
+    ['Staff', 'Department', 'Status', 'Check-in', 'Check-out', 'Hours', 'Actions']);
+  check('   ...the monthly summary columns', [...t.matchAll(/<th scope="col" class="num">([^<]+)<\/th>/g)].map(m => m[1]),
+    ['Present', 'Late', 'Half-day', 'Absent', 'On Leave', 'Holiday', 'Recorded days']);
+  ok('   ...no Demo badge, demo week or empty-state switch is left', !/>Demo<|stfWeek|data-empty-toggle|demo/i.test(t.replace(/<!--[\s\S]*?-->/g, '')), '');
   const v = pages['staff-leave'];
   ok('Leave Management: says leave cannot be requested, approved or rejected yet',
     /<strong>Preview: demo data, not real leave requests\.<\/strong>/.test(v) && /Leave cannot be requested, approved or rejected yet/.test(v), '');
@@ -290,7 +297,7 @@ for (const [key, label] of ENTRIES) {
     ['stfPerfSort', 'stfPerfPeriod', 'stfPerfBody', 'stfPerfEmpty'].every(id => f.includes(`id="${id}"`))
       && ['jobs', 'onTime', 'turnaround', 'labour'].every(o => f.includes(`<option value="${o}">`)), '');
   check('   ...the table is badged "Demo"', demoBadges(f), 1);
-  ok('the three new pages each have an empty-state switch in their preview notice',
+  ok('the two Phase 1 preview pages each have an empty-state switch in their preview notice',
     NEW_KEYS.every(k => /<div class="stf-preview" role="note">[\s\S]*?data-empty-toggle aria-pressed="false">Show the empty state<\/button>/.test(pages[k])), '');
 }
 
@@ -342,30 +349,7 @@ check('activity: user and action filters', [S.filterActivity(S.DEMO_ACTIVITY, { 
 check('dates read as day, month, year', S.fmtDay('2024-01-08'), '08 Jan 2024');
 ok('the example roles are gone (Roles & Permissions is real; js/staff-roles.js)', S.ROLES === undefined && S.MODULES === undefined && !/renderRoles|stfMatrixBody/.test(code), '');
 
-// Attendance (demo week)
-const activeIds = S.DEMO_STAFF.filter(s => s.status === 'Active').map(s => s.id).sort();
-check('the attendance week runs Saturday to Friday', S.DEMO_DAYS.map(S.weekday), ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
-check('   ...covers every active demo staff member and no inactive one', Object.keys(S.DEMO_WEEK).sort(), activeIds);
-ok('   ...with one valid code per day', Object.values(S.DEMO_WEEK).every(w => /^[PLDAVH]{7}$/.test(w)), '');
-check('   ...the six statuses, in order', S.ATTENDANCE_STATUSES, ['Present', 'Late', 'Half-day', 'Absent', 'On Leave', 'Holiday']);
-ok('   ...all six appear somewhere in the week',
-  S.ATTENDANCE_STATUSES.every(st => S.DEMO_DAYS.some(d => S.attendanceFor(d).some(r => r.status === st))), '');
-check('the default day (Wednesday) shows every status but Holiday',
-  S.attendanceSummary(S.attendanceFor('2026-10-14')).map(x => [x.status, x.n]),
-  [['Present', 6], ['Late', 1], ['Half-day', 1], ['Absent', 1], ['On Leave', 1], ['Holiday', 0]]);
-check('Friday is a holiday for everyone', S.attendanceSummary(S.attendanceFor('2026-10-16')).find(x => x.status === 'Holiday').n, 10);
-const wed = Object.fromEntries(S.attendanceFor('2026-10-14').map(r => [r.staff.id, r]));
-check('times: late, half-day and present rows have times; absent and leave rows do not',
-  [[wed['DEMO-001'].checkIn, wed['DEMO-001'].checkOut, wed['DEMO-001'].minutes], [wed['DEMO-003'].checkIn, wed['DEMO-003'].checkOut, wed['DEMO-003'].minutes],
-    [wed['DEMO-010'].checkIn, wed['DEMO-010'].minutes], [wed['DEMO-007'].checkIn, wed['DEMO-007'].minutes], [wed['DEMO-002'].checkIn, wed['DEMO-002'].checkOut]],
-  [['09:40', '18:10', 510], ['09:00', '13:30', 270], [null, 0], [null, 0], ['09:00', '18:10']]);
-check('an unknown day has no rows', S.attendanceFor('2026-01-01').length, 0);
-const wedRows = S.attendanceFor('2026-10-14');
-check('attendance filters: status, department, search, combined',
-  [S.filterAttendance(wedRows, { status: 'Late' }).length, S.filterAttendance(wedRows, { department: 'Front Desk' }).length,
-    S.filterAttendance(wedRows, { q: 'DEMO-011' }).length, S.filterAttendance(wedRows, { status: 'Present', department: 'Workshop' }).length],
-  [1, 2, 1, 3]);
-check('durations read as hours and minutes', [S.fmtDuration(545), S.fmtDuration(270)], ['9h 05m', '4h 30m']);
+ok('the demo attendance week is gone (Attendance is real; js/staff-attendance.js)', S.DEMO_WEEK === undefined && S.attendanceFor === undefined && !/renderAttendance|stfAttBody/.test(code), '');
 
 // Leave Management
 check('ten demo leave requests', S.DEMO_LEAVE.length, 10);
@@ -388,9 +372,7 @@ check('leave filters: type, status, search, combined',
     S.filterLeave(S.DEMO_LEAVE, { q: 'lv-demo-006' }).length, S.filterLeave(S.DEMO_LEAVE, { type: 'Annual', status: 'Approved' }).length],
   [2, 4, 1, 1]);
 const casual = S.DEMO_LEAVE.find(l => l.staffId === 'DEMO-007');
-ok('the approved casual leave is the On Leave in the attendance week',
-  casual.status === 'Approved' && S.DEMO_DAYS.filter(d => S.attendanceFor(d).find(r => r.staff.id === 'DEMO-007').status === 'On Leave').join() === '2026-10-13,2026-10-14,2026-10-15'
-    && casual.from === '2026-10-13' && casual.to === '2026-10-15', '');
+ok('the approved casual leave covers 13-15 October', casual.status === 'Approved' && casual.from === '2026-10-13' && casual.to === '2026-10-15', '');
 
 // Performance (sample figures)
 check('sample performance for five workshop staff', S.DEMO_PERFORMANCE.map(p => p.staffId), ['DEMO-001', 'DEMO-002', 'DEMO-003', 'DEMO-004', 'DEMO-011']);

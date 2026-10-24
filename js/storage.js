@@ -78,13 +78,14 @@ const Storage = (() => {
     followUpTasks: 'follow-up-tasks',
     estimates: 'estimates',
     staff: 'staff',
-    accounts: 'accounts'
+    accounts: 'accounts',
+    attendance: 'attendance'
   };
 
   /**
    * Collections that exist ONLY in the database and are read on demand by the
    * one page that needs them (Customer Follow-up; Follow-up Tasks;
-   * Estimates; Staff List; User Accounts), never during hydration.
+   * Estimates; Staff List; User Accounts; Attendance), never during hydration.
    *
    * Deliberately not in COLLECTIONS: hydration reads every entry there and
    * falls back to browser storage if any one fails, so a missing table here
@@ -99,7 +100,7 @@ const Storage = (() => {
   // Worker decides what any caller may do.
   let signedInAccount = null;
 
-  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff', 'accounts'];
+  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff', 'accounts', 'attendance'];
   const isApiOnly = c => API_ONLY.includes(c);
   const apiOnlyRefusal = () => ({
     ok: false, code: 'no_api', message: 'This needs the workshop database, which this page is not connected to.',
@@ -467,8 +468,11 @@ const Storage = (() => {
    */
   const PAGE_SIZE = 1000;
   const MAX_PAGES = 1000;
-  async function fetchAll(collection) {
-    const path = `/${API_PATHS[collection]}`;
+  async function fetchAll(collection, query = null) {
+    // Optional filters the route understands (e.g. attendance's from / to),
+    // sent ahead of the paging parameters.
+    const filters = query ? new URLSearchParams(query).toString() : '';
+    const path = `/${API_PATHS[collection]}${filters ? `?${filters}&` : '?'}`;
     const rows = [];
     let offset = 0;
     for (let pages = 0; ; pages++) {
@@ -476,7 +480,7 @@ const Storage = (() => {
         return { ok: false, status: 0, code: 'too_many_pages',
                  message: `Stopped reading ${collection} after ${MAX_PAGES} pages.` };
       }
-      const res = await Api.get(`${path}?limit=${PAGE_SIZE}&offset=${offset}`);
+      const res = await Api.get(`${path}limit=${PAGE_SIZE}&offset=${offset}`);
       if (!res.ok) return res;
       const page = Array.isArray(res.data) ? res.data : [];
       rows.push(...page);
@@ -551,13 +555,15 @@ const Storage = (() => {
    * Read one API_ONLY collection, on demand, into the cache. Never part of
    * hydration, and refused outside 'api' mode -- so a failure here is this
    * page's to report and cannot change the mode any other page runs in.
+   * `query` (optional) narrows what is read -- e.g. { from, to } -- and the
+   * cache then holds exactly that slice.
    */
-  async function load(collection) {
+  async function load(collection, query = null) {
     if (!isApiOnly(collection)) {
       return { ok: false, code: 'not_on_demand', message: `${collection} is loaded with the other collections.` };
     }
     if (!isApi()) return apiOnlyRefusal();
-    return reload(collection);
+    return reload(collection, query);
   }
 
   /**
@@ -576,9 +582,9 @@ const Storage = (() => {
   }
 
   /** Re-read one collection from the server. Used after a transaction. */
-  async function reload(collection) {
+  async function reload(collection, query = null) {
     if (!isApi()) return { ok: false, code: 'no_api' };
-    const res = await fetchAll(collection);
+    const res = await fetchAll(collection, query);
     if (!res.ok) return res;
     cache[collection] = res.rows;
     return { ok: true };

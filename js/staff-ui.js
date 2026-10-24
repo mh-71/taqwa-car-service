@@ -1,22 +1,22 @@
 /* ============================================================
    staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by five of the Staff Management pages. Each page says
+   Loaded by four of the Staff Management pages. Each page says
    which it is through <body data-page="...">, and this file fills
    in that page from the DEMO data below.
 
-   Staff List, Add Staff, User Accounts and Roles & Permissions are
-   NOT previews: they work from the workshop database through
-   js/staff-list.js, js/staff-add.js, js/staff-accounts.js and
-   js/staff-roles.js and never load this file, so nothing here can
-   reach them.
+   Staff List, Add Staff, User Accounts, Roles & Permissions and
+   Attendance are NOT previews: they work from the workshop database
+   through js/staff-list.js, js/staff-add.js, js/staff-accounts.js,
+   js/staff-roles.js and js/staff-attendance.js and never load this
+   file, so nothing here can reach them.
 
    What this file deliberately does NOT do:
      - read or write the workshop database (no Api, no Storage);
      - read or write browser storage;
      - send anything anywhere, or read a chosen file;
      - create staff, accounts, passwords, permissions or log entries;
-     - record attendance, submit or decide leave, or measure performance.
+     - submit or decide leave, or measure performance.
 
    Every action button carries data-preview and only explains that
    it is not available yet. Search, filters and paging work on the
@@ -80,20 +80,8 @@ const StaffUI = (() => {
   ].map(([when, user, action, module, description], i) =>
     ({ id: `ACT-DEMO-${String(i + 1).padStart(3, '0')}`, when, user, action, module, description }));
 
-  // Example attendance for one week of the active demo staff, so the layout can
-  // be judged. Attendance is not recorded yet; none of this happened. One letter
-  // per day, Saturday to Friday: P Present, L Late, D Half-day, A Absent,
-  // V On Leave, H Holiday.
-  const ATTENDANCE_STATUSES = ['Present', 'Late', 'Half-day', 'Absent', 'On Leave', 'Holiday'];
-  const ATT_CODE = { P: 'Present', L: 'Late', D: 'Half-day', A: 'Absent', V: 'On Leave', H: 'Holiday' };
-  const DEMO_DAYS = ['2026-10-10', '2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16'];
-  const DEMO_WEEK = {
-    'DEMO-001': 'PPPPLPH', 'DEMO-002': 'PAPPPPH', 'DEMO-003': 'PPPPDPH', 'DEMO-004': 'LPPPPPH', 'DEMO-006': 'PPLPPPH',
-    'DEMO-007': 'PPPVVVH', 'DEMO-008': 'PPPPPDH', 'DEMO-009': 'PPPPPPH', 'DEMO-010': 'PPPPAPH', 'DEMO-011': 'PLPPPPH',
-  };
-
   // Example leave requests. Leave cannot be requested or approved yet; none of
-  // this happened. DEMO-007's approved casual leave is the On Leave in the week above.
+  // this happened.
   const LEAVE_TYPES = ['Casual', 'Sick', 'Annual', 'Unpaid'];
   const LEAVE_STATUSES = ['Pending', 'Approved', 'Rejected'];
   const DEMO_LEAVE = [
@@ -173,44 +161,7 @@ const StaffUI = (() => {
     return `${d} ${MONTHS[Number(m) - 1]} ${y}`;
   }
 
-  const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  /** '2026-10-14' -> 'Wed' (computed in UTC, so no time zone can shift the day). */
-  function weekday(iso) {
-    const [y, m, d] = iso.split('-').map(Number);
-    return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-  }
-
   const byId = id => DEMO_STAFF.find(s => s.id === id);
-  const hhmm = mins => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
-  /** 545 -> '9h 05m'. */
-  const fmtDuration = mins => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
-
-  /** One demo day's attendance: every active demo staff member, with times where they worked. */
-  function attendanceFor(day) {
-    const d = DEMO_DAYS.indexOf(day);
-    if (d < 0) return [];
-    return DEMO_STAFF.filter(s => DEMO_WEEK[s.id]).map(s => {
-      const status = ATT_CODE[DEMO_WEEK[s.id][d]];
-      const n = Number(s.id.slice(-3));
-      // Invented but steady times: a few minutes either side of 09:00 and 18:00.
-      const span = { Present: [530 + 5 * (n % 4), 1080 + 5 * (n % 3)], Late: [580, 1090], 'Half-day': [540, 810] }[status];
-      return { staff: s, status, checkIn: span ? hhmm(span[0]) : null, checkOut: span ? hhmm(span[1]) : null, minutes: span ? span[1] - span[0] : 0 };
-    });
-  }
-
-  /** How many rows have each attendance status, in the fixed order. */
-  function attendanceSummary(rows) {
-    return ATTENDANCE_STATUSES.map(status => ({ status, n: count(rows, r => r.status === status) }));
-  }
-
-  /** Attendance rows matching a search text, a status and a department ('all' = no filter). */
-  function filterAttendance(rows, { q = '', status = 'all', department = 'all' } = {}) {
-    const needle = q.trim().toLowerCase();
-    return rows.filter(r =>
-      (!needle || [r.staff.id, r.staff.name, r.staff.designation].some(v => v.toLowerCase().includes(needle)))
-      && (status === 'all' || r.status === status)
-      && (department === 'all' || r.staff.department === department));
-  }
 
   /** Calendar days from one date to another, both included. */
   function leaveDays(from, to) {
@@ -308,11 +259,6 @@ const StaffUI = (() => {
   const statusBadge = status => h('span', { class: `badge ${STATUS_BADGE[status] || 'badge--neutral'}`, text: status });
   const roleBadge = role => h('span', { class: `stf-role stf-role--${roleSlot(role)}`, text: role });
   const ACTION_BADGE = { Create: 'badge--good', Update: 'badge--info', Delete: 'badge--bad', Payment: 'badge--warn', 'Sign in': 'badge--neutral' };
-  // Attendance: a badge class and a one-letter code per status (the week grid shows the letter).
-  const ATT_BADGE = { Present: 'badge--good', Late: 'badge--warn', 'Half-day': 'badge--info', Absent: 'badge--bad', 'On Leave': 'stf-badge--violet', Holiday: 'badge--neutral' };
-  const ATT_LETTER = { Present: 'P', Late: 'L', 'Half-day': 'HD', Absent: 'A', 'On Leave': 'OL', Holiday: 'H' };
-  const attSlug = status => status.toLowerCase().replace(/[^a-z]+/g, '-');
-  const attBadge = status => h('span', { class: `badge ${ATT_BADGE[status]}`, text: status });
   const LEAVE_BADGE = { Pending: 'badge--warn', Approved: 'badge--good', Rejected: 'badge--bad' };
   // The colour slot of each leave type (the same palette as the roles).
   const LEAVE_SLOT = { Casual: 1, Sick: 3, Annual: 2, Unpaid: 5 };
@@ -419,57 +365,6 @@ const StaffUI = (() => {
       h('td', {}, statusBadge(m.status)),
       h('td', { class: 'stf-nowrap', text: fmtDay(m.joined) }),
       h('td', {}, h('div', { class: 'row-actions' }, previewBtn('more', `More actions for ${m.name}`))))));
-  }
-
-  /* ---------- Attendance ---------- */
-
-  function renderAttendance() {
-    const state = { empty: false };
-    const day = $('stfAttDay'), q = $('stfAttSearch'), status = $('stfAttStatus'), dept = $('stfAttDept');
-    DEMO_DAYS.forEach(d => day.appendChild(h('option', { value: d, text: `${weekday(d)}, ${fmtDay(d)}` })));
-    day.value = DEMO_DAYS[4];   // a working day that shows most statuses
-    options(status, ATTENDANCE_STATUSES);
-    options(dept, [...new Set(DEMO_STAFF.filter(s => DEMO_WEEK[s.id]).map(s => s.department))].sort());
-
-    // The week at a glance: one row per staff member, one letter per day.
-    fill($('stfWeekHead'), h('tr', {}, h('th', { scope: 'col', text: 'Staff' }),
-      ...DEMO_DAYS.map(d => h('th', { scope: 'col', class: 'stf-week__day' },
-        h('span', { text: weekday(d) }), h('span', { class: 'stf-week__date', text: d.slice(8) })))));
-    const weekRows = DEMO_STAFF.filter(s => DEMO_WEEK[s.id]).map(s => h('tr', {},
-      h('th', { scope: 'row' }, person(s, null)),
-      ...DEMO_DAYS.map((d, i) => {
-        const st = ATT_CODE[DEMO_WEEK[s.id][i]];
-        return h('td', { class: 'stf-week__cell' },
-          h('span', { class: `stf-att stf-att--${attSlug(st)}`, title: `${s.name}, ${weekday(d)} ${fmtDay(d)}: ${st}`, 'aria-hidden': 'true', text: ATT_LETTER[st] }),
-          h('span', { class: 'stf-sr-only', text: st }));
-      })));
-    fill($('stfWeekKey'), ...ATTENDANCE_STATUSES.map(st => h('li', {},
-      h('span', { class: `stf-att stf-att--${attSlug(st)}`, 'aria-hidden': 'true', text: ATT_LETTER[st] }), h('span', { text: st }))));
-
-    function draw() {
-      const all = state.empty ? [] : attendanceFor(day.value);
-      attendanceSummary(all).forEach(({ status: st, n }) => { $(`stfAtt-${attSlug(st)}`).textContent = String(n); });
-      $('stfAttDayLabel').textContent = `${weekday(day.value)}, ${fmtDay(day.value)}`;
-      const list = filterAttendance(all, { q: q.value, status: status.value, department: dept.value });
-      $('stfAttEmpty').hidden = all.length > 0;
-      $('stfAttCard').hidden = all.length === 0;
-      $('stfWeekCard').hidden = all.length === 0;
-      $('stfAttCount').textContent = `${list.length} of ${all.length} staff`;
-      fill($('stfAttBody'), ...(list.length ? list.map(r => h('tr', {},
-        h('td', {}, person(r.staff)),
-        h('td', { text: r.staff.department }),
-        h('td', {}, attBadge(r.status)),
-        h('td', { class: 'stf-nowrap', text: r.checkIn || '—' }),
-        h('td', { class: 'stf-nowrap', text: r.checkOut || '—' }),
-        h('td', { class: 'stf-nowrap', text: r.minutes ? fmtDuration(r.minutes) : '—' }),
-        h('td', {}, h('div', { class: 'row-actions' }, previewBtn('edit', `Edit the attendance of ${r.staff.name}`)))))
-        : [emptyRow(7, 'No staff match these filters', 'Try a different search, or clear the filters.')]));
-      fill($('stfWeekBody'), ...weekRows);
-    }
-    [day, q, status, dept].forEach(c => c.addEventListener(c === q ? 'input' : 'change', draw));
-    $('stfAttClear').addEventListener('click', () => { q.value = ''; status.value = 'all'; dept.value = 'all'; draw(); });
-    emptyToggle(empty => { state.empty = empty; draw(); });
-    draw();
   }
 
   /* ---------- Leave Management ---------- */
@@ -623,7 +518,6 @@ const StaffUI = (() => {
 
   const RENDER = {
     'staff-management': renderOverview,
-    'staff-attendance': renderAttendance,
     'staff-leave': renderLeave,
     'staff-performance': renderPerformance,
     'staff-activity-log': renderActivity,
@@ -645,7 +539,6 @@ const StaffUI = (() => {
   }
 
   return { DEMO_STAFF, DEMO_ACTIVITY, ROLE_ORDER, summary, filterStaff, filterActivity, paginate, fmtDay, init,
-    ATTENDANCE_STATUSES, DEMO_DAYS, DEMO_WEEK, attendanceFor, attendanceSummary, filterAttendance, weekday, fmtDuration,
     LEAVE_TYPES, LEAVE_STATUSES, DEMO_LEAVE, leaveDays, leaveSummary, filterLeave,
     PERFORMANCE_PERIOD, DEMO_PERFORMANCE, performanceRows, performanceSummary, sortPerformance, taka };
 })();
