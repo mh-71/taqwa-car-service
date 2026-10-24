@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
   <link rel="stylesheet" href="../css/staff.css">
+  <link rel="stylesheet" href="../css/staff-activity-log.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -37,8 +38,10 @@
 
   <div id="page-content">
 
-    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
-         writes the workshop database or browser storage, and no button saves or sends anything. -->
+    <!-- Activity Log. Filled in by js/staff-activity-log.js from the workshop database
+         (GET /api/activity-log, filtered and paged by the Worker) and nothing else. The
+         Worker writes an entry itself after a Staff Management change succeeds; this page
+         only reads them, and nothing here can add, edit or delete an entry. -->
 
     <nav class="stf-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -49,96 +52,86 @@
     <div class="stf-head">
       <p class="page-subtitle">Who did what, and when.</p>
     </div>
-    <div class="stf-preview" role="note">
-      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="stf-preview__text"><strong>Preview: demo data, not real staff records.</strong> Nothing on this page is saved or sent. Activity logging is not active yet: these entries are examples, not a record of what happened.</p>
-      <button type="button" class="btn btn--ghost btn--sm stf-preview__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
-    </div>
-    <section class="stats-grid stf-stats" aria-label="Activity summary (demo data)">
+    <section class="alg-note" aria-labelledby="algNoteTitle">
+      <h2 class="alg-note__title" id="algNoteTitle">How the activity log works</h2>
+      <ul class="alg-note__list">
+        <li>The server records an entry when a Staff Management change <strong>succeeds</strong>: staff added or edited, a user account created or changed (or its password set), attendance recorded or corrected, leave submitted, approved or rejected. A refused change is not recorded.</li>
+        <li>Each entry names who was signed in (an account, or the workshop passphrase), what was done and to which record. Passwords and other private details are never recorded; an edit lists the fields changed, not their values.</li>
+        <li>Entries cannot be edited or deleted. Sign-ins, page views and changes in other modules (customers, job cards, invoices, ...) are not recorded.</li>
+      </ul>
+    </section>
+    <section class="stats-grid stf-stats" aria-label="Activity summary">
       <div class="stat stf-stat">
         <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z"/></svg></div>
         <div class="stf-stat__body">
           <div class="stat__label">Total Entries</div>
-          <div class="stat__value" id="stfActTotal"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Demo</div>
+          <div class="stat__value" id="alg-total"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Matching the filters</div>
         </div>
       </div>
       <div class="stat stf-stat">
         <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">Latest Day</div>
-          <div class="stat__value" id="stfActToday"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Entries on the latest day</div>
+          <div class="stat__label">Today</div>
+          <div class="stat__value" id="alg-today"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Entries today, matching the filters</div>
         </div>
       </div>
       <div class="stat stf-stat">
-        <div class="stat__icon stf-icon--neutral"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11 7L9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"/></svg></div>
+        <div class="stat__icon stf-icon--neutral"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">Sign-ins</div>
-          <div class="stat__value" id="stfActSignins"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Demo</div>
+          <div class="stat__label">Staff &amp; Accounts</div>
+          <div class="stat__value" id="alg-people"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Matching the filters</div>
         </div>
       </div>
       <div class="stat stf-stat">
         <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M3 17.2V21h3.8l11-11.1-3.7-3.7L3 17.2zM20.7 7c.4-.4.4-1 0-1.4l-2.3-2.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.7 3.7L20.7 7z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">Changes</div>
-          <div class="stat__value" id="stfActChanges"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Create, update, delete, payment</div>
+          <div class="stat__label">Attendance &amp; Leave</div>
+          <div class="stat__value" id="alg-days"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stf-stat__sub">Matching the filters</div>
         </div>
       </div>
     </section>
-    <div class="toolbar stf-toolbar" role="search" aria-label="Find activity">
-      <input type="search" class="input toolbar__search" id="stfActSearch" placeholder="Search user, action or description&#8230;" aria-label="Search activity" autocomplete="off">
-      <label class="stf-date"><span>From</span><input type="date" class="input" id="stfActFrom" aria-label="From date" aria-describedby="stfActRangeError"></label>
-      <label class="stf-date"><span>To</span><input type="date" class="input" id="stfActTo" aria-label="To date" aria-describedby="stfActRangeError"></label>
-      <select class="select" id="stfActUser" aria-label="Filter by user"><option value="all">All users</option></select>
-      <select class="select" id="stfActAction" aria-label="Filter by action type"><option value="all">All actions</option></select>
-      <button type="button" class="btn btn--ghost btn--sm" id="stfActClear">Clear filters</button>
-      <span class="toolbar__count" id="stfActCount"></span>
-      <p class="stf-range-error" id="stfActRangeError" role="alert" hidden>"From" must be on or before "To".</p>
+    <div class="toolbar stf-toolbar alg-toolbar" role="search" aria-label="Find activity">
+      <input type="search" class="input toolbar__search" id="algSearch" placeholder="Search user, record or description&#8230;" aria-label="Search activity" autocomplete="off" maxlength="100" disabled>
+      <label class="stf-date"><span>From</span><input type="date" class="input" id="algFrom" aria-label="From date" aria-describedby="algRangeError" disabled></label>
+      <label class="stf-date"><span>To</span><input type="date" class="input" id="algTo" aria-label="To date" aria-describedby="algRangeError" disabled></label>
+      <select class="select" id="algModule" aria-label="Filter by module" disabled><option value="all">All modules</option></select>
+      <select class="select" id="algAction" aria-label="Filter by action" disabled><option value="all">All actions</option></select>
+      <button type="button" class="btn btn--ghost btn--sm" id="algClear" disabled>Clear filters</button>
+      <span class="toolbar__count" id="algCount" aria-live="polite"></span>
+      <p class="stf-range-error" id="algRangeError" role="alert" hidden>"From" must be on or before "To".</p>
     </div>
-    <section class="card stf-table-card" id="stfActCard" aria-labelledby="stfActTitle">
-      <div class="card__head">
-        <h2 id="stfActTitle">Activity</h2>
-        <span class="badge badge--neutral">Demo</span>
-      </div>
+    <section class="card stf-table-card" aria-labelledby="algTitle">
+      <div class="card__head"><h2 id="algTitle">Activity</h2></div>
       <div class="table-wrap">
-        <table class="table stf-table">
+        <table class="table stf-table alg-table" id="algTable" aria-busy="true">
           <thead>
             <tr><th>Date &amp; Time</th><th>User</th><th>Action</th><th>Module</th><th>Description</th><th>Details</th></tr>
           </thead>
-          <tbody id="stfActBody"></tbody>
+          <tbody id="algBody"></tbody>
         </table>
       </div>
       <div class="card__body stf-card-foot">
         <div class="stf-pager" role="navigation" aria-label="Activity log pages">
-          <span class="stf-pager__range" id="stfActRange" aria-live="polite"></span>
+          <span class="stf-pager__range" id="algRange" aria-live="polite"></span>
           <div class="stf-pager__btns">
-            <button type="button" class="btn btn--ghost btn--sm" id="stfActPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
-            <button type="button" class="btn btn--ghost btn--sm" id="stfActNext"><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="algPrev" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="algNext" disabled><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
           </div>
         </div>
       </div>
     </section>
-    <section class="card stf-details" id="stfActDetails" aria-labelledby="stfActDetailsTitle" hidden>
+    <section class="card stf-details" id="algDetails" aria-labelledby="algDetailsTitle" hidden>
       <div class="card__head">
-        <h2 id="stfActDetailsTitle">Entry details</h2>
-        <span class="badge badge--neutral">Demo</span>
+        <h2 id="algDetailsTitle">Entry details</h2>
         <span class="spacer"></span>
-        <button type="button" class="icon-btn icon-btn--sm" id="stfActDetailsClose" aria-label="Close the details"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+        <button type="button" class="icon-btn icon-btn--sm" id="algDetailsClose" aria-label="Close the details"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
       </div>
       <div class="card__body">
-        <dl class="stf-dl" id="stfActDetailsList"></dl>
-      </div>
-    </section>
-    <section class="card" id="stfActEmpty" aria-labelledby="stfActEmptyTitle" hidden>
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M17 10H7v2h10v-2zm2-7h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zm-5-5H7v2h7v-2z"/></svg>
-          <h3 id="stfActEmptyTitle">No activity yet</h3>
-          <p>Actions taken by staff will be listed here once activity logging is available.</p>
-        </div>
+        <dl class="stf-dl" id="algDetailsList"></dl>
       </div>
     </section>
 
@@ -149,7 +142,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/staff-ui.js"></script>
+  <script src="../js/staff-activity-log.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>

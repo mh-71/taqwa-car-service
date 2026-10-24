@@ -80,14 +80,15 @@ const Storage = (() => {
     staff: 'staff',
     accounts: 'accounts',
     attendance: 'attendance',
-    leaveRequests: 'leave-requests'
+    leaveRequests: 'leave-requests',
+    activityLog: 'activity-log'
   };
 
   /**
    * Collections that exist ONLY in the database and are read on demand by the
    * one page that needs them (Customer Follow-up; Follow-up Tasks;
-   * Estimates; Staff List; User Accounts; Attendance; Leave Management), never
-   * during hydration.
+   * Estimates; Staff List; User Accounts; Attendance; Leave Management; Activity
+   * Log), never during hydration.
    *
    * Deliberately not in COLLECTIONS: hydration reads every entry there and
    * falls back to browser storage if any one fails, so a missing table here
@@ -102,7 +103,7 @@ const Storage = (() => {
   // Worker decides what any caller may do.
   let signedInAccount = null;
 
-  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff', 'accounts', 'attendance', 'leaveRequests'];
+  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff', 'accounts', 'attendance', 'leaveRequests', 'activityLog'];
   const isApiOnly = c => API_ONLY.includes(c);
   const apiOnlyRefusal = () => ({
     ok: false, code: 'no_api', message: 'This needs the workshop database, which this page is not connected to.',
@@ -583,6 +584,26 @@ const Storage = (() => {
     return { ok: true, record: cachePut(collection, res.data) };
   }
 
+  /**
+   * Read ONE page of an API_ONLY collection, on demand -- for a list the server
+   * filters and pages itself (the activity log), so the browser never downloads
+   * the whole history. `query` is the route's own filters plus limit / offset.
+   * Returns { ok, rows, meta }; the cache then holds exactly that page.
+   * Refused outside 'api' mode, like load().
+   */
+  async function loadPage(collection, query = {}) {
+    if (!isApiOnly(collection)) {
+      return { ok: false, code: 'not_on_demand', message: `${collection} is loaded with the other collections.` };
+    }
+    if (!isApi()) return apiOnlyRefusal();
+    const qs = new URLSearchParams(query).toString();
+    const res = await Api.get(`/${API_PATHS[collection]}${qs ? `?${qs}` : ''}`);
+    if (!res.ok) return res;
+    const rows = Array.isArray(res.data) ? res.data : [];
+    cache[collection] = rows;
+    return { ok: true, rows, meta: res.meta || {} };
+  }
+
   /** Re-read one collection from the server. Used after a transaction. */
   async function reload(collection, query = null) {
     if (!isApi()) return { ok: false, code: 'no_api' };
@@ -795,7 +816,7 @@ const Storage = (() => {
   return {
     COLLECTIONS,
     getData, saveData, getById, addData, updateData, deleteData,
-    create, update, remove, action, reload, refreshAll, load, loadOne,
+    create, update, remove, action, reload, refreshAll, load, loadOne, loadPage,
     generateId, getSettings, saveSettings, putSettings, getTheme, saveTheme,
     seedIfEmpty, resetToSeedData,
     hydrate, whenReady, ready, signIn, signInWithAccount, signOut,

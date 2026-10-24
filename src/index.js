@@ -116,6 +116,10 @@ import { listAttendance, getAttendance, createAttendance, updateAttendance } fro
 import {
   listLeaveRequests, getLeaveRequest, createLeaveRequest, approveLeaveRequest, rejectLeaveRequest,
 } from './routes/leave-requests.js';
+// Activity log (0012): read-only. Entries are written here, by withActivity()
+// around the Staff Management writes below, only after a change succeeded.
+import { listActivity, getActivity } from './routes/activity-log.js';
+import { withActivity } from './lib/activity.js';
 import { getWebsiteBookings } from './routes/website-bookings.js';
 
 /**
@@ -237,6 +241,10 @@ const COLLECTIONS = {
     list: listLeaveRequests, detail: getLeaveRequest,
     create: createLeaveRequest,
     actions: { approve: approveLeaveRequest, reject: rejectLeaveRequest },
+  },
+  // Read only: no create, update, remove or action can reach the log.
+  'activity-log': {
+    list: listActivity, detail: getActivity,
   },
 };
 
@@ -436,7 +444,7 @@ export default {
         if (rawId === undefined) {
           if (request.method === 'GET') return run(collection.list, url);
           if (request.method === 'POST' && collection.create) {
-            return run(collection.create);
+            return withActivity(request, env, name, 'create', () => run(collection.create));
           }
           return methodNotAllowed(listMethods(collection));
         }
@@ -455,16 +463,17 @@ export default {
         // so an unknown one stays a 400 rather than becoming a 404.
         const slash = id.indexOf('/');
         if (slash !== -1) {
-          const action = collection.actions?.[id.slice(slash + 1)];
+          const actionName = id.slice(slash + 1);
+          const action = collection.actions?.[actionName];
           if (action) {
             if (request.method !== 'POST') return methodNotAllowed(['POST']);
-            return run(action, id.slice(0, slash));
+            return withActivity(request, env, name, actionName, () => run(action, id.slice(0, slash)));
           }
         }
 
         if (request.method === 'GET') return run(collection.detail, id);
         if (request.method === 'PUT' && collection.update) {
-          return run(collection.update, id);
+          return withActivity(request, env, name, 'update', () => run(collection.update, id));
         }
         if (request.method === 'DELETE' && collection.remove) {
           return run(collection.remove, id);

@@ -1,9 +1,10 @@
-/* staff-management-ui — Staff Management: the sidebar group, its three
-   UI-preview pages, and the static shape of the six real pages (Staff
-   List, Add Staff, User Accounts, Roles & Permissions, Attendance and Leave
-   Management, whose behaviour is tested in staff-list.test.cjs,
-   staff-add.test.cjs, staff-accounts.test.cjs, staff-roles.test.cjs,
-   staff-attendance.test.cjs and staff-leave.test.cjs).
+/* staff-management-ui — Staff Management: the sidebar group, its two
+   UI-preview pages, and the static shape of the seven real pages (Staff
+   List, Add Staff, User Accounts, Roles & Permissions, Attendance, Leave
+   Management and Activity Log, whose behaviour is tested in
+   staff-list.test.cjs, staff-add.test.cjs, staff-accounts.test.cjs,
+   staff-roles.test.cjs, staff-attendance.test.cjs, staff-leave.test.cjs and
+   staff-activity-log.test.cjs).
 
    What must hold:
      1. The sidebar has a "Staff Management" group right after Mechanics and
@@ -19,11 +20,11 @@
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
         stylesheets aside), declares its own page key and has no file or
-        password input, inline handler or inline script. The three previews
+        password input, inline handler or inline script. The two previews
         have no form, every button is type="button", they say plainly that
         their content is not saved or sent and load exactly the shared shell
         scripts plus js/staff-ui.js. Staff List, Add Staff, User Accounts,
-        Roles & Permissions, Attendance and Leave Management are NOT previews: no preview notice, no Demo badge, no preview-only
+        Roles & Permissions, Attendance, Leave Management and Activity Log are NOT previews: no preview notice, no Demo badge, no preview-only
         control, and their own scripts in place of js/staff-ui.js. Add Staff
         is the one page with a form: one submit button (Save Staff), no pay,
         password or photo field. User Accounts shows no password column and
@@ -31,6 +32,7 @@
         which rules the server enforces and offers no way to change them.
         Attendance says a day with no record is not counted as absent.
         Leave Management says approving leave changes nothing else.
+        Activity Log says the server records successful changes only.
      4. js/staff-ui.js never touches the database, browser storage or the
         network, and never writes HTML: content is built as text.
      5. The demo data is unmistakably fictional (Demo Staff names, example.com
@@ -166,6 +168,7 @@ const REAL = {
   'staff-roles': ['staff-roles.css', ['staff-roles.js']],
   'staff-attendance': ['staff-attendance.css', ['staff-attendance.js']],
   'staff-leave': ['staff-leave.css', ['staff-leave.js']],
+  'staff-activity-log': ['staff-activity-log.css', ['staff-activity-log.js']],
 };
 for (const [key, label] of ENTRIES) {
   const html = read(`pages/${key}.html`);
@@ -258,9 +261,15 @@ for (const [key, label] of ENTRIES) {
   ok('   ...the role list, matrix body, alert and count are filled by its script', ['ropRoleList', 'ropBody', 'ropAlert', 'ropCount', 'ropWho', 'ropRoleMembers'].every(id => r.includes(`id="${id}"`)), '');
   ok('   ...no "example" or "demo" wording is left', !/example|demo/i.test(r.replace(/<!--[\s\S]*?-->/g, '')), '');
   const g = pages['staff-activity-log'];
-  ok('Activity Log: says logging is not active and the entries are examples', /Activity logging is not active yet/.test(g), '');
-  ok('   ...search, date range, user and action filters, details panel, pager, empty state',
-    ['stfActSearch', 'stfActFrom', 'stfActTo', 'stfActUser', 'stfActAction', 'stfActDetails', 'stfActPrev', 'stfActNext', 'stfActEmpty'].every(id => g.includes(`id="${id}"`)), '');
+  ok('Activity Log: explains that the server records successful Staff Management changes only, never private details, and that entries cannot be changed',
+    /<h2 class="alg-note__title" id="algNoteTitle">How the activity log works<\/h2>/.test(g) && /The server records an entry when a Staff Management change <strong>succeeds<\/strong>/.test(g)
+      && /Passwords and other private details are never recorded/.test(g) && /Entries cannot be edited or deleted\./.test(g), '');
+  check('   ...four summary cards, from the server', [...g.matchAll(/<div class="stat__value" id="alg-([a-z-]+)">/g)].map(m => m[1]), ['total', 'today', 'people', 'days']);
+  ok('   ...search, date range, module and action filters and Clear filters, all disabled until the data loads',
+    ['algSearch', 'algFrom', 'algTo', 'algModule', 'algAction', 'algClear'].every(id => new RegExp(`id="${id}"[^>]*\\sdisabled`).test(g)), '');
+  ok('   ...the table body, pager and details panel are filled by its script', ['algBody', 'algPrev', 'algNext', 'algRange', 'algDetails', 'algDetailsList'].every(id => g.includes(`id="${id}"`)), '');
+  check('   ...the columns', [...g.matchAll(/<th>([^<]+)<\/th>/g)].map(m => m[1]), ['Date &amp; Time', 'User', 'Action', 'Module', 'Description', 'Details']);
+  ok('   ...no Demo badge, demo entry or empty-state switch is left', !/>Demo<|ACT-DEMO|data-empty-toggle|demo/i.test(g.replace(/<!--[\s\S]*?-->/g, '')), '');
 }
 {
   const cols = body => [...body.matchAll(/<th(?: class="num")?>([^<]+)<\/th>/g)].map(m => m[1]);
@@ -335,7 +344,6 @@ ok('   ...every email address is on example.com', S.DEMO_STAFF.every(s => /^[a-z
 ok('   ...every phone number is masked', S.DEMO_STAFF.every(s => /^01XXX-XXX\d{3}$/.test(s.phone)), '');
 ok('   ...no record has a password field, and no password appears anywhere in the data',
   S.DEMO_STAFF.every(s => !Object.keys(s).some(k => /pass/i.test(k))) && !/password\s*:/i.test(code), '');
-ok('   ...every activity entry is by a demo person', S.DEMO_ACTIVITY.every(a => /^Demo Staff [A-L]$/.test(a.user)), '');
 const sum = S.summary();
 check('the summary the Overview shows', [sum.total, sum.active, sum.inactive, sum.accounts, sum.accountsActive, sum.accountsInactive],
   [12, 10, 2, 10, 9, 1]);
@@ -348,9 +356,8 @@ check('filter: filters combine', S.filterStaff(S.DEMO_STAFF, { role: 'Mechanic',
 check('paging: 12 rows by 8', [S.paginate(S.DEMO_STAFF, 1, 8), S.paginate(S.DEMO_STAFF, 2, 8)].map(p => [p.rows.length, p.from, p.to, p.pages]), [[8, 1, 8, 2], [4, 9, 12, 2]]);
 check('paging: out-of-range pages are clamped, an empty list is one empty page',
   [S.paginate(S.DEMO_STAFF, 9, 8).page, S.paginate(S.DEMO_STAFF, 0, 8).page, S.paginate([], 1, 8).from, S.paginate([], 1, 8).pages], [2, 1, 0, 1]);
-check('activity: the date range is inclusive at both ends',
-  S.filterActivity(S.DEMO_ACTIVITY, { from: '2026-10-17', to: '2026-10-17' }).length, 4);
-check('activity: user and action filters', [S.filterActivity(S.DEMO_ACTIVITY, { action: 'Sign in' }).length, S.filterActivity(S.DEMO_ACTIVITY, { user: 'Demo Staff H' }).length], [4, 3]);
+ok('the demo activity is gone (Activity Log is real; js/staff-activity-log.js)',
+  S.DEMO_ACTIVITY === undefined && S.filterActivity === undefined && !/renderActivity|stfActBody|ACT-DEMO/.test(code), '');
 check('dates read as day, month, year', S.fmtDay('2024-01-08'), '08 Jan 2024');
 ok('the example roles are gone (Roles & Permissions is real; js/staff-roles.js)', S.ROLES === undefined && S.MODULES === undefined && !/renderRoles|stfMatrixBody/.test(code), '');
 

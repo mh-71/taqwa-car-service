@@ -1,0 +1,67 @@
+/* ============================================================
+   staff-activity-log.css — Staff Management › Activity Log only
+   ------------------------------------------------------------
+   Everything is scoped to [data-page="staff-activity-log"]; the shared
+   look (crumbs, header, stats, toolbar, table) comes from css/staff.css.
+   ============================================================ */
+
+[data-page="staff-activity-log"] .alg-muted { color: var(--text-3); font-weight: 400; }
+[data-page="staff-activity-log"] .alg-table td { vertical-align: middle; }
+[data-page="staff-activity-log"] .alg-desc { min-width: 220px; max-width: 420px; white-space: normal; }
+[data-page="staff-activity-log"] .alg-toolbar .select { min-width: 150px; }
+[data-page="staff-activity-log"] .alg-toolbar .input[type="date"] { min-width: 150px; }
+
+/* ---------- how the activity log works ---------- */
+[data-page="staff-activity-log"] .alg-note {
+  margin: 0 0 16px; padding: 14px 18px; border: 1px solid var(--line); border-left: 4px solid var(--info);
+  border-radius: var(--radius-sm); background: color-mix(in srgb, var(--info) 6%, var(--surface));
+}
+[data-page="staff-activity-log"] .alg-note__title { margin: 0 0 6px; font-size: .9rem; font-weight: 700; color: var(--text); }
+[data-page="staff-activity-log"] .alg-note__list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: .84rem; color: var(--text-2); }
+
+/* ---------- loading, empty, no results, error ---------- */
+[data-page="staff-activity-log"] .alg-state-row td { padding: 0; }
+[data-page="staff-activity-log"] .alg-state { display: flex; align-items: flex-start; gap: 14px; padding: 28px 20px; text-align: left; }
+[data-page="staff-activity-log"] .alg-state__icon {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  background: color-mix(in srgb, var(--text-3) 14%, var(--surface)); color: var(--text-2);
+}
+[data-page="staff-activity-log"] .alg-state__icon svg { width: 20px; height: 20px; }
+[data-page="staff-activity-log"] .alg-state--bad .alg-state__icon { background: var(--bad-soft); color: var(--bad); }
+[data-page="staff-activity-log"] .alg-state__text h3 { margin: 0 0 4px; font-size: .95rem; }
+[data-page="staff-activity-log"] .alg-state__text p { margin: 0; font-size: .85rem; color: var(--text-2); max-width: 64ch; }
+[data-page="staff-activity-log"] .alg-state__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px !important; }
+[data-page="staff-activity-log"] .alg-skel-row td { padding: 14px 12px; }
+[data-page="staff-activity-log"] .alg-skel {
+  display: block; height: 10px; width: 80%; border-radius: var(--radius-sm); background: var(--line);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-page="staff-activity-log"] .alg-skel { animation: none; }
+}
+
+/* ---------- compact (below 1000px): each row becomes a card ---------- */
+@media (max-width: 999px) {
+  [data-page="staff-activity-log"] .alg-table thead { display: none; }
+  [data-page="staff-activity-log"] .alg-table tbody tr:not(.alg-state-row) {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+  }
+  [data-page="staff-activity-log"] .alg-table tbody tr:not(.alg-state-row) td {
+    display: block; padding: 0; border: 0; min-width: 0; white-space: normal; text-align: left;
+  }
+  [data-page="staff-activity-log"] .alg-table tbody tr:not(.alg-state-row) td[data-label]::before {
+    content: attr(data-label); display: block;
+    font-size: .68rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--text-3);
+  }
+  [data-page="staff-activity-log"] .alg-table tbody tr:not(.alg-state-row) td[data-label="Description"],
+  [data-page="staff-activity-log"] .alg-table tbody tr:not(.alg-state-row) td[data-label="Details"] { grid-column: 1 / -1; }
+  [data-page="staff-activity-log"] .alg-table tbody tr:not(.alg-state-row) td[data-label="Details"]::before { display: none; }
+  [data-page="staff-activity-log"] .alg-desc { min-width: 0; max-width: none; }
+  [data-page="staff-activity-log"] .alg-skel-row td:nth-child(n+4) { display: none; }
+}
+@media (max-width: 640px) {
+  [data-page="staff-activity-log"] .alg-state { flex-direction: column; gap: 10px; }
+  [data-page="staff-activity-log"] .alg-toolbar .select,
+  [data-page="staff-activity-log"] .alg-toolbar .input[type="date"] { min-width: 0; width: 100%; }
+}

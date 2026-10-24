@@ -1,22 +1,23 @@
 /* ============================================================
    staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by three of the Staff Management pages. Each page says
+   Loaded by two of the Staff Management pages (Overview and Performance). Each page says
    which it is through <body data-page="...">, and this file fills
    in that page from the DEMO data below.
 
    Staff List, Add Staff, User Accounts, Roles & Permissions,
-   Attendance and Leave Management are NOT previews: they work from
-   the workshop database through js/staff-list.js, js/staff-add.js,
-   js/staff-accounts.js, js/staff-roles.js, js/staff-attendance.js
-   and js/staff-leave.js and never load this file, so nothing here
+   Attendance, Leave Management and Activity Log are NOT previews:
+   they work from the workshop database through js/staff-list.js,
+   js/staff-add.js, js/staff-accounts.js, js/staff-roles.js,
+   js/staff-attendance.js, js/staff-leave.js and
+   js/staff-activity-log.js and never load this file, so nothing here
    can reach them.
 
    What this file deliberately does NOT do:
      - read or write the workshop database (no Api, no Storage);
      - read or write browser storage;
      - send anything anywhere, or read a chosen file;
-     - create staff, accounts, passwords, permissions or log entries;
+     - create staff, accounts, passwords, permissions or activity entries;
      - measure performance.
 
    Every action button carries data-preview and only explains that
@@ -59,28 +60,6 @@ const StaffUI = (() => {
   const ROLE_ORDER = ['Mechanic', 'Service Advisor', 'Helper', 'Accountant', 'Manager', 'Admin'];
   const roleSlot = role => Math.max(0, ROLE_ORDER.indexOf(role)) + 1;
 
-  // Example activity, so the log's layout can be judged. Activity logging does
-  // not exist yet; none of this happened.
-  const DEMO_ACTIVITY = [
-    ['2026-10-19 17:42', 'Demo Staff F', 'Create',  'Job Cards',  'Created job card JC-DEMO-0142 for a demo vehicle.'],
-    ['2026-10-19 16:05', 'Demo Staff H', 'Payment', 'Payments',   'Recorded a demo payment against invoice INV-DEMO-0381.'],
-    ['2026-10-19 15:30', 'Demo Staff A', 'Update',  'Job Cards',  'Moved job card JC-DEMO-0139 to In Progress.'],
-    ['2026-10-19 11:12', 'Demo Staff I', 'Update',  'Inventory',  'Adjusted the stock of a demo part.'],
-    ['2026-10-19 09:01', 'Demo Staff F', 'Sign in', 'Session',    'Signed in.'],
-    ['2026-10-18 18:20', 'Demo Staff J', 'Update',  'Settings',   'Changed the invoice footer text.'],
-    ['2026-10-18 16:47', 'Demo Staff G', 'Create',  'Customers',  'Added a demo customer.'],
-    ['2026-10-18 14:33', 'Demo Staff H', 'Create',  'Expenses',   'Recorded a demo expense.'],
-    ['2026-10-18 10:15', 'Demo Staff B', 'Update',  'Job Cards',  'Completed job card JC-DEMO-0131.'],
-    ['2026-10-18 09:04', 'Demo Staff A', 'Sign in', 'Session',    'Signed in.'],
-    ['2026-10-17 17:58', 'Demo Staff J', 'Create',  'Staff',      'Added staff record DEMO-012.'],
-    ['2026-10-17 15:22', 'Demo Staff G', 'Create',  'Invoices',   'Created invoice INV-DEMO-0377.'],
-    ['2026-10-17 12:40', 'Demo Staff I', 'Delete',  'Inventory',  'Removed a duplicate demo part.'],
-    ['2026-10-17 09:10', 'Demo Staff H', 'Sign in', 'Session',    'Signed in.'],
-    ['2026-10-16 16:02', 'Demo Staff F', 'Update',  'Vehicles',   'Updated the mileage of a demo vehicle.'],
-    ['2026-10-16 08:55', 'Demo Staff I', 'Sign in', 'Session',    'Signed in.'],
-  ].map(([when, user, action, module, description], i) =>
-    ({ id: `ACT-DEMO-${String(i + 1).padStart(3, '0')}`, when, user, action, module, description }));
-
   // Sample performance figures for the workshop's demo staff. Nothing is measured
   // yet; every number is invented so the layout can be judged.
   // [staff, completed jobs, of which on time, average turnaround in hours, labour value in Tk]
@@ -115,17 +94,6 @@ const StaffUI = (() => {
       && (role === 'all' || s.role === role)
       && (department === 'all' || s.department === department)
       && (status === 'all' || s.status === status));
-  }
-
-  /** Activity matching a search text, a user, an action and an inclusive date range. */
-  function filterActivity(list, { q = '', user = 'all', action = 'all', from = '', to = '' } = {}) {
-    const needle = q.trim().toLowerCase();
-    return list.filter(a =>
-      (!needle || [a.user, a.action, a.module, a.description].some(v => v.toLowerCase().includes(needle)))
-      && (user === 'all' || a.user === user)
-      && (action === 'all' || a.action === action)
-      && (!from || a.when.slice(0, 10) >= from)
-      && (!to || a.when.slice(0, 10) <= to));
   }
 
   /** One page of a list: the rows, and the 1-based range they cover. */
@@ -216,7 +184,6 @@ const StaffUI = (() => {
   const STATUS_BADGE = { Active: 'badge--good', Inactive: 'badge--bad' };
   const statusBadge = status => h('span', { class: `badge ${STATUS_BADGE[status] || 'badge--neutral'}`, text: status });
   const roleBadge = role => h('span', { class: `stf-role stf-role--${roleSlot(role)}`, text: role });
-  const ACTION_BADGE = { Create: 'badge--good', Update: 'badge--info', Delete: 'badge--bad', Payment: 'badge--warn', 'Sign in': 'badge--neutral' };
 
   /** Avatar and name; `sub` (the staff ID unless told otherwise) underneath, or nothing. */
   function person(s, sub = s.id) {
@@ -230,14 +197,6 @@ const StaffUI = (() => {
   /** An icon button that only explains it is a preview. */
   function previewBtn(icon, label, extraClass = '') {
     return h('button', { type: 'button', class: `icon-btn icon-btn--sm${extraClass}`, title: label, 'aria-label': label, 'data-preview': label }, svgIcon(icon));
-  }
-
-  function emptyRow(cols, title, text) {
-    return h('tr', { class: 'stf-empty-row' },
-      h('td', { colspan: String(cols) },
-        h('div', { class: 'stf-empty-row__box' },
-          h('strong', { text: title }),
-          h('span', { text: text }))));
   }
 
   /** A donut chart: one conic-gradient ring plus a legend that carries the numbers. */
@@ -259,14 +218,6 @@ const StaffUI = (() => {
       h('span', { class: 'stf-legend__label', text: p.label }),
       h('span', { class: 'stf-legend__n', text: String(p.n) }),
       h('span', { class: 'stf-legend__pct', text: `${pct(p.n, total)}%` }))));
-  }
-
-  /** Wire a Previous / Next pager to a render(page) function. */
-  function pager(prefix, result, onPage) {
-    const prev = $(`${prefix}Prev`), next = $(`${prefix}Next`), range = $(`${prefix}Range`);
-    if (range) range.textContent = result.total ? `Showing ${result.from}–${result.to} of ${result.total}` : 'No results';
-    if (prev) { prev.disabled = result.page <= 1; prev.onclick = () => onPage(result.page - 1); }
-    if (next) { next.disabled = result.page >= result.pages; next.onclick = () => onPage(result.page + 1); }
   }
 
   /** The "show the empty state" switch in a page's preview notice. */
@@ -360,66 +311,11 @@ const StaffUI = (() => {
     draw();
   }
 
-  /* ---------- Activity Log ---------- */
-
-  function renderActivity() {
-    const PAGE = 10;
-    const state = { page: 1, empty: false };
-    const today = DEMO_ACTIVITY[0].when.slice(0, 10);
-    $('stfActTotal').textContent = String(DEMO_ACTIVITY.length);
-    $('stfActToday').textContent = String(count(DEMO_ACTIVITY, a => a.when.startsWith(today)));
-    $('stfActSignins').textContent = String(count(DEMO_ACTIVITY, a => a.action === 'Sign in'));
-    $('stfActChanges').textContent = String(count(DEMO_ACTIVITY, a => a.action !== 'Sign in'));
-    const q = $('stfActSearch'), user = $('stfActUser'), action = $('stfActAction'), from = $('stfActFrom'), to = $('stfActTo');
-    options(user, [...new Set(DEMO_ACTIVITY.map(a => a.user))].sort());
-    options(action, [...new Set(DEMO_ACTIVITY.map(a => a.action))].sort());
-
-    function showDetails(a) {
-      const panel = $('stfActDetails');
-      const rows = [['Reference', a.id], ['Date & time', a.when], ['User', a.user], ['Action', a.action], ['Module', a.module], ['Description', a.description]];
-      fill($('stfActDetailsList'), ...rows.map(([k, v]) => h('div', { class: 'stf-dl__row' }, h('dt', { text: k }), h('dd', { text: v }))));
-      panel.hidden = false;
-      panel.scrollIntoView({ block: 'nearest' });
-      $('stfActDetailsClose').focus();
-    }
-    $('stfActDetailsClose').addEventListener('click', () => { $('stfActDetails').hidden = true; });
-
-    function draw() {
-      const source = state.empty ? [] : DEMO_ACTIVITY;
-      const bad = from.value && to.value && from.value > to.value;
-      $('stfActRangeError').hidden = !bad;
-      const list = bad ? [] : filterActivity(source, { q: q.value, user: user.value, action: action.value, from: from.value, to: to.value });
-      const res = paginate(list, state.page, PAGE);
-      state.page = res.page;
-      $('stfActEmpty').hidden = source.length > 0;
-      $('stfActCard').hidden = source.length === 0;
-      $('stfActCount').textContent = `${list.length} of ${source.length} entries`;
-      fill($('stfActBody'), ...(res.rows.length ? res.rows.map(a => {
-        const view = h('button', { type: 'button', class: 'btn btn--ghost btn--sm', 'aria-label': `View details of ${a.id}` }, 'View');
-        view.addEventListener('click', () => showDetails(a));
-        return h('tr', {},
-          h('td', { class: 'stf-nowrap', text: a.when }),
-          h('td', { text: a.user }),
-          h('td', {}, h('span', { class: `badge ${ACTION_BADGE[a.action] || 'badge--neutral'}`, text: a.action })),
-          h('td', { text: a.module }),
-          h('td', { class: 'stf-desc', text: a.description }),
-          h('td', {}, view));
-      }) : [emptyRow(6, bad ? 'The date range is not valid' : 'No activity matches these filters',
-        bad ? '"From" must be on or before "To".' : 'Try a different search, or clear the filters.')]));
-      pager('stfAct', res, p => { state.page = p; draw(); });
-    }
-    [q, user, action, from, to].forEach(c => c.addEventListener(c === q ? 'input' : 'change', () => { state.page = 1; draw(); }));
-    $('stfActClear').addEventListener('click', () => { q.value = ''; user.value = 'all'; action.value = 'all'; from.value = ''; to.value = ''; state.page = 1; draw(); });
-    emptyToggle(empty => { state.empty = empty; state.page = 1; $('stfActDetails').hidden = true; draw(); });
-    draw();
-  }
-
   /* ---------- every page ---------- */
 
   const RENDER = {
     'staff-management': renderOverview,
     'staff-performance': renderPerformance,
-    'staff-activity-log': renderActivity,
   };
 
   // Every action that would change something only says it is not available.
@@ -437,7 +333,7 @@ const StaffUI = (() => {
     if (RENDER[page]) RENDER[page]();
   }
 
-  return { DEMO_STAFF, DEMO_ACTIVITY, ROLE_ORDER, summary, filterStaff, filterActivity, paginate, fmtDay, init,
+  return { DEMO_STAFF, ROLE_ORDER, summary, filterStaff, paginate, fmtDay, init,
     PERFORMANCE_PERIOD, DEMO_PERFORMANCE, performanceRows, performanceSummary, sortPerformance, taka };
 })();
 
