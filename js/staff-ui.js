@@ -1,14 +1,15 @@
 /* ============================================================
    staff-ui.js — Staff Management pages (UI PREVIEW ONLY)
    ------------------------------------------------------------
-   Loaded by six of the Staff Management pages. Each page says
+   Loaded by five of the Staff Management pages. Each page says
    which it is through <body data-page="...">, and this file fills
    in that page from the DEMO data below.
 
-   Staff List, Add Staff and User Accounts are NOT previews: they
-   read and write the workshop database through js/staff-list.js,
-   js/staff-add.js and js/staff-accounts.js and never load this
-   file, so nothing here can reach them.
+   Staff List, Add Staff, User Accounts and Roles & Permissions are
+   NOT previews: they work from the workshop database through
+   js/staff-list.js, js/staff-add.js, js/staff-accounts.js and
+   js/staff-roles.js and never load this file, so nothing here can
+   reach them.
 
    What this file deliberately does NOT do:
      - read or write the workshop database (no Api, no Storage);
@@ -56,37 +57,6 @@ const StaffUI = (() => {
   // The order and colour slot of each role wherever roles are charted or badged.
   const ROLE_ORDER = ['Mechanic', 'Service Advisor', 'Helper', 'Accountant', 'Manager', 'Admin'];
   const roleSlot = role => Math.max(0, ROLE_ORDER.indexOf(role)) + 1;
-
-  const MODULES = ['Dashboard', 'Customers', 'Vehicles', 'Job Cards', 'Inventory', 'Invoices',
-    'Payments', 'Expenses', 'Reports', 'Settings', 'Staff Management'];
-  const ACTIONS = [['V', 'View'], ['C', 'Create'], ['E', 'Edit'], ['D', 'Delete']];
-
-  // An EXAMPLE layout for the fixed roles, following the decisions recorded so
-  // far (Mechanics see only their own job cards, Service Advisors take no
-  // counter payments, Accountants see no salary or commission). Nothing here is
-  // applied: access is not restricted by role in this release.
-  const ROLES = [
-    { name: 'Admin', description: 'Full access to every module, including staff, accounts and settings.',
-      notes: ['Can manage staff, accounts and roles.', 'At least one active Admin must always remain.'],
-      perms: { Dashboard: 'V', Customers: 'VCED', Vehicles: 'VCED', 'Job Cards': 'VCED', Inventory: 'VCED', Invoices: 'VCED',
-        Payments: 'VCED', Expenses: 'VCED', Reports: 'V', Settings: 'VE', 'Staff Management': 'VCED' } },
-    { name: 'Manager', description: 'Runs the workshop day to day; no access to settings or staff accounts.',
-      notes: ['Sees reports for the whole workshop.', 'Cannot change settings or manage accounts.'],
-      perms: { Dashboard: 'V', Customers: 'VCE', Vehicles: 'VCE', 'Job Cards': 'VCE', Inventory: 'VCE', Invoices: 'VCE',
-        Payments: 'VC', Expenses: 'VC', Reports: 'V', Settings: '', 'Staff Management': 'V' } },
-    { name: 'Service Advisor', description: 'Front desk: customers, vehicles, appointments and job cards.',
-      notes: ['Cannot take counter payments.', 'Creates invoices for completed job cards.'],
-      perms: { Dashboard: 'V', Customers: 'VCE', Vehicles: 'VCE', 'Job Cards': 'VCE', Inventory: 'V', Invoices: 'VC',
-        Payments: 'V', Expenses: '', Reports: '', Settings: '', 'Staff Management': '' } },
-    { name: 'Mechanic', description: 'Workshop floor: the job cards assigned to them and the parts they use.',
-      notes: ['Sees only the job cards assigned to them.', 'No access to invoices, payments or expenses.'],
-      perms: { Dashboard: 'V', Customers: '', Vehicles: 'V', 'Job Cards': 'VE', Inventory: 'V', Invoices: '',
-        Payments: '', Expenses: '', Reports: '', Settings: '', 'Staff Management': '' } },
-    { name: 'Accountant', description: 'Invoices, payments, expenses and financial reports.',
-      notes: ['Cannot view salary or commission.', 'Records payments and expenses.'],
-      perms: { Dashboard: 'V', Customers: 'V', Vehicles: 'V', 'Job Cards': 'V', Inventory: 'V', Invoices: 'VCE',
-        Payments: 'VCE', Expenses: 'VCED', Reports: 'V', Settings: '', 'Staff Management': '' } },
-  ];
 
   // Example activity, so the log's layout can be judged. Activity logging does
   // not exist yet; none of this happened.
@@ -451,48 +421,6 @@ const StaffUI = (() => {
       h('td', {}, h('div', { class: 'row-actions' }, previewBtn('more', `More actions for ${m.name}`))))));
   }
 
-  /* ---------- Roles & Permissions ---------- */
-
-  function renderRoles() {
-    const list = $('stfRoleList');
-    let current = ROLES[0].name;
-
-    function drawDetails() {
-      const role = ROLES.find(r => r.name === current);
-      const members = DEMO_STAFF.filter(m => m.role === role.name).length;
-      $('stfRoleName').textContent = role.name;
-      $('stfRoleDesc').textContent = role.description;
-      $('stfRoleMembers').textContent = `${members} demo staff member${members === 1 ? '' : 's'}`;
-      fill($('stfRoleNotes'), ...role.notes.map(n => h('li', { text: n })));
-      fill($('stfMatrixBody'), ...MODULES.map(mod => h('tr', {},
-        h('th', { scope: 'row', text: mod }),
-        ...ACTIONS.map(([k, label]) => {
-          const yes = (role.perms[mod] || '').includes(k);
-          return h('td', { class: 'stf-perm' },
-            h('span', { class: `stf-perm__mark ${yes ? 'is-yes' : 'is-no'}`, title: `${label}: ${yes ? 'allowed' : 'not allowed'}` },
-              svgIcon(yes ? 'check' : 'dash', 14),
-              h('span', { class: 'stf-sr-only', text: `${label} ${yes ? 'allowed' : 'not allowed'}` })));
-        }))));
-      [...list.querySelectorAll('button[data-role]')].forEach(b => {
-        const on = b.getAttribute('data-role') === current;
-        b.classList.toggle('is-active', on);
-        b.setAttribute('aria-pressed', String(on));
-      });
-    }
-
-    fill(list, ...ROLES.map(r => {
-      const members = DEMO_STAFF.filter(m => m.role === r.name).length;
-      const btn = h('button', { type: 'button', class: 'stf-rolecard', 'data-role': r.name, 'aria-pressed': 'false' },
-        h('span', { class: `stf-avatar stf-avatar--${roleSlot(r.name)}`, 'aria-hidden': 'true', text: r.name.charAt(0) }),
-        h('span', { class: 'stf-rolecard__text' },
-          h('span', { class: 'stf-rolecard__name', text: r.name }),
-          h('span', { class: 'stf-rolecard__meta', text: `${members} demo staff · ${MODULES.filter(m => r.perms[m]).length} modules` })));
-      btn.addEventListener('click', () => { current = r.name; drawDetails(); });
-      return btn;
-    }));
-    drawDetails();
-  }
-
   /* ---------- Attendance ---------- */
 
   function renderAttendance() {
@@ -695,7 +623,6 @@ const StaffUI = (() => {
 
   const RENDER = {
     'staff-management': renderOverview,
-    'staff-roles': renderRoles,
     'staff-attendance': renderAttendance,
     'staff-leave': renderLeave,
     'staff-performance': renderPerformance,
@@ -717,7 +644,7 @@ const StaffUI = (() => {
     if (RENDER[page]) RENDER[page]();
   }
 
-  return { DEMO_STAFF, DEMO_ACTIVITY, ROLES, MODULES, ROLE_ORDER, summary, filterStaff, filterActivity, paginate, fmtDay, init,
+  return { DEMO_STAFF, DEMO_ACTIVITY, ROLE_ORDER, summary, filterStaff, filterActivity, paginate, fmtDay, init,
     ATTENDANCE_STATUSES, DEMO_DAYS, DEMO_WEEK, attendanceFor, attendanceSummary, filterAttendance, weekday, fmtDuration,
     LEAVE_TYPES, LEAVE_STATUSES, DEMO_LEAVE, leaveDays, leaveSummary, filterLeave,
     PERFORMANCE_PERIOD, DEMO_PERFORMANCE, performanceRows, performanceSummary, sortPerformance, taka };
