@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="../css/dashboard.css">
   <link rel="stylesheet" href="../css/responsive.css">
   <link rel="stylesheet" href="../css/staff.css">
+  <link rel="stylesheet" href="../css/staff-performance.css">
   <!-- Hold the first paint until app.js has drawn the shell (marker at the end
        of <body>), so a page change never shows a frame without the sidebar
        and header. The browser keeps the previous page on screen meanwhile.
@@ -37,8 +38,9 @@
 
   <div id="page-content">
 
-    <!-- UI PREVIEW ONLY. Filled in by js/staff-ui.js from clearly labelled demo data. Nothing here reads or
-         writes the workshop database or browser storage, and no button saves or sends anything. -->
+    <!-- Staff Performance, from the workshop database (js/staff-performance.js). It only READS the job cards and
+         mechanics the app already loads from the database on every page (GET /api/job-cards, GET /api/mechanics):
+         no extra request, no write, nothing stored in the browser. No score, ranking or estimate is made up. -->
 
     <nav class="stf-crumbs" aria-label="Breadcrumb">
       <ol>
@@ -47,79 +49,114 @@
       </ol>
     </nav>
     <div class="stf-head">
-      <p class="page-subtitle">How the workshop's jobs are getting done.</p>
+      <p class="page-subtitle">How the workshop's job cards are getting done, by mechanic.</p>
     </div>
-    <div class="stf-preview" role="note">
-      <span class="stf-preview__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>
-      <p class="stf-preview__text"><strong>Preview: sample figures, not real performance.</strong> Nothing on this page is saved or sent. Every number here is demo data: performance is not measured yet.</p>
-      <button type="button" class="btn btn--ghost btn--sm stf-preview__toggle" data-empty-toggle aria-pressed="false">Show the empty state</button>
-    </div>
-    <div class="stf-head">
-      <p class="stf-muted">Period: <strong id="stfPerfPeriod"></strong></p>
-      <label class="stf-date"><span>Sort by</span><select class="select" id="stfPerfSort" aria-label="Sort staff by">
-        <option value="jobs">Completed jobs</option>
-        <option value="onTime">On-time completion</option>
-        <option value="turnaround">Average turnaround</option>
-        <option value="labour">Labour value</option>
+    <section class="prf-note" aria-labelledby="prfNoteTitle">
+      <h2 class="prf-note__title" id="prfNoteTitle">How performance is measured</h2>
+      <ul class="prf-note__list">
+        <li><strong>Assigned</strong> counts the job cards whose <strong>job date</strong> falls in the period, by the mechanic on the job card; their status is the status <strong>now</strong>. Completed / Delivered, Open (Received, Inspection, Waiting for Approval, In Progress, Waiting for Parts) and Cancelled are the job card statuses as the Job Cards page uses them.</li>
+        <li><strong>Completed in period</strong> counts the job cards whose <strong>completion time</strong> (stamped when a job card enters Completed) falls in the period, whatever their job date. <strong>On time</strong> compares that day with the job card's estimated delivery date, and only for job cards that have one.</li>
+        <li>Days are workshop days (Asia/Dhaka). Only mechanics are assigned job cards. Attendance, pay and customer feedback are not used, and no score or ranking is calculated. This page changes nothing.</li>
+      </ul>
+    </section>
+    <div class="toolbar stf-toolbar prf-toolbar" role="search" aria-label="Choose the period and filters">
+      <label class="stf-date"><span>Period</span><select class="select" id="prfPeriod" aria-label="Period" disabled>
+        <option value="today">Today</option>
+        <option value="last7">Last 7 days</option>
+        <option value="month" selected>This month</option>
+        <option value="lastMonth">Last month</option>
+        <option value="custom">Custom range</option>
       </select></label>
+      <label class="stf-date"><span>From</span><input type="date" class="input" id="prfFrom" aria-label="From date" aria-describedby="prfRangeError" disabled></label>
+      <label class="stf-date"><span>To</span><input type="date" class="input" id="prfTo" aria-label="To date" aria-describedby="prfRangeError" disabled></label>
+      <select class="select" id="prfMechanic" aria-label="Filter by mechanic" disabled><option value="all">All mechanics</option></select>
+      <input type="search" class="input toolbar__search" id="prfSearch" placeholder="Search mechanic name or ID&#8230;" aria-label="Search mechanics" autocomplete="off" maxlength="100" disabled>
+      <button type="button" class="btn btn--ghost btn--sm" id="prfClear" disabled>Reset</button>
+      <span class="toolbar__count" id="prfCount" aria-live="polite"></span>
+      <p class="stf-range-error" id="prfRangeError" role="alert" hidden>"From" must be on or before "To".</p>
     </div>
-    <section class="stats-grid stf-stats" aria-label="Workshop performance (sample figures)">
-      <div class="stat stf-stat">
+    <section class="stats-grid stats-grid--wide stf-stats prf-stats" id="prfStats" aria-label="Performance summary" aria-busy="true">
+      <div class="stat stf-stat prf-stat">
         <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">Completed Jobs</div>
-          <div class="stat__value" id="stfPerfJobs"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Sample figure</div>
+          <div class="stat__label">Mechanics</div>
+          <div class="stat__value" id="prf-mechanics">&#8212;</div>
+          <div class="stf-stat__sub" id="prf-mechanics-sub">Loading&#8230;</div>
         </div>
       </div>
-      <div class="stat stf-stat">
-        <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+      <div class="stat stf-stat prf-stat">
+        <div class="stat__icon stat__icon--amber"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">On-time Completion</div>
-          <div class="stat__value" id="stfPerfOnTime"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub" id="stfPerfOnTimeSub">Sample figure</div>
+          <div class="stat__label">Job Cards Assigned</div>
+          <div class="stat__value" id="prf-assigned">&#8212;</div>
+          <div class="stf-stat__sub" id="prf-assigned-sub">Loading&#8230;</div>
         </div>
       </div>
-      <div class="stat stf-stat">
+      <div class="stat stf-stat prf-stat">
+        <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">Completed / Delivered</div>
+          <div class="stat__value" id="prf-done">&#8212;</div>
+          <div class="stf-stat__sub" id="prf-done-sub">Loading&#8230;</div>
+        </div>
+      </div>
+      <div class="stat stf-stat prf-stat">
         <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">Average Turnaround Time</div>
-          <div class="stat__value" id="stfPerfTurnaround"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Sample figure, received to completed</div>
+          <div class="stat__label">Open</div>
+          <div class="stat__value" id="prf-open">&#8212;</div>
+          <div class="stf-stat__sub" id="prf-open-sub">Loading&#8230;</div>
         </div>
       </div>
-      <div class="stat stf-stat">
-        <div class="stat__icon stf-icon--violet"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg></div>
+      <div class="stat stf-stat prf-stat">
+        <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg></div>
         <div class="stf-stat__body">
-          <div class="stat__label">Labour Value</div>
-          <div class="stat__value" id="stfPerfLabour"><span aria-hidden="true">&#8212;</span></div>
-          <div class="stf-stat__sub">Sample figure</div>
+          <div class="stat__label">Cancelled</div>
+          <div class="stat__value" id="prf-cancelled">&#8212;</div>
+          <div class="stf-stat__sub" id="prf-cancelled-sub">Loading&#8230;</div>
+        </div>
+      </div>
+      <div class="stat stf-stat prf-stat">
+        <div class="stat__icon stf-icon--violet"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M16.53 11.06L15.47 10l-4.88 4.88-2.12-2.12-1.06 1.06L10.59 17l5.94-5.94zM19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg></div>
+        <div class="stf-stat__body">
+          <div class="stat__label">On Time</div>
+          <div class="stat__value" id="prf-ontime">&#8212;</div>
+          <div class="stf-stat__sub" id="prf-ontime-sub">Loading&#8230;</div>
         </div>
       </div>
     </section>
-    <section class="card stf-table-card" id="stfPerfCard" aria-labelledby="stfPerfTitle">
+    <section class="card stf-table-card" aria-labelledby="prfTitle">
+      <div class="card__head"><h2 id="prfTitle">Performance by Mechanic</h2><span class="spacer"></span><span class="prf-period" id="prfPeriodLabel"></span></div>
+      <div class="table-wrap">
+        <table class="table stf-table prf-table" id="prfTable" aria-busy="true">
+          <thead>
+            <tr><th>Mechanic</th><th>Specialization</th><th class="num">Assigned</th><th class="num">Open</th><th class="num">Completed / Delivered</th><th class="num">Cancelled</th><th class="num">Completion rate</th><th class="num">Completed in period</th><th class="num">On time</th></tr>
+          </thead>
+          <tbody id="prfBody"></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card stf-table-card" aria-labelledby="prfJobsTitle">
       <div class="card__head">
-        <h2 id="stfPerfTitle">Staff Performance</h2>
-        <span class="badge badge--neutral">Demo</span>
+        <h2 id="prfJobsTitle">Job Cards in the Period</h2>
+        <span class="spacer"></span>
+        <select class="select prf-status" id="prfStatus" aria-label="Filter job cards by status" disabled><option value="all">All statuses</option></select>
       </div>
       <div class="table-wrap">
-        <table class="table stf-table">
+        <table class="table stf-table prf-jobs" id="prfJobsTable" aria-busy="true">
           <thead>
-            <tr><th class="num">#</th><th>Staff</th><th>Role</th><th class="num">Completed Jobs</th><th>On-time Completion</th><th class="num">Avg. Turnaround</th><th class="num">Labour Value</th></tr>
+            <tr><th>Job Card</th><th>Job Date</th><th>Mechanic</th><th>Status</th><th>Est. Delivery</th><th>Completed</th></tr>
           </thead>
-          <tbody id="stfPerfBody"></tbody>
+          <tbody id="prfJobsBody"></tbody>
         </table>
       </div>
       <div class="card__body stf-card-foot">
-        <p class="stf-muted">How these would be measured once available: completed jobs are job cards marked Completed in the period; on-time means completed by the estimated delivery date; turnaround runs from received to completed; labour value is the labour charged on those job cards.</p>
-      </div>
-    </section>
-    <section class="card" id="stfPerfEmpty" aria-labelledby="stfPerfEmptyTitle" hidden>
-      <div class="card__body">
-        <div class="empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" aria-hidden="true"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
-          <h3 id="stfPerfEmptyTitle">No performance figures yet</h3>
-          <p>Figures will appear here once performance measurement is available.</p>
+        <div class="stf-pager" role="navigation" aria-label="Job card pages">
+          <span class="stf-pager__range" id="prfJobsRange" aria-live="polite"></span>
+          <div class="stf-pager__btns">
+            <button type="button" class="btn btn--ghost btn--sm" id="prfJobsPrev" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg><span>Previous</span></button>
+            <button type="button" class="btn btn--ghost btn--sm" id="prfJobsNext" disabled><span>Next</span><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>
+          </div>
         </div>
       </div>
     </section>
@@ -131,7 +168,7 @@
   <script src="../js/storage.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/app.js"></script>
-  <script src="../js/staff-ui.js"></script>
+  <script src="../js/staff-performance.js"></script>
   <span id="shell-drawn" hidden></span>
 </body>
 </html>
