@@ -1,9 +1,10 @@
-/* staff-management-ui — Staff Management: the sidebar group, its two
-   UI-preview pages, and the static shape of the seven real pages (Staff
-   List, Add Staff, User Accounts, Roles & Permissions, Attendance, Leave
-   Management and Activity Log, whose behaviour is tested in
-   staff-list.test.cjs, staff-add.test.cjs, staff-accounts.test.cjs,
-   staff-roles.test.cjs, staff-attendance.test.cjs, staff-leave.test.cjs and
+/* staff-management-ui — Staff Management: the sidebar group and the static
+   shape of its nine pages, all of them real (Overview, Staff List, Add Staff,
+   User Accounts, Roles & Permissions, Attendance, Leave Management,
+   Performance and Activity Log, whose behaviour is tested in
+   staff-overview.test.cjs, staff-list.test.cjs, staff-add.test.cjs,
+   staff-accounts.test.cjs, staff-roles.test.cjs, staff-attendance.test.cjs,
+   staff-leave.test.cjs, staff-performance.test.cjs and
    staff-activity-log.test.cjs).
 
    What must hold:
@@ -20,30 +21,22 @@
         names the page; on any other page nothing in the group is active.
      3. Every Staff page shares the Settings <head> (title and the staff
         stylesheets aside), declares its own page key and has no file or
-        password input, inline handler or inline script. The two previews
-        have no form, every button is type="button", they say plainly that
-        their content is not saved or sent and load exactly the shared shell
-        scripts plus js/staff-ui.js. Staff List, Add Staff, User Accounts,
-        Roles & Permissions, Attendance, Leave Management and Activity Log are NOT previews: no preview notice, no Demo badge, no preview-only
-        control, and their own scripts in place of js/staff-ui.js. Add Staff
-        is the one page with a form: one submit button (Save Staff), no pay,
-        password or photo field. User Accounts shows no password column and
-        says plainly what an account can do. Roles & Permissions says plainly
-        which rules the server enforces and offers no way to change them.
-        Attendance says a day with no record is not counted as absent.
-        Leave Management says approving leave changes nothing else.
-        Activity Log says the server records successful changes only.
-     4. js/staff-ui.js never touches the database, browser storage or the
-        network, and never writes HTML: content is built as text.
-     5. The demo data is unmistakably fictional (Demo Staff names, example.com
-        addresses, masked phones), holds no password, and the summaries,
-        filters and paging the pages show are computed from it correctly --
-        including the sample performance figures.
-     6. css/staff.css reaches the Staff pages only.
+        password input, inline handler or inline script. None is a preview:
+        no preview notice, no Demo badge, no preview-only control, and its own
+        script after the shared shell scripts. Add Staff is the one page with
+        a form: one submit button (Save Staff), no pay, password or photo
+        field. User Accounts shows no password column and says plainly what an
+        account can do. Roles & Permissions says plainly which rules the
+        server enforces and offers no way to change them. Attendance says a
+        day with no record is not counted as absent. Leave Management says
+        approving leave changes nothing else. Activity Log says the server
+        records successful changes only. Performance says what each count is
+        based on and that no score is calculated.
+     4. The preview script js/staff-ui.js is gone: no page loads it.
+     5. css/staff.css reaches the Staff pages only.
 
-   Drives the REAL js/app.js through the shared harness; js/staff-ui.js is
-   loaded on its own with no page, which runs none of its rendering. */
-const fs = require('fs'), path = require('path'), vm = require('vm');
+   Drives the REAL js/app.js through the shared harness. */
+const fs = require('fs'), path = require('path');
 const { boot, check, ok, summary } = require('../lib/harness.cjs');
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -71,7 +64,6 @@ const REF_ICONS = [
   ['staff-performance', '<path d="M4 18v3"/><path d="M8 14v7"/><path d="M12 16v5"/><path d="M16 14v7"/><path d="M20 10v11"/><path d="m22 3-8.65 8.65a.5.5 0 0 1-.7 0L9.35 8.35a.5.5 0 0 0-.7 0L2 15"/>'],
   ['staff-activity-log', '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'],
 ];
-const NEW_KEYS = ['staff-performance'];
 
 /** Render the shell for one page; return the HTML the shell wrote. */
 function shellFor(page, root = '', sessionHint = null) {
@@ -170,6 +162,7 @@ const REAL = {
   'staff-attendance': ['staff-attendance.css', ['staff-attendance.js']],
   'staff-leave': ['staff-leave.css', ['staff-leave.js']],
   'staff-activity-log': ['staff-activity-log.css', ['staff-activity-log.js']],
+  'staff-performance': ['staff-performance.css', ['staff-performance.js']],
 };
 for (const [key, label] of ENTRIES) {
   const html = read(`pages/${key}.html`);
@@ -277,7 +270,6 @@ for (const [key, label] of ENTRIES) {
 }
 {
   const cols = body => [...body.matchAll(/<th(?: class="num")?>([^<]+)<\/th>/g)].map(m => m[1]);
-  const demoBadges = body => (body.match(/<span class="badge badge--neutral">Demo<\/span>/g) || []).length;
   const t = pages['staff-attendance'];
   ok('Attendance: explains one record per person per day, that an unrecorded day is not absent, and that nothing is calculated',
     /<h2 class="att-note__title" id="attNoteTitle">How attendance works<\/h2>/.test(t) && /it is not counted as absent/.test(t)
@@ -305,83 +297,27 @@ for (const [key, label] of ENTRIES) {
   check('   ...the requested columns', cols(v), ['Staff', 'Department', 'Leave Type', 'Dates', 'Days', 'Reason', 'Submitted', 'Status', 'Actions']);
   ok('   ...no Demo badge, demo request or empty-state switch is left', !/>Demo<|LV-DEMO|data-empty-toggle|demo/i.test(v.replace(/<!--[\s\S]*?-->/g, '')), '');
   const f = pages['staff-performance'];
-  ok('Performance: says every figure is a sample and performance is not measured yet',
-    /<strong>Preview: sample figures, not real performance\.<\/strong>/.test(f) && /Every number here is demo data: performance is not measured yet/.test(f), '');
-  check('   ...the four requested measures, in order', [...f.matchAll(/<div class="stat__label">([^<]+)<\/div>/g)].map(m => m[1]),
-    ['Completed Jobs', 'On-time Completion', 'Average Turnaround Time', 'Labour Value']);
-  check('   ...each card says it is a sample figure', (f.match(/<div class="stf-stat__sub"[^>]*>Sample figure/g) || []).length, 4);
-  check('   ...the staff table columns', cols(f), ['#', 'Staff', 'Role', 'Completed Jobs', 'On-time Completion', 'Avg. Turnaround', 'Labour Value']);
-  ok('   ...a sort choice for each measure, the period label and an empty state',
-    ['stfPerfSort', 'stfPerfPeriod', 'stfPerfBody', 'stfPerfEmpty'].every(id => f.includes(`id="${id}"`))
-      && ['jobs', 'onTime', 'turnaround', 'labour'].every(o => f.includes(`<option value="${o}">`)), '');
-  check('   ...the table is badged "Demo"', demoBadges(f), 1);
-  ok('the Phase 1 preview page has an empty-state switch in its preview notice',
-    NEW_KEYS.every(k => /<div class="stf-preview" role="note">[\s\S]*?data-empty-toggle aria-pressed="false">Show the empty state<\/button>/.test(pages[k])), '');
+  ok('Performance: says what each count is based on (job date, completion time), that only mechanics are assigned job cards, and that no score is calculated',
+    /<h2 class="prf-note__title" id="prfNoteTitle">How performance is measured<\/h2>/.test(f) && /<strong>job date<\/strong>/.test(f)
+      && /<strong>completion time<\/strong>/.test(f) && /Only mechanics are assigned job cards/.test(f) && /no score or ranking is calculated/.test(f), '');
+  check('   ...six summary cards, from the job cards', [...f.matchAll(/<div class="stat__value" id="prf-([a-z]+)">/g)].map(m => m[1]),
+    ['mechanics', 'assigned', 'done', 'open', 'cancelled', 'ontime']);
+  ok('   ...period, date range, mechanic, search, Reset and status controls, all disabled until the data loads',
+    ['prfPeriod', 'prfFrom', 'prfTo', 'prfMechanic', 'prfSearch', 'prfClear', 'prfStatus'].every(id => new RegExp(`id="${id}"[^>]*\\sdisabled`).test(f)), '');
+  check('   ...the periods offered', [...f.matchAll(/<option value="(today|last7|month|lastMonth|custom)"/g)].map(m => m[1]), ['today', 'last7', 'month', 'lastMonth', 'custom']);
+  check('   ...the mechanic table columns', [...f.matchAll(/<th(?: class="num")?>([^<]+)<\/th>/g)].map(m => m[1]).slice(0, 9),
+    ['Mechanic', 'Specialization', 'Assigned', 'Open', 'Completed / Delivered', 'Cancelled', 'Completion rate', 'Completed in period', 'On time']);
+  ok('   ...the job card list and its pager are filled by its script', ['prfBody', 'prfJobsBody', 'prfJobsPrev', 'prfJobsNext', 'prfJobsRange'].every(id => f.includes(`id="${id}"`)), '');
+  ok('   ...no Demo badge, sample figure or empty-state switch is left', !/>Demo<|Sample figure|data-empty-toggle|demo/i.test(f.replace(/<!--[\s\S]*?-->/g, '')), '');
 }
 
-/* ---------- 4. the page script ---------- */
+/* ---------- 4. no preview script is left ---------- */
 console.log('\n-- 4. js/staff-ui.js --');
-const src = read('js/staff-ui.js');
-const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
-check('it never reaches the database, browser storage or the network',
-  ['fetch(', 'XMLHttpRequest', 'Api.', 'Storage.', 'localStorage', 'sessionStorage', 'sendBeacon', 'WebSocket', 'FileReader', 'indexedDB']
-    .filter(t => code.includes(t)), []);
-check('it never writes HTML', ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function'].filter(t => code.includes(t)), []);
-ok('it does not format the demo amounts with Utils.money (which reads the workshop settings)', !code.includes('Utils.money'), '');
-check('it renders exactly the preview Staff pages (Staff List, Add Staff and User Accounts are real and have their own scripts)',
-  [...code.match(/const RENDER = \{([\s\S]*?)\};/)[1].matchAll(/'([a-z-]+)':/g)].map(m => m[1]),
-  ENTRIES.map(([k]) => k).filter(k => !REAL[k]));
-ok('it creates no action button (the Performance preview has none)', !/'data-preview'|icon-btn|Utils\.toast/.test(code), '');
+ok('the preview script js/staff-ui.js is gone (every Staff page is real)', !fs.existsSync(path.join(ROOT, 'js/staff-ui.js')), '');
+ok('   ...and no page loads it', fs.readdirSync(path.join(ROOT, 'pages')).every(f => !read(`pages/${f}`).includes('staff-ui.js')), '');
 
-/* ---------- 5. demo data and helpers ---------- */
-console.log('\n-- 5. demo data --');
-const sb = { console, Math, JSON, Object, Array, String, Number, Set, Map };
-vm.createContext(sb);
-vm.runInContext(`${src}\nglobalThis.StaffUI = StaffUI;`, sb, { filename: 'js/staff-ui.js' });
-const S = sb.StaffUI;
-check('twelve demo staff', S.DEMO_STAFF.length, 12);
-ok('   ...every name is "Demo Staff <letter>"', S.DEMO_STAFF.every(s => /^Demo Staff [A-L]$/.test(s.name)), '');
-ok('   ...every ID is DEMO-nnn', S.DEMO_STAFF.every(s => /^DEMO-\d{3}$/.test(s.id)), '');
-ok('   ...every email address is on example.com', S.DEMO_STAFF.every(s => /^[a-z.]+@example\.com$/.test(s.email)), '');
-ok('   ...every phone number is masked', S.DEMO_STAFF.every(s => /^01XXX-XXX\d{3}$/.test(s.phone)), '');
-ok('   ...no record has a password field, and no password appears anywhere in the data',
-  S.DEMO_STAFF.every(s => !Object.keys(s).some(k => /pass/i.test(k))) && !/password\s*:/i.test(code), '');
-ok('the demo Overview is gone (the Overview is real; js/staff-overview.js)',
-  S.summary === undefined && !/renderOverview|stfRecentBody|stfRoleChart|'staff-management'/.test(code), '');
-check('filter: by role', S.filterStaff(S.DEMO_STAFF, { role: 'Mechanic' }).length, 5);
-check('filter: by status', S.filterStaff(S.DEMO_STAFF, { status: 'Inactive' }).map(s => s.id), ['DEMO-005', 'DEMO-012']);
-check('filter: search is case-insensitive over ID, name, designation, email and department',
-  [S.filterStaff(S.DEMO_STAFF, { q: 'demo-008' }).length, S.filterStaff(S.DEMO_STAFF, { q: 'FRONT DESK' }).length, S.filterStaff(S.DEMO_STAFF, { q: 'nobody' }).length], [1, 2, 0]);
-check('filter: filters combine', S.filterStaff(S.DEMO_STAFF, { role: 'Mechanic', department: 'Workshop', status: 'Active' }).length, 4);
-check('paging: 12 rows by 8', [S.paginate(S.DEMO_STAFF, 1, 8), S.paginate(S.DEMO_STAFF, 2, 8)].map(p => [p.rows.length, p.from, p.to, p.pages]), [[8, 1, 8, 2], [4, 9, 12, 2]]);
-check('paging: out-of-range pages are clamped, an empty list is one empty page',
-  [S.paginate(S.DEMO_STAFF, 9, 8).page, S.paginate(S.DEMO_STAFF, 0, 8).page, S.paginate([], 1, 8).from, S.paginate([], 1, 8).pages], [2, 1, 0, 1]);
-ok('the demo activity is gone (Activity Log is real; js/staff-activity-log.js)',
-  S.DEMO_ACTIVITY === undefined && S.filterActivity === undefined && !/renderActivity|stfActBody|ACT-DEMO/.test(code), '');
-check('dates read as day, month, year', S.fmtDay('2024-01-08'), '08 Jan 2024');
-ok('the example roles are gone (Roles & Permissions is real; js/staff-roles.js)', S.ROLES === undefined && S.MODULES === undefined && !/renderRoles|stfMatrixBody/.test(code), '');
-
-ok('the demo attendance week is gone (Attendance is real; js/staff-attendance.js)', S.DEMO_WEEK === undefined && S.attendanceFor === undefined && !/renderAttendance|stfAttBody/.test(code), '');
-
-ok('the demo leave requests are gone (Leave Management is real; js/staff-leave.js)',
-  S.DEMO_LEAVE === undefined && S.leaveSummary === undefined && S.filterLeave === undefined && !/renderLeave|stfLvBody|LV-DEMO/.test(code), '');
-
-// Performance (sample figures)
-check('sample performance for five workshop staff', S.DEMO_PERFORMANCE.map(p => p.staffId), ['DEMO-001', 'DEMO-002', 'DEMO-003', 'DEMO-004', 'DEMO-011']);
-ok('   ...each figure is consistent (on time within jobs, positive turnaround and labour)',
-  S.DEMO_PERFORMANCE.every(p => p.onTime <= p.jobs && p.jobs > 0 && p.turnaround > 0 && p.labour > 0), '');
-ok('   ...the period is labelled as demo', /\(demo\)$/.test(S.PERFORMANCE_PERIOD), '');
-const ps = S.performanceSummary();
-check('the workshop totals', [ps.jobs, ps.onTime, ps.onTimePct, ps.turnaround, ps.labour], [156, 136, 87, 6, 291600]);
-const pr = S.performanceRows();
-check('sorting: best first by each measure', ['jobs', 'onTime', 'turnaround', 'labour'].map(k => S.sortPerformance(pr, k)[0].staffId),
-  ['DEMO-001', 'DEMO-011', 'DEMO-011', 'DEMO-001']);
-check('   ...on-time percentages per person', pr.map(r => r.onTimePct), [91, 82, 91, 81, 92]);
-check('an empty period sums to zero', Object.values(S.performanceSummary([])), [0, 0, 0, 0, 0]);
-check('amounts read as taka', S.taka(291600), '৳ 2,91,600');
-
-/* ---------- 6. the stylesheet ---------- */
-console.log('\n-- 6. css/staff.css --');
+/* ---------- 5. the stylesheet ---------- */
+console.log('\n-- 5. css/staff.css --');
 const css = read('css/staff.css').replace(/\/\*[\s\S]*?\*\//g, '');
 const selectors = css.replace(/@media[^{]*\{/g, '').split('}').map(r => r.trim()).filter(Boolean)
   // Split selector lists on top-level commas only: :is(a, b) is one selector.
