@@ -1,0 +1,232 @@
+/* ============================================================
+   inbox-conversations.css — Social Inbox › All Conversations
+   (demo page, UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/inbox-conversations.html, and every rule is
+   scoped to [data-page="inbox-conversations"], so nothing here can
+   reach another page. Built on the shared tokens and components
+   (card, badges, inputs, buttons, empty state); this file arranges
+   them into a two-pane inbox that stacks on narrow screens.
+   ============================================================ */
+
+[data-page="inbox-conversations"] {
+  --inb-fb: #1877f2;
+  --inb-wa: #1f9d61;
+  --inb-web: #7c5cd6;
+  --inb-h: min(680px, calc(100vh - 290px));
+}
+
+[data-page="inbox-conversations"] .inb-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* The Social Inbox group is marked while this page is open, like Customer CRM. */
+[data-page="inbox-conversations"] .nav__inbox > .nav__summary { color: #fff; font-weight: 600; }
+[data-page="inbox-conversations"] .nav__inbox > .nav__summary > svg:first-child { color: var(--amber); opacity: 1; }
+
+/* ---------- header and demo banner ---------- */
+[data-page="inbox-conversations"] .inb-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+[data-page="inbox-conversations"] .inb-head__icon { flex: none; display: grid; place-items: center; color: var(--amber); }
+[data-page="inbox-conversations"] .inb-head__text { min-width: 0; }
+[data-page="inbox-conversations"] .inb-head__title {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin: 0; font-size: 1.35rem; font-weight: 700; color: var(--text);
+}
+[data-page="inbox-conversations"] .inb-head .page-subtitle { margin: 2px 0 0; font-size: .88rem; color: var(--text-2); }
+
+[data-page="inbox-conversations"] .inb-demo {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 0 0 16px; padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: .84rem;
+}
+[data-page="inbox-conversations"] .inb-demo svg { flex: none; margin-top: 1px; color: var(--amber-text); }
+[data-page="inbox-conversations"] .inb-demo p { margin: 0; }
+[data-page="inbox-conversations"] .inb-demo strong { color: var(--amber-text); margin-right: 4px; }
+
+/* ---------- toolbar ---------- */
+[data-page="inbox-conversations"] .inb-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px;
+}
+[data-page="inbox-conversations"] .inb-channels { display: flex; flex-wrap: wrap; gap: 8px; }
+[data-page="inbox-conversations"] .inb-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit; font-size: .82rem; font-weight: 600;
+  cursor: pointer;
+}
+[data-page="inbox-conversations"] .inb-chip:hover { border-color: var(--line-strong); color: var(--text); }
+[data-page="inbox-conversations"] .inb-chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+[data-page="inbox-conversations"] .inb-chip.is-active { background: var(--amber); border-color: var(--amber); color: #241a05; }
+[data-page="inbox-conversations"] .inb-chip__n {
+  min-width: 20px; padding: 0 6px; border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: .72rem; text-align: center;
+}
+[data-page="inbox-conversations"] .inb-tools { display: flex; flex-wrap: wrap; gap: 10px; }
+[data-page="inbox-conversations"] .inb-search { position: relative; display: block; }
+[data-page="inbox-conversations"] .inb-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+[data-page="inbox-conversations"] .inb-search .input { width: 260px; padding-left: 36px; }
+[data-page="inbox-conversations"] .inb-status-filter .input { width: auto; min-width: 150px; }
+
+/* ---------- two-pane shell ---------- */
+[data-page="inbox-conversations"] .inb-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  height: var(--inb-h);
+  min-height: 460px;
+  padding: 0;
+  overflow: hidden;
+}
+[data-page="inbox-conversations"] .inb-list-pane {
+  display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--line);
+}
+[data-page="inbox-conversations"] .inb-detail-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+[data-page="inbox-conversations"] .inb-state { margin: auto; padding: 24px; text-align: center; }
+[data-page="inbox-conversations"] #inbLoading { display: flex; align-items: center; gap: 10px; color: var(--text-2); font-size: .86rem; }
+[data-page="inbox-conversations"] #inbLoading[hidden] { display: none; }
+[data-page="inbox-conversations"] .inb-spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--amber);
+  animation: inb-spin .8s linear infinite;
+}
+@keyframes inb-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { [data-page="inbox-conversations"] .inb-spinner { animation: none; } }
+
+/* ---------- conversation list ---------- */
+[data-page="inbox-conversations"] .inb-list { flex: 1; min-height: 0; margin: 0; padding: 6px; list-style: none; overflow-y: auto; }
+[data-page="inbox-conversations"] .inb-row {
+  display: flex; align-items: flex-start; gap: 12px; width: 100%;
+  padding: 11px 12px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: inherit; font: inherit; text-align: left;
+  cursor: pointer;
+}
+[data-page="inbox-conversations"] .inb-row:hover { background: var(--paper); }
+[data-page="inbox-conversations"] .inb-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+[data-page="inbox-conversations"] .inb-row.is-selected { background: var(--amber-soft); }
+[data-page="inbox-conversations"] .inb-row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+[data-page="inbox-conversations"] .inb-row__top { display: flex; align-items: baseline; gap: 8px; }
+[data-page="inbox-conversations"] .inb-row__name {
+  flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: .88rem; font-weight: 600; color: var(--text);
+}
+[data-page="inbox-conversations"] .inb-row__when { flex: none; font-size: .72rem; color: var(--text-3); }
+[data-page="inbox-conversations"] .inb-row__preview {
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: .8rem; color: var(--text-2);
+}
+[data-page="inbox-conversations"] .inb-row.is-unread .inb-row__name,
+[data-page="inbox-conversations"] .inb-row.is-unread .inb-row__preview { font-weight: 700; color: var(--text); }
+[data-page="inbox-conversations"] .inb-row.is-unread .inb-row__when { color: var(--amber-text); font-weight: 600; }
+[data-page="inbox-conversations"] .inb-row__meta { display: flex; gap: 6px; margin-top: 2px; }
+[data-page="inbox-conversations"] .inb-unread {
+  flex: none; align-self: center;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--amber); color: #241a05;
+  font-size: .7rem; font-weight: 700; line-height: 20px; text-align: center;
+}
+
+[data-page="inbox-conversations"] .inb-avatar {
+  position: relative; flex: none;
+  display: grid; place-items: center;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--info-soft); color: var(--info);
+  font-size: .8rem; font-weight: 700;
+}
+[data-page="inbox-conversations"] .inb-ch {
+  position: absolute; right: -3px; bottom: -3px;
+  display: grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--surface); color: #fff;
+}
+[data-page="inbox-conversations"] .inb-ch--facebook { background: var(--inb-fb); }
+[data-page="inbox-conversations"] .inb-ch--whatsapp { background: var(--inb-wa); }
+[data-page="inbox-conversations"] .inb-ch--website  { background: var(--inb-web); }
+
+[data-page="inbox-conversations"] .inb-chan,
+[data-page="inbox-conversations"] .inb-status {
+  padding: 1px 8px; border-radius: 999px; font-size: .68rem; font-weight: 600;
+}
+[data-page="inbox-conversations"] .inb-chan--facebook { background: color-mix(in srgb, var(--inb-fb) 14%, var(--surface)); color: var(--inb-fb); }
+[data-page="inbox-conversations"] .inb-chan--whatsapp { background: var(--good-soft); color: var(--good); }
+[data-page="inbox-conversations"] .inb-chan--website  { background: color-mix(in srgb, var(--inb-web) 14%, var(--surface)); color: var(--inb-web); }
+[data-page="inbox-conversations"] .inb-status--open     { background: var(--info-soft); color: var(--info); }
+[data-page="inbox-conversations"] .inb-status--pending  { background: var(--warn-soft); color: var(--warn); }
+[data-page="inbox-conversations"] .inb-status--resolved { background: var(--paper); color: var(--text-2); border: 1px solid var(--line); }
+
+[data-page="inbox-conversations"] .inb-foot {
+  margin: 0; padding: 9px 14px; border-top: 1px solid var(--line);
+  font-size: .74rem; color: var(--text-3);
+}
+
+/* ---------- conversation detail ---------- */
+[data-page="inbox-conversations"] .inb-convo { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+[data-page="inbox-conversations"] .inb-convo[hidden] { display: none; }
+[data-page="inbox-conversations"] .inb-convo__head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line);
+}
+[data-page="inbox-conversations"] .inb-back { display: none; padding: 6px; }
+[data-page="inbox-conversations"] .inb-convo__who { flex: 1; min-width: 140px; }
+[data-page="inbox-conversations"] .inb-convo__name { margin: 0; font-size: .98rem; font-weight: 700; color: var(--text); }
+[data-page="inbox-conversations"] .inb-convo__meta { margin: 2px 0 0; font-size: .76rem; color: var(--text-2); }
+[data-page="inbox-conversations"] .inb-convo__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+[data-page="inbox-conversations"] .inb-convo__actions .input { width: auto; padding-top: 5px; padding-bottom: 5px; font-size: .8rem; }
+
+[data-page="inbox-conversations"] .inb-thread {
+  flex: 1; min-height: 0; margin: 0; padding: 18px 16px;
+  list-style: none; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--paper);
+}
+[data-page="inbox-conversations"] .inb-msg { max-width: min(78%, 520px); display: flex; flex-direction: column; gap: 3px; }
+[data-page="inbox-conversations"] .inb-msg__text {
+  margin: 0; padding: 9px 13px; border-radius: 14px;
+  font-size: .86rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+[data-page="inbox-conversations"] .inb-msg--in { align-self: flex-start; }
+[data-page="inbox-conversations"] .inb-msg--in .inb-msg__text {
+  background: var(--surface); color: var(--text); border: 1px solid var(--line); border-bottom-left-radius: 4px;
+}
+[data-page="inbox-conversations"] .inb-msg--out { align-self: flex-end; align-items: flex-end; }
+[data-page="inbox-conversations"] .inb-msg--out .inb-msg__text { background: var(--amber); color: #241a05; border-bottom-right-radius: 4px; }
+[data-page="inbox-conversations"] .inb-msg__meta { display: flex; gap: 6px; font-size: .7rem; color: var(--text-3); }
+[data-page="inbox-conversations"] .inb-msg__demo { color: var(--amber-text); font-weight: 600; }
+
+[data-page="inbox-conversations"] .inb-composer {
+  display: flex; align-items: flex-end; gap: 10px;
+  padding: 12px 16px 6px; border-top: 1px solid var(--line);
+}
+[data-page="inbox-conversations"] .inb-composer__input { flex: 1; min-height: 44px; max-height: 140px; resize: vertical; }
+[data-page="inbox-conversations"] .inb-composer__note { margin: 0; padding: 0 16px 10px; font-size: .72rem; color: var(--text-3); }
+
+/* ---------- narrow screens: one pane at a time ---------- */
+@media (max-width: 900px) {
+  [data-page="inbox-conversations"] .inb-shell { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  [data-page="inbox-conversations"] .inb-list-pane { border-right: 0; }
+  [data-page="inbox-conversations"] .inb-list { max-height: none; overflow: visible; }
+  [data-page="inbox-conversations"] .inb-detail-pane { display: none; }
+  [data-page="inbox-conversations"] .inb-shell.has-selection .inb-list-pane { display: none; }
+  [data-page="inbox-conversations"] .inb-shell.has-selection .inb-detail-pane { display: flex; height: calc(100vh - 220px); min-height: 440px; }
+  [data-page="inbox-conversations"] .inb-back { display: inline-flex; }
+}
+@media (max-width: 640px) {
+  [data-page="inbox-conversations"] .inb-tools,
+  [data-page="inbox-conversations"] .inb-search,
+  [data-page="inbox-conversations"] .inb-search .input,
+  [data-page="inbox-conversations"] .inb-status-filter,
+  [data-page="inbox-conversations"] .inb-status-filter .input { width: 100%; }
+  [data-page="inbox-conversations"] .inb-convo__actions { width: 100%; }
+  [data-page="inbox-conversations"] .inb-convo__actions label { flex: 1; }
+  [data-page="inbox-conversations"] .inb-convo__actions .input { width: 100%; }
+  [data-page="inbox-conversations"] .inb-msg { max-width: 88%; }
+}
