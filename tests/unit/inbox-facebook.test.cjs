@@ -3,8 +3,8 @@
    What must hold:
      1. In the sidebar, Facebook is a link to the demo page, which exists,
         marked Demo, and active (aria-current) only on that page.
-     2. All Conversations, WhatsApp and Book Now are still links; Website
-        Forms and the separate Comments entry stay "Not configured".
+     2. All Conversations, WhatsApp and Book Now are still links; the
+        separate Comments entry stays "Not configured".
      3. The page shows the DEMO MODE banner and "Not connected (demo)"; its
         script makes no request, touches neither the API, Storage nor
         browser storage, inserts no HTML and names no URL or token.
@@ -60,7 +60,7 @@ console.log('\n-- 2. the other entries --');
   ok('All Conversations still links to its page', /^<a class="nav__sub" href="pages\/inbox-conversations\.html"/.test(subFor(group, 'All Conversations')), '');
   ok('WhatsApp still links to its page', /^<a class="nav__sub" href="pages\/inbox-whatsapp\.html"/.test(subFor(group, 'WhatsApp')), '');
   ok('Book Now still links to Appointments', /^<a class="nav__sub" href="pages\/appointments\.html"/.test(subFor(group, 'Book Now')), '');
-  for (const label of ['Website Forms', 'Comments']) {
+  for (const label of ['Comments']) {
     const row = subFor(group, label);
     ok(`${label} is still "Not configured"`, /^<span class="nav__sub nav__sub--off" aria-disabled="true"/.test(row) && /Not configured/.test(row), row.slice(0, 120));
   }

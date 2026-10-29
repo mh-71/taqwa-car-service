@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Website Forms Inbox — Taqwa Automobile Service Center</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    try {
+      var t = JSON.parse(localStorage.getItem('taqwa_theme'));
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/responsive.css">
+  <link rel="stylesheet" href="../css/inbox-website-forms.css">
+  <!-- Hold the first paint until app.js has drawn the shell (marker at the end
+       of <body>), so a page change never shows a frame without the sidebar
+       and header. The browser keeps the previous page on screen meanwhile.
+       Chromium releases the hold as soon as app.js inserts the shell (it
+       contains images) and then logs "Did not find element expected to be
+       parsed" -- a harmless warning; the marker must stay AFTER the scripts,
+       because placed before app.js a frame can slip out before the shell. -->
+  <link rel="expect" href="#shell-drawn" blocking="render">
+  <!-- The sidebar logo and the header's avatar are drawn by app.js; fetch them
+       alongside the scripts so they are ready in that first frame instead of
+       popping in after it. -->
+  <link rel="preload" href="../assets/logo/logo-white.png" as="image">
+  <link rel="preload" href="../assets/avatar/admin.webp" as="image">
+</head>
+<body data-page="inbox-website-forms" data-root="../">
+
+  <div id="page-content">
+
+
+    <!-- DEMO PAGE, UI ONLY. Filled in by js/inbox-website-forms.js from the fictional sample form
+         submissions in that file. Nothing here reads or writes the workshop database or browser
+         storage, makes a request, or creates a booking, appointment, customer, vehicle, CRM task or
+         job card. Real website bookings are not read here: they are listed in Appointments. Read
+         state, assignment, status and notes change this page only until it is reloaded. -->
+
+    <div class="wf-demo" role="note">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      <p><strong>DEMO MODE — No real website submissions are processed.</strong>
+        Every submission on this page is fictional. No booking, appointment or customer record is created, and nothing is saved.</p>
+    </div>
+
+    <div class="wf-channel">
+      <span class="wf-channel__logo" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></span>
+      <div class="wf-channel__text">
+        <h2 class="wf-channel__title">Website Forms Inbox <span class="badge badge--neutral">Demo</span></h2>
+        <p class="page-subtitle">Service enquiries from the website contact and quote forms (sample)</p>
+      </div>
+      <span class="wf-conn" role="status"><span class="wf-conn__dot" aria-hidden="true"></span>Demo only — not connected to live forms.</span>
+    </div>
+
+    <div class="wf-toolbar" role="search" aria-label="Find submissions">
+      <div class="wf-filters" role="group" aria-label="Filter submissions">
+        <button type="button" class="wf-chip is-active" data-filter="all" aria-pressed="true">All <span class="wf-chip__n" data-count="all"></span></button>
+        <button type="button" class="wf-chip" data-filter="unread" aria-pressed="false">Unread <span class="wf-chip__n" data-count="unread"></span></button>
+        <button type="button" class="wf-chip" data-filter="Open" aria-pressed="false">Open <span class="wf-chip__n" data-count="Open"></span></button>
+        <button type="button" class="wf-chip" data-filter="Pending" aria-pressed="false">Pending <span class="wf-chip__n" data-count="Pending"></span></button>
+        <button type="button" class="wf-chip" data-filter="Resolved" aria-pressed="false">Resolved <span class="wf-chip__n" data-count="Resolved"></span></button>
+      </div>
+      <label class="wf-search">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input type="search" class="input" id="wfSearch" placeholder="Search name, service, vehicle or reference&#8230;" aria-label="Search by customer name, service, vehicle or submission reference" autocomplete="off">
+      </label>
+    </div>
+
+    <section class="card wf-shell" id="wfShell" aria-label="Website form submissions">
+
+      <div class="wf-list-pane">
+        <h2 class="wf-sr-only" id="wfListTitle">Submissions</h2>
+        <div class="wf-state" id="wfLoading" role="status">
+          <span class="wf-spinner" aria-hidden="true"></span><span>Loading sample submissions&#8230;</span>
+        </div>
+        <div class="empty wf-state" id="wfError" hidden role="alert">
+          <h3>Could not load the sample submissions</h3>
+          <p>The demo data did not load. Reload the page to try again.</p>
+        </div>
+        <div class="empty wf-state" id="wfNoItems" hidden>
+          <h3>No website submissions yet</h3>
+          <p>Form submissions will appear here once the website forms are connected.</p>
+        </div>
+        <ul class="wf-list" id="wfList" aria-labelledby="wfListTitle" hidden></ul>
+        <div class="empty wf-state" id="wfEmpty" hidden>
+          <h3>No submissions match</h3>
+          <p>Try a different filter or search.</p>
+          <button type="button" class="btn btn--ghost btn--sm" id="wfClear">Clear filters</button>
+        </div>
+        <p class="wf-foot" id="wfFoot" aria-live="polite"></p>
+      </div>
+
+      <div class="wf-detail-pane">
+        <div class="empty wf-state" id="wfNone">
+          <svg viewBox="0 0 24 24" width="44" height="44" fill="currentColor" aria-hidden="true"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          <h3>Select a submission</h3>
+          <p>Choose a submission from the list to see its details.</p>
+        </div>
+
+        <div class="wf-detail" id="wfDetail" hidden>
+          <header class="wf-detail__head">
+            <button type="button" class="btn btn--ghost btn--sm wf-back" id="wfBack" aria-label="Back to submission list">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+            </button>
+            <div class="wf-detail__who">
+              <h3 class="wf-detail__title" id="wfDetailTitle"></h3>
+              <p class="wf-detail__meta" id="wfDetailMeta"></p>
+            </div>
+            <button type="button" class="btn btn--ghost btn--sm" id="wfMarkRead">Mark as read</button>
+          </header>
+
+          <div class="wf-detail__body">
+            <p class="wf-nobooking" role="note">Sample submission — no booking has been created.</p>
+
+            <dl class="wf-fields">
+              <dt>Reference</dt><dd id="wfRef"></dd>
+              <dt>Submitted</dt><dd id="wfWhen"></dd>
+              <dt>Form</dt><dd id="wfForm"></dd>
+              <dt>Requested service</dt><dd id="wfService"></dd>
+              <dt>Preferred date</dt><dd id="wfPreferred"></dd>
+            </dl>
+
+            <h4 class="wf-sub">Customer message</h4>
+            <blockquote class="wf-message" id="wfMessage"></blockquote>
+
+            <h4 class="wf-sub">Internal notes <span class="badge badge--neutral">Demo</span></h4>
+            <ol class="wf-notes" id="wfNotes"></ol>
+            <p class="wf-notes__empty" id="wfNotesEmpty">No notes yet.</p>
+            <form class="wf-note-form" id="wfNoteForm" autocomplete="off">
+              <label class="wf-sr-only" for="wfNote">Internal note</label>
+              <textarea class="input wf-note-form__input" id="wfNote" rows="2" maxlength="500" placeholder="Add an internal note (demo, not saved)&#8230;"></textarea>
+              <button type="submit" class="btn btn--ghost" id="wfAddNote" disabled>Add demo note</button>
+            </form>
+            <p class="wf-note-hint">Demo note — not saved, not sent. Nothing here reaches the customer or the workshop records.</p>
+          </div>
+        </div>
+      </div>
+
+      <aside class="wf-info-pane" id="wfInfo" aria-label="Customer and vehicle details" hidden>
+        <h3 class="wf-info__title">Customer details <span class="badge badge--neutral">Sample</span></h3>
+        <dl class="wf-info__list">
+          <dt>Name</dt><dd id="wfInfoName"></dd>
+          <dt>Phone</dt><dd id="wfInfoPhone"></dd>
+          <dt>Email</dt><dd id="wfInfoEmail"></dd>
+          <dt>Vehicle</dt><dd id="wfInfoVehicle"></dd>
+          <dt>Year</dt><dd id="wfInfoYear"></dd>
+          <dt>Registration</dt><dd id="wfInfoReg"></dd>
+        </dl>
+        <label class="wf-field">
+          <span>Assigned to</span>
+          <select class="input" id="wfAssign" aria-label="Assign staff (demo)"></select>
+        </label>
+        <label class="wf-field">
+          <span>Status</span>
+          <select class="input" id="wfStatus" aria-label="Submission status (demo)">
+            <option>Open</option><option>Pending</option><option>Resolved</option>
+          </select>
+        </label>
+        <p class="wf-info__note">Demo only: changes stay on this page until it is reloaded. No booking or customer is created.</p>
+      </aside>
+
+    </section>
+
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/seed-data.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/inbox-website-forms.js"></script>
+  <span id="shell-drawn" hidden></span>
+</body>
+</html>
