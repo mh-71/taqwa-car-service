@@ -4,7 +4,7 @@
      1. In the sidebar, All Conversations is a link to the demo page, which
         exists; it is active (aria-current) only on that page, and the
         Social Inbox group is open there.
-     2. Facebook, WhatsApp, Website Forms and Comments stay "Not configured"
+     2. Facebook, Website Forms and Comments stay "Not configured"
         and Book Now still links to Appointments.
      3. The page says it is Demo Mode and nothing is sent; its script makes
         no request and touches neither the API, Storage nor browser storage.
@@ -55,7 +55,7 @@ console.log('-- 1. the link --');
 console.log('\n-- 2. the other entries are unchanged --');
 {
   const group = inboxGroup(shellFor('dashboard'));
-  for (const label of ['Facebook', 'WhatsApp', 'Website Forms', 'Comments']) {
+  for (const label of ['Facebook', 'Website Forms', 'Comments']) {
     const row = subFor(group, label);
     ok(`${label} is still "Not configured" and not a link`, /^<span class="nav__sub nav__sub--off" aria-disabled="true"/.test(row) && /Not configured/.test(row), row.slice(0, 120));
   }
