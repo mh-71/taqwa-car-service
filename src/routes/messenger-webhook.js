@@ -45,18 +45,27 @@ const text = (body, status = 200) => new Response(body, {
 /* ---------- GET: the handshake ---------- */
 
 function verify(request, env, url) {
-  if (!metaConfig(env).webhook) {
-    console.error('Messenger webhook: META_WEBHOOK_VERIFY_TOKEN / META_APP_SECRET are not configured.');
-    return fail('webhook_not_configured', 'This webhook is not configured.', 503);
-  }
   const mode = url.searchParams.get('hub.mode');
   const token = url.searchParams.get('hub.verify_token');
   const challenge = url.searchParams.get('hub.challenge') || '';
-  // The challenge is echoed as plain text; only the shape Meta sends is accepted,
-  // so this can never reflect markup back to a browser.
-  if (mode !== 'subscribe' || !verifyTokenMatches(env, token) || !/^[A-Za-z0-9_-]{1,200}$/.test(challenge)) {
-    return fail('forbidden', 'Webhook verification failed.', 403);
-  }
+  const check = {
+    // Meta's own requests identify themselves; nothing else about the caller is kept.
+    fromMeta: /^facebookplatform\//i.test(request.headers.get('user-agent') || ''),
+    configured: metaConfig(env).webhook,
+    tokenConfigured: typeof env?.META_WEBHOOK_VERIFY_TOKEN === 'string' && env.META_WEBHOOK_VERIFY_TOKEN.trim() !== '',
+    modeOk: mode === 'subscribe',
+    tokenMatched: verifyTokenMatches(env, token),
+    // The challenge is echoed as plain text; only the shape Meta sends is accepted,
+    // so this can never reflect markup back to a browser.
+    challengeOk: /^[A-Za-z0-9_-]{1,200}$/.test(challenge),
+  };
+  const status = !check.configured ? 503 : check.modeOk && check.tokenMatched && check.challengeOk ? 200 : 403;
+  // One line per handshake, so a failed "Verify and save" can be explained from
+  // the Worker log. Booleans and the status only: never the token, the
+  // configured secret, the URL or the query string.
+  console.log(JSON.stringify({ event: 'messenger_verify', ...check, status }));
+  if (status === 503) return fail('webhook_not_configured', 'This webhook is not configured.', 503);
+  if (status === 403) return fail('forbidden', 'Webhook verification failed.', 403);
   return text(challenge);
 }
 
