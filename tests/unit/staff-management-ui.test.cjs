@@ -92,7 +92,7 @@ console.log('-- 1. sidebar --');
   const html = shellFor('dashboard');
   check('the top-level links, in order (Staff Management is a group, not a link)', topLinks(html).map(l => l.label),
     ['Dashboard', 'Customers', 'Vehicles', 'Appointments', 'Job Cards', 'Estimates & Quotations', 'Services', 'Mechanics',
-      'Inventory', 'Invoices', 'Payments', 'Expenses', 'Workshop Tools', 'Reports', 'Settings']);
+      'Inventory', 'Invoices', 'Payments', 'Expenses', 'Reports', 'Settings']);
   const block = staffBlock(html);
   ok('the sidebar has a Staff Management group', /<summary class="nav__summary"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"[^>]*>[\s\S]*?<\/svg><span>Staff Management<\/span>/.test(block), block.slice(0, 200));
   const iMec = html.indexOf('href="pages/mechanics.html"'), iGrp = html.indexOf('id="navStaff"'), iInv = html.indexOf('href="pages/inventory.html"');
@@ -112,9 +112,13 @@ console.log('-- 1. sidebar --');
   ok('   ...the chevron is an outline chevron that turns with the group',
     /<svg class="nav__chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"[^>]*><path d="m6 9 6 6 6-6"\/><\/svg><\/summary>/.test(block), '');
   const crm = (html.match(/<details class="nav__group[^"]*" id="navCrm"[\s\S]*?<\/details>/) || [''])[0];
-  ok('every other group and link keeps its filled icons (the outline style is the Staff group\'s only)',
-    crm && !/fill="none"/.test(crm) && !/fill="none"/.test((html.match(/<nav[\s\S]*?<\/nav>/) || [''])[0].replace(block, ''))
-      && (html.match(/<a class="nav__link[^"]*" href="[^"]+"><svg[^>]*fill="currentColor"/g) || []).length === 15, '');
+  // Outline (Lucide-style) icons belong to two groups: Staff Management and
+  // Workshop Assets. Everything else -- the CRM group and every top-level
+  // link -- keeps its filled icons.
+  const assets = (html.match(/<details class="nav__group[^"]*" id="navAssets"[\s\S]*?<\/details>/) || [''])[0];
+  ok('every other group and link keeps its filled icons (the outline style is the Staff and Workshop Assets groups\' only)',
+    crm && assets && !/fill="none"/.test(crm) && !/fill="none"/.test((html.match(/<nav[\s\S]*?<\/nav>/) || [''])[0].replace(block, '').replace(assets, ''))
+      && (html.match(/<a class="nav__link[^"]*" href="[^"]+"><svg[^>]*fill="currentColor"/g) || []).length === 14, '');
   ok('   ...each linking to a page that exists', ENTRIES.every(([, , href]) => fs.existsSync(path.join(ROOT, href))), '');
   ok('   ...the Overview keeps its existing URL', links[0] && links[0][0] === 'pages/staff-management.html', '');
   ok('   ...a native <details> with a chevron, so it opens from the keyboard',
