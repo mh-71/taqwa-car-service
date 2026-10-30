@@ -227,8 +227,12 @@ console.log('\n-- 3. The whole route surface, derived from the registry --');
   // /api/session is how a browser OBTAINS a credential, so requiring one
   // there would be a closed loop. Those two are asserted separately, below,
   // as deliberately public -- everything else must be gated.
+  // The Messenger webhook (0014) is public too, by necessity -- Meta cannot hold
+  // a session -- and is protected by Meta's own verify token and App Secret
+  // signature instead; tests/unit/api-messenger.test.mjs proves it refuses an
+  // unsigned delivery before reading anything.
   const PUBLIC = new Set(['POST /api/session', 'DELETE /api/session', 'GET /api/session',
-                          'GET /api/health']);
+                          'GET /api/health', 'GET /api/webhooks/messenger', 'POST /api/webhooks/messenger']);
   const mutations = routes.filter(
     (r) => /^(POST|PUT|PATCH|DELETE) /.test(r) && !PUBLIC.has(r));
   ok_('the registry really does advertise mutations', mutations.length >= 30, mutations.length);

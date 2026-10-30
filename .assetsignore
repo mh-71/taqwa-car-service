@@ -18,6 +18,7 @@ wrangler.jsonc
 README.md
 AUDIT.md
 DEPLOYMENT.md
+MESSENGER_SETUP.md
 
 # Secret files, if a developer ever creates one in the repository root. They
 # are gitignored, which keeps them out of the REPOSITORY -- this keeps them
@@ -27,3 +28,9 @@ DEPLOYMENT.md
 .dev.vars.*
 .env
 .env.*
+
+# Database exports (wrangler d1 export) hold every customer record. They are
+# gitignored too, but a backup saved in the repository root would otherwise be
+# published by the next deploy, because assets.directory is the root.
+backup*.sql
+*.sql
