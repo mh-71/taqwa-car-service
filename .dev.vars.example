@@ -20,3 +20,23 @@ AUTH_SECRET=
 # deployment that has no non-browser callers does not need it; the Worker
 # fails closed only when NEITHER this nor the passphrase pair is configured.
 API_TOKEN=
+
+# ---- Facebook Messenger (Social Inbox, migration 0014) ----------------------
+# Optional. Without them the inbox still works locally, it just receives and
+# sends nothing. Use TEST-ONLY values here; never a real App Secret or Page
+# token. Production values are set with `wrangler secret put --env production`
+# -- see MESSENGER_SETUP.md.
+
+# The Meta app's App Secret. Every webhook delivery is checked against it
+# (X-Hub-Signature-256); with it unset, every delivery is refused.
+META_APP_SECRET=
+
+# Any long random string, typed into the Meta dashboard as the Verify Token.
+META_WEBHOOK_VERIFY_TOKEN=
+
+# The Page access token that sends replies, and the Page's numeric id.
+META_PAGE_ACCESS_TOKEN=
+META_PAGE_ID=
+
+# Optional: the Graph API version, e.g. v23.0 (the default).
+# META_GRAPH_VERSION=

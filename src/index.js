@@ -123,6 +123,10 @@ import { listActivity, getActivity } from './routes/activity-log.js';
 // (an administrator's action), never deleted.
 import { listTools, getTool, createTool, updateTool, retireTool } from './routes/tools.js';
 import { withActivity } from './lib/activity.js';
+// Social Inbox › Facebook Messenger (0014). The webhook is public and carries
+// Meta's own verification; the inbox routes are behind the gate like any read.
+import { messengerWebhook } from './routes/messenger-webhook.js';
+import { messenger, MESSENGER_ROUTES } from './routes/messenger.js';
 import { getWebsiteBookings } from './routes/website-bookings.js';
 
 /**
@@ -276,6 +280,11 @@ const ROUTES = [
   // Two entries, not four: a singleton has nothing to address, and there is
   // no create or delete for a row that is permanently id 1. Listed last so
   // the advertised order stays the order the routes shipped in.
+  ...MESSENGER_ROUTES,
+  // Meta's webhook. Public, necessarily: Meta has no session. It verifies
+  // Meta's signature itself (routes/messenger-webhook.js).
+  'GET /api/webhooks/messenger',
+  'POST /api/webhooks/messenger',
   'GET /api/settings',
   'PUT /api/settings',
   // Signing in and out. Public, necessarily: a browser with no credential
@@ -377,7 +386,7 @@ async function proxyWebsiteBookings() {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     /**
@@ -423,6 +432,16 @@ export default {
     // a credential, so requiring one here would be a closed loop. Each of the
     // three answers is written to give nothing away -- see routes/session.js.
     if (url.pathname === '/api/session') return session(request, env);
+
+    // Public, and dispatched before the gate: Meta cannot hold a session.
+    // It is protected instead by the verify token (GET) and the App Secret
+    // signature on every delivery (POST); an unsigned body is never read.
+    if (url.pathname === '/api/webhooks/messenger') return messengerWebhook(request, env, url, ctx);
+
+    // The Messenger inbox: conversations, messages, replies. Behind the gate.
+    if (url.pathname === '/api/messenger' || url.pathname.startsWith('/api/messenger/')) {
+      return run(messenger, url, url.pathname.slice('/api/messenger/'.length));
+    }
 
     // The exact path only. Anything below it (/api/settings/1, and there is
     // no other id a singleton could have) is left to fall through to the
