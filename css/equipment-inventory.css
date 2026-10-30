@@ -1,0 +1,13 @@
+/* ============================================================
+   equipment-inventory.css — Workshop Assets › Equipment Inventory
+   (demo page, UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/equipment-inventory.html, scoped to its
+   data-page. The shared look lives in workshop-assets-demo.css;
+   this file holds only what is particular to this page.
+   ============================================================ */
+
+/* Five summary cards: one row on wide screens. */
+@media (min-width: 1300px) {
+  [data-page="equipment-inventory"] .ad-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}

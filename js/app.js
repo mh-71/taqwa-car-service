@@ -73,24 +73,24 @@ const App = (() => {
   const NOTIFY_PLACEHOLDER_COUNT = 3;
 
   /* Workshop Assets, shown after Customer CRM and before Notifications Center:
-     an expandable group drawn like Customer CRM and Staff Management. Only
-     Tools & Equipment has a page yet -- the existing DEMO page
-     (pages/workshop-tools.html, sample data only), at its unchanged address.
-     The other five are shown as "Coming soon": plain text, never links, with
-     no page behind them. Each gets an href when its page exists. */
+     an expandable group drawn like Customer CRM and Staff Management. Every
+     entry is a DEMO page (fictional sample data held in memory, nothing saved
+     or sent): Tools & Equipment is the original page (pages/workshop-tools.html,
+     at its unchanged address); the other five share js/workshop-assets-demo.js.
+     An entry without an href would be shown as "Coming soon", never as a link. */
   const ASSETS_ICON = '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>';
   const ASSETS = [
     { key: 'workshop-tools', label: 'Tools & Equipment', href: 'pages/workshop-tools.html',
       icon: '<path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/>' },
-    { label: 'Equipment Inventory',
+    { key: 'equipment-inventory', label: 'Equipment Inventory', href: 'pages/equipment-inventory.html',
       icon: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>' },
-    { label: 'Maintenance & Repairs',
+    { key: 'maintenance-repairs', label: 'Maintenance & Repairs', href: 'pages/maintenance-repairs.html',
       icon: '<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27 7 3.34"/><path d="m20.66 17-1.73-1"/><path d="m3.34 7 1.73 1"/><path d="M14 12h8"/><path d="M2 12h2"/><path d="m20.66 7-1.73 1"/><path d="m3.34 17 1.73-1"/><path d="m17 3.34-1 1.73"/><path d="m11 13.73-4 6.93"/>' },
-    { label: 'Asset Assignment',
+    { key: 'asset-assignment', label: 'Asset Assignment', href: 'pages/asset-assignment.html',
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>' },
-    { label: 'Asset History',
+    { key: 'asset-history', label: 'Asset History', href: 'pages/asset-history.html',
       icon: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>' },
-    { label: 'Asset Reports',
+    { key: 'asset-reports', label: 'Asset Reports', href: 'pages/asset-reports.html',
       icon: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>' },
   ];
   // Whether Workshop Assets was left open (display state only, like Customer CRM).
@@ -141,7 +141,9 @@ const App = (() => {
     'inbox-conversations': 'All Conversations',
     'inbox-whatsapp': 'WhatsApp Inbox',
     'inbox-facebook': 'Facebook Inbox',
-    'inbox-website-forms': 'Website Forms Inbox'
+    'inbox-website-forms': 'Website Forms Inbox',
+    'equipment-inventory': 'Equipment Inventory', 'maintenance-repairs': 'Maintenance & Repairs',
+    'asset-assignment': 'Asset Assignment', 'asset-history': 'Asset History', 'asset-reports': 'Asset Reports'
   };
 
   function icon(path) {
