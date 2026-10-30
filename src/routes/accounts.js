@@ -55,8 +55,8 @@ const PASSWORD_KEYS = ['password'];
 
 /* ---------- authorization ---------- */
 
-/** May this caller manage accounts? Only an administrator. */
-function isAdmin(who) {
+/** May this caller manage accounts? Only an administrator. Also used by routes/tools.js. */
+export function isAdmin(who) {
   if (!who) return false;
   if (who.kind === 'token' || who.kind === 'passphrase') return true;
   return who.kind === 'account' && who.role === 'Administrator';

@@ -119,6 +119,9 @@ import {
 // Activity log (0012): read-only. Entries are written here, by withActivity()
 // around the Staff Management writes below, only after a change succeeded.
 import { listActivity, getActivity } from './routes/activity-log.js';
+// Workshop Assets › Tools & Equipment (0013). No remove: a tool is retired
+// (an administrator's action), never deleted.
+import { listTools, getTool, createTool, updateTool, retireTool } from './routes/tools.js';
 import { withActivity } from './lib/activity.js';
 import { getWebsiteBookings } from './routes/website-bookings.js';
 
@@ -245,6 +248,11 @@ const COLLECTIONS = {
   // Read only: no create, update, remove or action can reach the log.
   'activity-log': {
     list: listActivity, detail: getActivity,
+  },
+  tools: {
+    list: listTools, detail: getTool,
+    create: createTool, update: updateTool,
+    actions: { retire: retireTool },
   },
 };
 

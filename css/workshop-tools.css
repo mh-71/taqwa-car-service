@@ -1,239 +1,259 @@
 /* ============================================================
-   workshop-tools.css — Workshop Tools & Equipment (demo page, UI only)
+   workshop-tools.css — Workshop Assets › Tools & Equipment
    ------------------------------------------------------------
    Loaded only by pages/workshop-tools.html, and every rule is also
    scoped to [data-page="workshop-tools"], so nothing here can reach
    another page. The page is built from the shared components (card,
    badges, inputs, selects, buttons, table, modal, form grid, empty
-   state); this file only arranges them and styles what exists on this
-   page alone: the header, the tinted summary cards, the maintenance
-   panel, the toolbar menus, the tool rows and their badges.
+   state, detail grid); this file arranges them and styles what exists
+   on this page alone: the header, the summary cards, the toolbar, the
+   tool rows and cards, their badges, the form sections and the
+   details view. Colours come from the shared tokens, so light and dark
+   themes both follow.
    ============================================================ */
 
-/* ---------- palette (built on the shared tokens; follows light and dark) ---------- */
+/* ---------- palette ---------- */
 [data-page="workshop-tools"] {
   --wt-violet: #7c5cd6;
   --wt-violet-soft: color-mix(in srgb, var(--wt-violet) 14%, var(--surface));
+  --wt-teal: #0f9488;
+  --wt-teal-soft: color-mix(in srgb, var(--wt-teal) 14%, var(--surface));
 }
-[data-page="workshop-tools"] .wt-cat--diagnostic,
-[data-page="workshop-tools"] .wt-cat--hand-tools   { background: var(--info-soft); color: var(--info); }
-[data-page="workshop-tools"] .wt-cat--electrical   { background: var(--bad-soft); color: var(--bad); }
-[data-page="workshop-tools"] .wt-cat--lifting,
-[data-page="workshop-tools"] .wt-cat--engine-tools { background: var(--wt-violet-soft); color: var(--wt-violet); }
 
 [data-page="workshop-tools"] .wt-sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
 }
-[data-page="workshop-tools"] .wt-menu[hidden],
-[data-page="workshop-tools"] .wt-modal[hidden],
-[data-page="workshop-tools"] .wt-empty[hidden],
-[data-page="workshop-tools"] .wt-table-wrap[hidden] { display: none; }
+[data-page="workshop-tools"] [hidden] { display: none !important; }
 
-/* ---------- top: header + cards, and the maintenance panel ---------- */
-[data-page="workshop-tools"] .wt-top {
-  display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; margin-bottom: 20px;
+/* ---------- header ---------- */
+[data-page="workshop-tools"] .wt-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+[data-page="workshop-tools"] .wt-head__icon {
+  flex: none; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 12px;
+  background: color-mix(in srgb, var(--amber) 14%, var(--surface)); color: var(--amber-text);
 }
-[data-page="workshop-tools"] .wt-main { min-width: 0; }
-[data-page="workshop-tools"] .wt-crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; font-size: .82rem; }
-[data-page="workshop-tools"] .wt-crumbs li { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 600; }
-[data-page="workshop-tools"] .wt-crumbs li + li::before { content: '/'; color: var(--text-3); font-weight: 400; }
-[data-page="workshop-tools"] .wt-crumbs a { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-weight: 500; text-decoration: none; }
-[data-page="workshop-tools"] .wt-crumbs a:hover { color: var(--text); }
-[data-page="workshop-tools"] .wt-crumbs a svg { color: var(--text-2); }
-
-[data-page="workshop-tools"] .wt-head { display: flex; align-items: flex-start; gap: 14px; }
-[data-page="workshop-tools"] .wt-head__icon { flex: none; display: grid; place-items: center; color: var(--text); margin-top: 2px; }
 [data-page="workshop-tools"] .wt-head__text { min-width: 0; }
-[data-page="workshop-tools"] .wt-head__title {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0; font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1.2;
+[data-page="workshop-tools"] .wt-head__title { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+[data-page="workshop-tools"] .wt-head .page-subtitle { margin: 6px 0 0; max-width: 640px; font-size: .9rem; color: var(--text-2); }
+[data-page="workshop-tools"] .wt-add {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; font-size: .92rem;
+  border-radius: 8px; box-shadow: 0 6px 16px color-mix(in srgb, var(--amber) 28%, transparent);
 }
-[data-page="workshop-tools"] .wt-head .page-subtitle { margin: 6px 0 0; font-size: .9rem; color: var(--text-2); }
-[data-page="workshop-tools"] .wt-add { margin-left: auto; padding: 11px 20px; font-size: .95rem; border-radius: 8px; box-shadow: 0 6px 16px color-mix(in srgb, var(--amber) 30%, transparent); }
-[data-page="workshop-tools"] .wt-note { margin: 10px 0 16px; font-size: .78rem; color: var(--text-3); }
 
-[data-page="workshop-tools"] .wt-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+/* ---------- summary cards ---------- */
+[data-page="workshop-tools"] .wt-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
 [data-page="workshop-tools"] .wt-stat {
   --wt-tone: var(--info);
-  display: flex; align-items: center; gap: 16px; min-width: 0; padding: 20px;
+  display: flex; align-items: center; gap: 14px; min-width: 0; padding: 18px;
   border: 1px solid color-mix(in srgb, var(--wt-tone) 20%, var(--line));
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--wt-tone) 7%, var(--surface));
+  background: color-mix(in srgb, var(--wt-tone) 6%, var(--surface));
   box-shadow: var(--shadow);
 }
 [data-page="workshop-tools"] .wt-stat--available { --wt-tone: var(--good); }
 [data-page="workshop-tools"] .wt-stat--inuse     { --wt-tone: var(--amber); }
-[data-page="workshop-tools"] .wt-stat--maint     { --wt-tone: var(--bad); }
+[data-page="workshop-tools"] .wt-stat--maint     { --wt-tone: var(--wt-violet); }
+[data-page="workshop-tools"] .wt-stat--damaged   { --wt-tone: var(--bad); }
 [data-page="workshop-tools"] .wt-stat__icon {
-  flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+  flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
   background: color-mix(in srgb, var(--wt-tone) 16%, var(--surface)); color: var(--wt-tone);
 }
 [data-page="workshop-tools"] .wt-stat__body { min-width: 0; }
-[data-page="workshop-tools"] .wt-stat__label { font-size: .86rem; font-weight: 600; color: var(--text); }
-[data-page="workshop-tools"] .wt-stat__value { margin: 2px 0; font-size: 1.75rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
-[data-page="workshop-tools"] .wt-stat--maint .wt-stat__value { color: var(--bad); }
-[data-page="workshop-tools"] .wt-stat__sub { font-size: .78rem; color: var(--text-2); }
+[data-page="workshop-tools"] .wt-stat__label { font-size: .82rem; font-weight: 600; color: var(--text); }
+[data-page="workshop-tools"] .wt-stat__value { margin: 2px 0; font-size: 1.6rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
+[data-page="workshop-tools"] .wt-stat__sub { font-size: .74rem; color: var(--text-2); }
 
-[data-page="workshop-tools"] .wt-due { padding: 18px 18px 8px; }
-[data-page="workshop-tools"] .wt-due__head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-[data-page="workshop-tools"] .wt-due__icon { flex: none; display: grid; place-items: center; color: var(--amber); }
-[data-page="workshop-tools"] .wt-due__head h2 { margin: 0; font-size: .98rem; font-weight: 700; color: var(--text); white-space: nowrap; }
-[data-page="workshop-tools"] .wt-link {
-  margin-left: auto; padding: 4px 2px; border: 0; background: none; font: inherit; font-size: .82rem; font-weight: 600; color: var(--info); cursor: pointer; white-space: nowrap;
-}
-[data-page="workshop-tools"] .wt-link:hover { text-decoration: underline; }
-[data-page="workshop-tools"] .wt-due__list { list-style: none; margin: 0; padding: 0; }
-[data-page="workshop-tools"] .wt-due__list li + li { border-top: 1px solid var(--line); }
-[data-page="workshop-tools"] .wt-due__item {
-  display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 0; border: 0; background: none;
-  font: inherit; color: inherit; text-align: left; cursor: pointer;
-}
-[data-page="workshop-tools"] .wt-due__item:hover .wt-due__name { color: var(--amber-text); }
-[data-page="workshop-tools"] .wt-due__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-[data-page="workshop-tools"] .wt-due__name { font-size: .9rem; font-weight: 600; color: var(--text); }
-[data-page="workshop-tools"] .wt-due__in { font-size: .8rem; font-weight: 600; color: var(--amber-text); }
-[data-page="workshop-tools"] .wt-due__date { display: inline-flex; align-items: center; gap: 5px; font-size: .76rem; color: var(--text-2); }
-[data-page="workshop-tools"] .wt-due__chev { flex: none; color: var(--text-2); }
-
-/* ---------- toolbar and its menus ---------- */
-[data-page="workshop-tools"] .wt-card { position: relative; }
-[data-page="workshop-tools"] .wt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; }
-[data-page="workshop-tools"] .wt-search { position: relative; flex: 1 1 320px; max-width: 440px; min-width: 220px; }
+/* ---------- toolbar ---------- */
+[data-page="workshop-tools"] .wt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px; }
+[data-page="workshop-tools"] .wt-search { position: relative; flex: 1 1 280px; min-width: 220px; }
 [data-page="workshop-tools"] .wt-search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
 [data-page="workshop-tools"] .wt-search .input { width: 100%; height: 42px; padding-left: 42px; }
-[data-page="workshop-tools"] .wt-select { width: 200px; height: 42px; }
-[data-page="workshop-tools"] .wt-btn { height: 42px; padding: 0 16px; color: var(--text); border-color: var(--line-strong, var(--line)); background: var(--surface); }
-[data-page="workshop-tools"] .wt-btn.is-active { border-color: var(--amber); color: var(--amber-text); }
-[data-page="workshop-tools"] .wt-pop { position: relative; }
-[data-page="workshop-tools"] .wt-menu {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 210px; padding: 6px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-lift);
+[data-page="workshop-tools"] .wt-select { width: 180px; height: 42px; }
+[data-page="workshop-tools"] .wt-toolbar__end { display: flex; gap: 10px; margin-left: auto; }
+[data-page="workshop-tools"] .wt-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px;
+  color: var(--text); border-color: var(--line-strong, var(--line)); background: var(--surface);
 }
-[data-page="workshop-tools"] .wt-menu--right { left: auto; right: 0; }
-[data-page="workshop-tools"] .wt-rowmenu { position: fixed; top: 0; left: 0; z-index: 70; }
-[data-page="workshop-tools"] .wt-menu__item {
-  display: block; width: 100%; padding: 9px 11px; border: 0; border-radius: 6px; background: none;
-  font: inherit; font-size: .85rem; color: var(--text); text-align: left; cursor: pointer; white-space: nowrap;
+[data-page="workshop-tools"] .wt-btn:disabled { opacity: .55; cursor: default; }
+
+/* ---------- loading / empty / error ---------- */
+[data-page="workshop-tools"] .wt-state { border-top: 1px solid var(--line); }
+[data-page="workshop-tools"] .wt-state:empty { display: none; }
+[data-page="workshop-tools"] .wt-state__box { padding: 44px 20px; }
+[data-page="workshop-tools"] .wt-state__box--bad svg { color: var(--bad); opacity: .8; }
+[data-page="workshop-tools"] .wt-state__box--bad h3 { color: var(--text); }
+[data-page="workshop-tools"] .wt-skeleton { display: grid; gap: 10px; padding: 18px 16px; }
+[data-page="workshop-tools"] .wt-skeleton__row {
+  display: block; height: 44px; border-radius: 8px;
+  background: linear-gradient(90deg, var(--paper) 25%, color-mix(in srgb, var(--line) 60%, var(--paper)) 50%, var(--paper) 75%);
+  background-size: 200% 100%; animation: wt-shimmer 1.2s linear infinite;
 }
-[data-page="workshop-tools"] .wt-menu__item:hover, [data-page="workshop-tools"] .wt-menu__item:focus-visible { background: var(--paper); outline: none; }
-[data-page="workshop-tools"] .wt-filters { display: grid; gap: 8px; padding: 12px; min-width: 230px; }
-[data-page="workshop-tools"] .wt-filters__label { font-size: .76rem; font-weight: 600; color: var(--text-2); }
+@keyframes wt-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { [data-page="workshop-tools"] .wt-skeleton__row { animation: none; } }
 
 /* ---------- the tools table ---------- */
 [data-page="workshop-tools"] .wt-table-wrap { border-top: 1px solid var(--line); }
 [data-page="workshop-tools"] .wt-table th {
-  padding: 13px 12px; font-size: .82rem; font-weight: 600; color: var(--text); letter-spacing: 0; text-transform: none;
+  padding: 12px; font-size: .78rem; font-weight: 600; color: var(--text-2); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap;
   background: color-mix(in srgb, var(--paper) 70%, var(--surface));
 }
-[data-page="workshop-tools"] .wt-table td { padding: 12px; font-size: .88rem; color: var(--text); }
+[data-page="workshop-tools"] .wt-table td { padding: 12px; font-size: .87rem; color: var(--text); vertical-align: middle; }
 [data-page="workshop-tools"] .wt-table th:first-child, [data-page="workshop-tools"] .wt-table td:first-child { padding-left: 16px; }
 [data-page="workshop-tools"] .wt-table th:last-child, [data-page="workshop-tools"] .wt-table td:last-child { padding-right: 16px; }
-[data-page="workshop-tools"] .wt-th-actions, [data-page="workshop-tools"] .wt-c-actions { text-align: center; width: 1%; }
-[data-page="workshop-tools"] .wt-toolcell { display: flex; align-items: center; gap: 12px; min-width: 180px; }
-[data-page="workshop-tools"] .wt-thumb {
-  flex: none; width: 48px; height: 48px; border-radius: 10px; display: grid; place-items: center;
-  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-}
-[data-page="workshop-tools"] .wt-thumb--lg { width: 56px; height: 56px; }
+[data-page="workshop-tools"] .wt-table tbody tr:hover { background: color-mix(in srgb, var(--paper) 55%, transparent); }
+[data-page="workshop-tools"] .wt-th-actions, [data-page="workshop-tools"] .wt-c-actions { text-align: right; width: 1%; }
+[data-page="workshop-tools"] .wt-c-code { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-2); }
+[data-page="workshop-tools"] .wt-c-date { white-space: nowrap; }
 [data-page="workshop-tools"] .wt-tool { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-[data-page="workshop-tools"] .wt-tool__name { font-weight: 600; font-size: .92rem; color: var(--text); }
-[data-page="workshop-tools"] .wt-tool__desc { font-size: .8rem; color: var(--text-2); }
-[data-page="workshop-tools"] .wt-c-code, [data-page="workshop-tools"] .wt-c-qty { white-space: nowrap; font-variant-numeric: tabular-nums; }
+[data-page="workshop-tools"] .wt-tool__name {
+  padding: 0; border: 0; background: none; font: inherit; font-weight: 600; font-size: .9rem; color: var(--text);
+  text-align: left; cursor: pointer;
+}
+[data-page="workshop-tools"] .wt-tool__name:hover { color: var(--amber-text); text-decoration: underline; }
+[data-page="workshop-tools"] .wt-tool__desc { font-size: .76rem; color: var(--text-2); }
+[data-page="workshop-tools"] .wt-none { color: var(--text-3); }
+[data-page="workshop-tools"] .wt-row--retired { opacity: .7; }
+
+/* ---------- badges ---------- */
 [data-page="workshop-tools"] .wt-chip,
 [data-page="workshop-tools"] .wt-cond,
-[data-page="workshop-tools"] .wt-status {
-  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; font-size: .79rem; font-weight: 600; white-space: nowrap;
+[data-page="workshop-tools"] .wt-status,
+[data-page="workshop-tools"] .wt-warranty {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; font-size: .76rem; font-weight: 600; white-space: nowrap;
 }
-[data-page="workshop-tools"] .wt-cond--good          { background: var(--good-soft); color: var(--good); }
-[data-page="workshop-tools"] .wt-cond--needs-service { background: var(--amber-soft); color: var(--amber-text); }
+[data-page="workshop-tools"] .wt-chip { background: var(--paper); color: var(--text-2); border: 1px solid var(--line); }
+[data-page="workshop-tools"] .wt-cat--diagnostic-equipment,
+[data-page="workshop-tools"] .wt-cat--electrical-tools     { background: var(--info-soft); color: var(--info); border-color: transparent; }
+[data-page="workshop-tools"] .wt-cat--lifting-equipment,
+[data-page="workshop-tools"] .wt-cat--engine-tools         { background: var(--wt-violet-soft); color: var(--wt-violet); border-color: transparent; }
+[data-page="workshop-tools"] .wt-cat--ac-service-equipment,
+[data-page="workshop-tools"] .wt-cat--cleaning-equipment   { background: var(--wt-teal-soft); color: var(--wt-teal); border-color: transparent; }
+[data-page="workshop-tools"] .wt-cat--safety-equipment     { background: var(--amber-soft); color: var(--amber-text); border-color: transparent; }
+
+[data-page="workshop-tools"] .wt-cond--excellent { background: var(--good-soft); color: var(--good); }
+[data-page="workshop-tools"] .wt-cond--good      { background: var(--info-soft); color: var(--info); }
+[data-page="workshop-tools"] .wt-cond--fair      { background: var(--amber-soft); color: var(--amber-text); }
+[data-page="workshop-tools"] .wt-cond--poor,
+[data-page="workshop-tools"] .wt-cond--damaged   { background: var(--bad-soft); color: var(--bad); }
+
 [data-page="workshop-tools"] .wt-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 [data-page="workshop-tools"] .wt-status--available   { background: var(--good-soft); color: var(--good); }
 [data-page="workshop-tools"] .wt-status--in-use      { background: var(--amber-soft); color: var(--amber-text); }
-[data-page="workshop-tools"] .wt-status--maintenance { background: var(--bad-soft); color: var(--bad); }
-[data-page="workshop-tools"] .wt-person { display: inline-flex; align-items: center; gap: 10px; }
-[data-page="workshop-tools"] .wt-avatar {
-  flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
-  background: color-mix(in srgb, var(--amber) 18%, var(--surface)); color: var(--amber-text); font-size: .78rem; font-weight: 700;
-}
-[data-page="workshop-tools"] .wt-person__text { display: flex; flex-direction: column; }
-[data-page="workshop-tools"] .wt-person__name { font-weight: 600; font-size: .88rem; }
-[data-page="workshop-tools"] .wt-person__role { font-size: .76rem; color: var(--text-2); }
-[data-page="workshop-tools"] .wt-none { color: var(--text-3); }
-[data-page="workshop-tools"] .wt-more {
-  width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line-strong, var(--line));
-  border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer;
-}
-[data-page="workshop-tools"] .wt-more:hover, [data-page="workshop-tools"] .wt-more[aria-expanded="true"] { border-color: var(--text-3); background: var(--paper); }
-[data-page="workshop-tools"] .wt-more:focus-visible,
-[data-page="workshop-tools"] .wt-link:focus-visible,
-[data-page="workshop-tools"] .wt-due__item:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+[data-page="workshop-tools"] .wt-status--maintenance { background: var(--wt-violet-soft); color: var(--wt-violet); }
+[data-page="workshop-tools"] .wt-status--damaged     { background: var(--bad-soft); color: var(--bad); }
+[data-page="workshop-tools"] .wt-status--retired     { background: var(--paper); color: var(--text-2); border: 1px solid var(--line); }
 
-[data-page="workshop-tools"] .wt-empty { border-top: 1px solid var(--line); }
+[data-page="workshop-tools"] .wt-warranty--active  { background: var(--good-soft); color: var(--good); }
+[data-page="workshop-tools"] .wt-warranty--soon    { background: var(--amber-soft); color: var(--amber-text); }
+[data-page="workshop-tools"] .wt-warranty--expired { background: var(--bad-soft); color: var(--bad); }
+[data-page="workshop-tools"] .wt-warranty--none    { background: var(--paper); color: var(--text-2); }
+
+/* ---------- row actions ---------- */
+[data-page="workshop-tools"] .wt-actions { display: inline-flex; gap: 6px; justify-content: flex-end; }
+[data-page="workshop-tools"] .wt-act {
+  width: 34px; height: 34px; display: inline-grid; place-items: center; border: 1px solid var(--line-strong, var(--line));
+  border-radius: 8px; background: var(--surface); color: var(--text-2); cursor: pointer;
+}
+[data-page="workshop-tools"] .wt-act:hover { border-color: var(--text-3); color: var(--text); background: var(--paper); }
+[data-page="workshop-tools"] .wt-act--danger:hover { border-color: var(--bad); color: var(--bad); }
+[data-page="workshop-tools"] .wt-act:focus-visible,
+[data-page="workshop-tools"] .wt-tool__name:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* ---------- mobile cards (shown in place of the table on small screens) ---------- */
+[data-page="workshop-tools"] .wt-cards { list-style: none; margin: 0; padding: 12px; border-top: 1px solid var(--line); display: none; gap: 12px; }
+[data-page="workshop-tools"] .wt-tcard { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px; background: var(--surface); }
+[data-page="workshop-tools"] .wt-tcard__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+[data-page="workshop-tools"] .wt-tcard__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 0 0 12px; }
+[data-page="workshop-tools"] .wt-tcard__facts dt { font-size: .7rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
+[data-page="workshop-tools"] .wt-tcard__facts dd { margin: 2px 0 0; font-size: .85rem; color: var(--text); overflow-wrap: anywhere; }
+[data-page="workshop-tools"] .wt-tcard .wt-actions { width: 100%; }
+
+/* ---------- footer / pager ---------- */
 [data-page="workshop-tools"] .wt-foot {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 14px 16px; border-top: 1px solid var(--line); font-size: .84rem; color: var(--text-2);
+  padding: 12px 16px; border-top: 1px solid var(--line); font-size: .84rem; color: var(--text-2);
 }
-[data-page="workshop-tools"] .wt-pager { display: flex; gap: 8px; }
+[data-page="workshop-tools"] .wt-pager { display: flex; align-items: center; gap: 8px; }
+[data-page="workshop-tools"] .wt-pagesize { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+[data-page="workshop-tools"] .wt-pagesize .select { height: 36px; width: auto; padding-right: 28px; }
 [data-page="workshop-tools"] .wt-page {
-  min-width: 38px; height: 38px; padding: 0 10px; border: 1px solid var(--line-strong, var(--line)); border-radius: 8px;
-  background: var(--surface); font: inherit; font-size: 1rem; font-weight: 600; color: var(--text-2);
+  min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong, var(--line)); border-radius: 8px;
+  background: var(--surface); font: inherit; font-size: 1.05rem; font-weight: 600; color: var(--text); cursor: pointer;
 }
-[data-page="workshop-tools"] .wt-page:disabled { opacity: .55; cursor: default; }
-[data-page="workshop-tools"] .wt-page.is-current { background: var(--amber); border-color: var(--amber); color: #fff; }
-[data-page="workshop-tools"] .wt-modal__note { margin: 0 0 14px; font-size: .8rem; color: var(--text-3); }
+[data-page="workshop-tools"] .wt-page:disabled { opacity: .45; cursor: default; }
+[data-page="workshop-tools"] .wt-page-label { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---------- form and details (inside the shared modal) ---------- */
+[data-page="workshop-tools"] .wt-form__note { margin: 0 0 14px; font-size: .8rem; color: var(--text-2); }
+[data-page="workshop-tools"] .wt-fieldset { margin: 0 0 16px; padding: 14px 14px 0; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+[data-page="workshop-tools"] .wt-fieldset legend { padding: 0 6px; font-size: .8rem; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .04em; }
+[data-page="workshop-tools"] .wt-hint { display: block; margin-top: 4px; font-size: .72rem; color: var(--text-3); }
+[data-page="workshop-tools"] .wt-form [aria-invalid="true"] { border-color: var(--bad); }
+[data-page="workshop-tools"] .btn--danger-ghost { background: transparent; border: 1px solid var(--bad); color: var(--bad); }
+[data-page="workshop-tools"] .btn--danger-ghost:hover { background: var(--bad-soft); }
+[data-page="workshop-tools"] .wt-modal .modal__foot { gap: 8px; }
+[data-page="workshop-tools"] .wt-retire-btn { margin-right: auto; }
+[data-page="workshop-tools"] .wt-retire__text { margin: 0 0 14px; font-size: .88rem; color: var(--text-2); }
+
+[data-page="workshop-tools"] .wt-detail__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+[data-page="workshop-tools"] .wt-detail__id { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+[data-page="workshop-tools"] .wt-detail__cat { font-size: .82rem; color: var(--text-2); }
+[data-page="workshop-tools"] .wt-detail__badges { display: flex; gap: 6px; flex-wrap: wrap; }
+[data-page="workshop-tools"] .wt-detail__desc { margin: 0 0 12px; color: var(--text-2); font-size: .88rem; }
+[data-page="workshop-tools"] .wt-detail__h { margin: 16px 0 8px; font-size: .78rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
+[data-page="workshop-tools"] .wt-detail__notes { margin: 0; white-space: pre-wrap; font-size: .88rem; color: var(--text); }
+[data-page="workshop-tools"] .wt-detail__stamps { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+[data-page="workshop-tools"] .wt-by { font-weight: 400; color: var(--text-2); }
+[data-page="workshop-tools"] .wt-retired-note {
+  margin-bottom: 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--paper); border: 1px solid var(--line); font-size: .85rem; color: var(--text-2);
+}
 
 /* ---------- smaller screens ---------- */
-@media (max-width: 1599px) {
-  [data-page="workshop-tools"] .wt-stat { padding: 16px; gap: 12px; }
-  [data-page="workshop-tools"] .wt-stat__icon { width: 48px; height: 48px; }
-  [data-page="workshop-tools"] .wt-stat__icon svg { width: 22px; height: 22px; }
-  [data-page="workshop-tools"] .wt-stat__sub { font-size: .74rem; }
+[data-page="workshop-tools"] .wt-tool__cat { display: none; }
+@media (max-width: 1280px) {
+  /* Five cards stay on one row: the icon steps aside to make room. */
+  [data-page="workshop-tools"] .wt-stats { gap: 10px; }
+  [data-page="workshop-tools"] .wt-stat { padding: 14px; }
+  [data-page="workshop-tools"] .wt-stat__icon { display: none; }
+  [data-page="workshop-tools"] .wt-select { width: 160px; }
 }
-@media (max-width: 1200px) {
-  [data-page="workshop-tools"] .wt-top { grid-template-columns: minmax(0, 1fr); }
-  [data-page="workshop-tools"] .wt-due__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
-  [data-page="workshop-tools"] .wt-due__list li + li { border-top: 0; }
-}
-@media (max-width: 1000px) {
-  [data-page="workshop-tools"] .wt-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1180px) {
+  /* Category moves under the name, and Location and Purchase Date step aside,
+     so the table fits a laptop without sideways scrolling (both stay in Details). */
+  [data-page="workshop-tools"] .wt-table th:nth-child(3), [data-page="workshop-tools"] .wt-table td:nth-child(3),
+  [data-page="workshop-tools"] .wt-table th:nth-child(5), [data-page="workshop-tools"] .wt-table td:nth-child(5),
+  [data-page="workshop-tools"] .wt-table th:nth-child(8), [data-page="workshop-tools"] .wt-table td:nth-child(8) { display: none; }
+  [data-page="workshop-tools"] .wt-tool__cat { display: block; }
+  [data-page="workshop-tools"] .wt-table th, [data-page="workshop-tools"] .wt-table td { padding-left: 9px; padding-right: 9px; }
+  [data-page="workshop-tools"] .wt-toolbar__end { margin-left: 0; }
 }
 @media (max-width: 900px) {
-  [data-page="workshop-tools"] .wt-search { flex-basis: 100%; max-width: none; }
-  [data-page="workshop-tools"] .wt-select { flex: 1 1 160px; width: auto; }
+  [data-page="workshop-tools"] .wt-select { flex: 1 1 calc(50% - 5px); width: auto; }
+  [data-page="workshop-tools"] .wt-search { flex-basis: 100%; }
+  [data-page="workshop-tools"] .wt-toolbar__end { flex-basis: 100%; }
+  [data-page="workshop-tools"] .wt-toolbar__end .wt-btn { flex: 1; justify-content: center; }
+  [data-page="workshop-tools"] .wt-table th:nth-child(4), [data-page="workshop-tools"] .wt-table td:nth-child(4) { display: none; }
 }
-/* Below 1280px the table becomes one card per tool, so nothing has to scroll sideways. */
-@media (max-width: 1279px) {
-  [data-page="workshop-tools"] .wt-table, [data-page="workshop-tools"] .wt-table tbody { display: block; }
-  [data-page="workshop-tools"] .wt-table thead { display: none; }
-  [data-page="workshop-tools"] .wt-table tr {
-    position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 12px 14px;
-    padding: 16px; border-bottom: 1px solid var(--line);
-  }
-  [data-page="workshop-tools"] .wt-table tr:last-child { border-bottom: 0; }
-  [data-page="workshop-tools"] .wt-table td,
-  [data-page="workshop-tools"] .wt-table td:first-child,
-  [data-page="workshop-tools"] .wt-table td:last-child { display: block; padding: 0; border: 0; min-width: 0; }
-  [data-page="workshop-tools"] .wt-table td.wt-c-tool { grid-column: 1 / -1; padding-right: 48px; }
-  [data-page="workshop-tools"] .wt-toolcell { min-width: 0; }
-  [data-page="workshop-tools"] .wt-table td.wt-c-actions { position: absolute; top: 16px; right: 16px; width: auto; }
-  [data-page="workshop-tools"] .wt-table td:not(.wt-c-tool):not(.wt-c-actions)::before {
-    content: attr(data-label); display: block; margin-bottom: 4px; font-size: .72rem; font-weight: 600; color: var(--text-3);
-  }
+@media (max-width: 760px) {
+  [data-page="workshop-tools"] .wt-table-wrap { display: none !important; }
+  [data-page="workshop-tools"] .wt-cards:not([hidden]) { display: grid; }
 }
 @media (max-width: 640px) {
+  [data-page="workshop-tools"] .wt-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  [data-page="workshop-tools"] .wt-stat--total { grid-column: span 2; }
   [data-page="workshop-tools"] .wt-head { flex-wrap: wrap; }
-  [data-page="workshop-tools"] .wt-head__title { font-size: 1.3rem; }
   [data-page="workshop-tools"] .wt-add { margin-left: 0; width: 100%; justify-content: center; }
-  [data-page="workshop-tools"] .wt-stats { gap: 10px; }
-  [data-page="workshop-tools"] .wt-stat { padding: 14px; gap: 12px; }
-  [data-page="workshop-tools"] .wt-stat__icon { width: 44px; height: 44px; }
-  [data-page="workshop-tools"] .wt-stat__value { font-size: 1.4rem; }
-  [data-page="workshop-tools"] .wt-due__list { grid-template-columns: minmax(0, 1fr); }
-  [data-page="workshop-tools"] .wt-due__list li + li { border-top: 1px solid var(--line); }
-  [data-page="workshop-tools"] .wt-search { min-width: 0; }
-
+  [data-page="workshop-tools"] .wt-stat { padding: 12px 14px; }
+  [data-page="workshop-tools"] .wt-stat__value { font-size: 1.35rem; }
+  [data-page="workshop-tools"] .wt-stat__sub { display: none; }
   [data-page="workshop-tools"] .wt-foot { justify-content: center; }
+  [data-page="workshop-tools"] .wt-modal .form-grid { grid-template-columns: 1fr; }
+  [data-page="workshop-tools"] .wt-modal .form-grid .span-2 { grid-column: auto; }
+  [data-page="workshop-tools"] .wt-modal .detail-grid { grid-template-columns: 1fr; }
+  [data-page="workshop-tools"] .wt-modal .detail-grid .span-2 { grid-column: auto; }
 }
 @media (max-width: 400px) {
-  [data-page="workshop-tools"] .wt-stats { grid-template-columns: minmax(0, 1fr); }
+  [data-page="workshop-tools"] .wt-select { flex-basis: 100%; }
+  [data-page="workshop-tools"] .wt-tcard__facts { grid-template-columns: 1fr; }
+  [data-page="workshop-tools"] .wt-pagesize span { display: none; }
 }

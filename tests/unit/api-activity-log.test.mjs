@@ -327,8 +327,8 @@ console.log('\n-- G. compatibility --');
   const mec = await h.api('PUT', '/api/mechanics/MEC-0002', { name: 'Kamal Hossain', phone: '01800000002' });
   check('changes outside the logged Staff Management writes are not logged (customers, mechanics)', [cus.status, mec.status, count(h)], [201, 200, 0]);
   const routes = (await h.api('GET', '/api/health')).body?.data?.routes ?? [];
-  check('the registry is 113 routes: the 111 before plus the two read routes',
-    [routes.length, routes.filter((r) => r.includes('/api/activity-log'))], [113, ['GET /api/activity-log', 'GET /api/activity-log/:id']]);
+  check('the registry is 118 routes: the 111 before, the two read routes, and the five tools routes of 0013',
+    [routes.length, routes.filter((r) => r.includes('/api/activity-log'))], [118, ['GET /api/activity-log', 'GET /api/activity-log/:id']]);
 }
 
 console.log(`\nActivity log unit: ${pass} passed, ${fail} failed`);
