@@ -1,0 +1,52 @@
+/* ============================================================
+   asset-reports.css — Workshop Assets › Asset Reports
+   (demo page, UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/asset-reports.html, and every rule is scoped to its
+   data-page. The shared look lives in workshop-assets-demo.css;
+   this file holds only what is particular to this page.
+   ============================================================ */
+
+@media (min-width: 1300px) {
+  [data-page="asset-reports"] .ad-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+/* ---------- report grid ---------- */
+[data-page="asset-reports"] .ar-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 50%, var(--surface));
+}
+[data-page="asset-reports"] .ar-chart { padding: 16px; min-width: 0; }
+[data-page="asset-reports"] .ar-chart--wide { grid-column: 1 / -1; }
+[data-page="asset-reports"] .ar-summary__list { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: .88rem; color: var(--text); }
+
+/* Horizontal bars */
+[data-page="asset-reports"] .ar-hbars { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+[data-page="asset-reports"] .ar-hbar__head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 5px; font-size: .82rem; }
+[data-page="asset-reports"] .ar-hbar__label { color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-page="asset-reports"] .ar-hbar__value { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-page="asset-reports"] .ar-hbar__track { height: 9px; border-radius: 999px; background: var(--paper); overflow: hidden; }
+[data-page="asset-reports"] .ar-hbar__fill { height: 100%; border-radius: 999px; background: var(--ad-tone); }
+
+/* Column chart (like the Reports page's revenue chart) */
+[data-page="asset-reports"] .ar-cols { display: flex; align-items: stretch; gap: 8px; height: 220px; padding-top: 8px; }
+[data-page="asset-reports"] .ar-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+[data-page="asset-reports"] .ar-col__wrap { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+[data-page="asset-reports"] .ar-col__bar { width: min(36px, 70%); border-radius: 6px 6px 0 0; background: var(--amber); }
+[data-page="asset-reports"] .ar-col__value { font-size: .66rem; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+[data-page="asset-reports"] .ar-col__label { font-size: .74rem; font-weight: 600; color: var(--text-2); }
+
+/* Split bar */
+[data-page="asset-reports"] .ar-split__bar { display: flex; height: 22px; border-radius: 999px; overflow: hidden; background: var(--paper); }
+[data-page="asset-reports"] .ar-split__seg { height: 100%; background: var(--ad-tone); }
+[data-page="asset-reports"] .ar-legend { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: .84rem; color: var(--text); }
+[data-page="asset-reports"] .ar-legend li { display: flex; align-items: center; gap: 8px; }
+[data-page="asset-reports"] .ar-legend__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ad-tone); }
+
+@media (max-width: 900px) {
+  [data-page="asset-reports"] .ar-grid { grid-template-columns: 1fr; padding: 12px; }
+}
+@media (max-width: 640px) {
+  [data-page="asset-reports"] .ar-col__value { display: none; }
+  [data-page="asset-reports"] .ar-cols { height: 180px; gap: 4px; }
+}

@@ -1,0 +1,13 @@
+/* ============================================================
+   asset-assignment.css — Workshop Assets › Asset Assignment
+   (demo page, UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/asset-assignment.html, and every rule is scoped to its
+   data-page. The shared look lives in workshop-assets-demo.css;
+   this file holds only what is particular to this page.
+   ============================================================ */
+
+/* Four summary cards: one row on wide screens, two by two below. */
+@media (min-width: 1000px) {
+  [data-page="asset-assignment"] .ad-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

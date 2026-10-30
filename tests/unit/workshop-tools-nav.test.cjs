@@ -3,13 +3,17 @@
    What must hold:
      1. "Workshop Assets" is an expandable group (like Customer CRM) placed
         right after the Customer CRM group and right before Notifications
-        Center. It holds exactly six entries in order: Tools & Equipment,
-        a link to the existing demo page at its unchanged address, then five
-        "Coming soon" entries that are plain text, never links.
+        Center. It holds exactly six entries in order, each a link to its
+        demo page, which exists: Tools & Equipment (the existing page at its
+        unchanged address), Equipment Inventory, Maintenance & Repairs,
+        Asset Assignment, Asset History and Asset Reports. None is shown as
+        "Coming soon" any more.
      2. There is no top-level "Workshop Tools" link any more.
      3. On the Tools & Equipment page that entry is active, the group is open
         and marked, the header keeps its title, and no top-level link is
         active; elsewhere the group starts closed and nothing in it is active.
+     4. The same holds on each of the five other pages: its own entry is the
+        only active one, the group is open, and the header shows its title.
 
    Drives the REAL js/app.js through the harness. */
 const fs = require('fs'), path = require('path');
@@ -30,6 +34,7 @@ function shellFor(page, root = '') {
 }
 const assetsGroup = html => (html.match(/<details class="nav__group[^"]*" id="navAssets"[\s\S]*?<\/details>/) || [''])[0];
 const entriesOf = group => group.split(/(?=<(?:a|span) class="nav__sub[ "])/).slice(1);
+const PAGES = ['workshop-tools', 'equipment-inventory', 'maintenance-repairs', 'asset-assignment', 'asset-history', 'asset-reports'];
 const LABELS = ['Tools & Equipment', 'Equipment Inventory', 'Maintenance & Repairs', 'Asset Assignment', 'Asset History', 'Asset Reports'];
 
 console.log('=== workshop-tools-nav: the Workshop Assets group ===\n');
@@ -51,12 +56,13 @@ console.log('-- 1. the group and its entries --');
   check('   ...in order', entries.map(e => (e.match(/<span>([^<]+)<\/span>/) || [])[1]).map(l => l && l.replace('&amp;', '&')), LABELS);
   ok('Tools & Equipment links to pages/workshop-tools.html (unchanged)', /^<a class="nav__sub" href="pages\/workshop-tools\.html">/.test(entries[0] || ''), (entries[0] || '').slice(0, 120));
   ok('   ...a page that exists', fs.existsSync(path.join(ROOT, 'pages/workshop-tools.html')), '');
-  check('   ...and it is the only link in the group', (group.match(/<a /g) || []).length, 1);
-  for (const e of entries.slice(1)) {
-    const label = (e.match(/<span>([^<]+)<\/span>/) || [])[1];
-    ok(`${label} is "Coming soon", plain text and not a link`,
-      /^<span class="nav__sub nav__sub--off" aria-disabled="true"/.test(e) && /<small>Coming soon<\/small>/.test(e) && !/href=/.test(e), e.slice(0, 140));
+  check('   ...and all six are links', (group.match(/<a /g) || []).length, 6);
+  for (const [i, href] of PAGES.entries()) {
+    const e = entries[i] || '';
+    ok(`${LABELS[i]} links to pages/${href}.html, a page that exists`,
+      new RegExp(`^<a class="nav__sub" href="pages/${href}\\.html">`).test(e) && fs.existsSync(path.join(ROOT, `pages/${href}.html`)), e.slice(0, 140));
   }
+  ok('no entry is shown as "Coming soon" or disabled', !/Coming soon|nav__sub--off|aria-disabled/.test(group), '');
   ok('every entry has a stroke (Lucide-style) icon', entries.every(e => /<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"/.test(e)), '');
 }
 
@@ -78,6 +84,18 @@ console.log('\n-- 3. on the Tools & Equipment page --');
   ok('the header shows the page title', /<h1>Workshop Tools &(amp;)? Equipment<\/h1>/.test(html), (html.match(/<h1>[^<]*<\/h1>/) || [''])[0]);
   ok('the page itself declares data-page="workshop-tools"',
     fs.readFileSync(path.join(ROOT, 'pages/workshop-tools.html'), 'utf8').includes('<body data-page="workshop-tools" data-root="../">'), '');
+}
+
+console.log('\n-- 4. on each of the five other Workshop Assets pages --');
+for (const [i, key] of PAGES.entries()) {
+  if (i === 0) continue;
+  const html = shellFor(key, '../');
+  const group = assetsGroup(html);
+  ok(`${LABELS[i]}: the group is open and marked`, /^<details class="nav__group has-active" id="navAssets" open>/.test(group), group.slice(0, 80));
+  ok(`   ...its entry is active and the current page`, new RegExp(`<a class="nav__sub is-active" href="\\.\\./pages/${key}\\.html" aria-current="page">`).test(group), '');
+  check(`   ...the only active entry in the sidebar`, (html.match(/class="nav__sub[^"]*is-active/g) || []).length, 1);
+  ok(`   ...the header shows its title`, html.includes(`<h1>${LABELS[i].replace('&', '&amp;')}</h1>`) || html.includes(`<h1>${LABELS[i]}</h1>`), (html.match(/<h1>[^<]*<\/h1>/) || [''])[0]);
+  ok(`   ...the page declares data-page="${key}"`, fs.readFileSync(path.join(ROOT, `pages/${key}.html`), 'utf8').includes(`<body data-page="${key}" data-root="../">`), '');
 }
 
 process.exit(summary('workshop-tools-nav') === 0 ? 0 : 1);

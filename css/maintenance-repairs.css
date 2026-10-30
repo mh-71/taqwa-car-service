@@ -1,0 +1,14 @@
+/* ============================================================
+   maintenance-repairs.css — Workshop Assets › Maintenance & Repairs
+   (demo page, UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/maintenance-repairs.html, and every rule is scoped to its
+   data-page. The shared look lives in workshop-assets-demo.css;
+   this file holds only what is particular to this page.
+   ============================================================ */
+
+[data-page="maintenance-repairs"] .ad-section-title { margin: 4px 0 12px; font-size: 1.05rem; font-weight: 700; color: var(--text); }
+/* Five summary cards: one row on wide screens. */
+@media (min-width: 1300px) {
+  [data-page="maintenance-repairs"] .ad-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}

@@ -1,0 +1,52 @@
+/* ============================================================
+   asset-history.css — Workshop Assets › Asset History
+   (demo page, UI only)
+   ------------------------------------------------------------
+   Loaded only by pages/asset-history.html, and every rule is scoped to its
+   data-page. The shared look lives in workshop-assets-demo.css;
+   this file holds only what is particular to this page.
+   ============================================================ */
+
+@media (min-width: 1300px) {
+  [data-page="asset-history"] .ad-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+/* ---------- timeline ---------- */
+[data-page="asset-history"] .ah-timeline { position: relative; margin: 0; padding: 8px 20px 16px 20px; list-style: none; border-top: 1px solid var(--line); }
+[data-page="asset-history"] .ah-month {
+  margin: 16px 0 8px; padding-left: 44px; font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3);
+}
+[data-page="asset-history"] .ah-item { position: relative; display: flex; gap: 14px; padding: 0 0 18px; }
+/* The line joining the dots runs behind each item's dot. */
+[data-page="asset-history"] .ah-item::before {
+  content: ''; position: absolute; left: 15px; top: 34px; bottom: 0; width: 2px; background: var(--line);
+}
+[data-page="asset-history"] .ah-dot {
+  position: relative; z-index: 1; flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--ad-tone) 16%, var(--surface)); color: var(--ad-tone);
+  border: 2px solid var(--surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ad-tone) 35%, var(--line));
+}
+[data-page="asset-history"] .ah-body {
+  flex: 1; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+[data-page="asset-history"] .ah-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+[data-page="asset-history"] .ah-title { margin: 0; font-size: .95rem; font-weight: 700; color: var(--text); }
+[data-page="asset-history"] .ah-type {
+  padding: 2px 8px; border-radius: 999px; font-size: .7rem; font-weight: 700;
+  background: color-mix(in srgb, var(--ad-tone) 14%, var(--surface)); color: var(--ad-tone);
+}
+[data-page="asset-history"] .ah-date { margin-left: auto; font-size: .78rem; color: var(--text-2); white-space: nowrap; }
+[data-page="asset-history"] .ah-asset { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 6px 0 2px; }
+[data-page="asset-history"] .ah-asset__name { font-weight: 600; font-size: .88rem; color: var(--text); }
+[data-page="asset-history"] .ah-text { margin: 4px 0; font-size: .85rem; color: var(--text); }
+[data-page="asset-history"] .ah-meta { display: flex; align-items: center; gap: 6px; margin: 4px 0 8px; font-size: .76rem; color: var(--text-2); }
+[data-page="asset-history"] .ah-view { gap: 6px; }
+[data-page="asset-history"] .ah-preview { margin-top: 14px; border-top: 1px solid var(--line); }
+
+@media (max-width: 640px) {
+  [data-page="asset-history"] .ah-timeline { padding: 4px 12px 12px; }
+  [data-page="asset-history"] .ah-month { padding-left: 0; }
+  [data-page="asset-history"] .ah-item { gap: 10px; }
+  [data-page="asset-history"] .ah-date { margin-left: 0; width: 100%; }
+}
