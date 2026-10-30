@@ -203,6 +203,58 @@ const wrap = (ev, page = PAGE) => ({ object: 'page', entry: [{ id: page, time: N
   check('the webhook needs no session (it is public by design)', okRes.status, 200);
 }
 
+/* ---------- B2. handshake: whitespace and the safe diagnostic log ---------- */
+{
+  const h = fresh();
+  const lines = [];
+  const realLog = console.log;
+  console.log = (...a) => { lines.push(a.map(String).join(' ')); };
+  let results;
+  try {
+    const get = (qs, headers = {}, env = h.env) => worker.fetch(new Request(`http://worker.local/api/webhooks/messenger?${qs}`, { headers }), env);
+    const META_UA = { 'user-agent': 'facebookplatform/1.0 (+http://developers.facebook.com)' };
+    results = [];
+    for (const [qs, headers, env] of [
+      [`hub.mode=subscribe&hub.verify_token=${encodeURIComponent(VERIFY + ' ')}&hub.challenge=4242`, META_UA],
+      [`hub.mode=subscribe&hub.verify_token=${encodeURIComponent(' ' + VERIFY + '\n')}&hub.challenge=4243`, {}],
+      [`hub.mode=subscribe&hub.verify_token=${VERIFY}&hub.challenge=4244`, META_UA, { ...h.env, META_WEBHOOK_VERIFY_TOKEN: `${VERIFY}\r\n` }],
+      ['hub.mode=subscribe&hub.verify_token=wrong-token&hub.challenge=4245', META_UA],
+      [`hub.mode=subscribe&hub.verify_token=${encodeURIComponent('   ')}&hub.challenge=4246`, {}],
+      [`hub.mode=unsubscribe&hub.verify_token=${VERIFY}&hub.challenge=4247`, {}],
+      [`hub.mode=subscribe&hub.verify_token=${VERIFY}&hub.challenge=${encodeURIComponent('<b>')}`, {}],
+      [`hub.mode=subscribe&hub.verify_token=${VERIFY}&hub.challenge=4248`, {}, { DB: h.DB }],
+    ]) {
+      const r = await get(qs, headers, env);
+      results.push([r.status, await r.text()]);
+    }
+  } finally {
+    console.log = realLog;
+  }
+  check('a token Meta sends with a trailing space still verifies, and the exact challenge comes back', results[0], [200, '4242']);
+  check('a token with a leading space and a line break still verifies', results[1], [200, '4243']);
+  check('a secret saved with a trailing line break still verifies', results[2], [200, '4244']);
+  check('a wrong token is still 403', results[3][0], 403);
+  check('a token of only spaces is still 403', results[4][0], 403);
+  check('the wrong mode is still 403', results[5][0], 403);
+  check('a challenge that is not Meta\'s shape is still 403', results[6][0], 403);
+  check('no configuration is still 503', results[7][0], 503);
+
+  const logs = lines.filter((l) => l.includes('messenger_verify')).map((l) => JSON.parse(l));
+  check('every handshake writes exactly one diagnostic line', logs.length, 8);
+  check('the line holds only the agreed fields',
+    Object.keys(logs[0]), ['event', 'fromMeta', 'configured', 'tokenConfigured', 'modeOk', 'tokenMatched', 'challengeOk', 'status']);
+  check('a passing Meta handshake is logged as such', logs[0], { event: 'messenger_verify', fromMeta: true, configured: true, tokenConfigured: true, modeOk: true, tokenMatched: true, challengeOk: true, status: 200 });
+  check('a token mismatch names itself', [logs[3].tokenMatched, logs[3].modeOk, logs[3].status], [false, true, 403]);
+  check('a mode mismatch names itself', [logs[5].modeOk, logs[5].tokenMatched, logs[5].status], [false, true, 403]);
+  check('a bad challenge names itself', [logs[6].challengeOk, logs[6].status], [false, 403]);
+  check('missing configuration names itself', [logs[7].configured, logs[7].tokenConfigured, logs[7].status], [false, false, 503]);
+  check('a request without Meta\'s user-agent is told apart', logs[1].fromMeta, false);
+  const all = lines.join('\n');
+  ok_('no log line contains the verify token, the App Secret or the Page token', ![VERIFY, APP_SECRET, PAGE_TOKEN, 'wrong-token'].some((v) => all.includes(v)));
+  ok_('no log line contains the query string, a challenge or the URL', !/hub\.|verify_token|challenge=|4242|worker\.local|\/api\/webhooks/.test(all), all);
+  ok_('every value in the line is a boolean or the status', logs.every((l) => Object.entries(l).every(([k, v]) => (k === 'event' ? v === 'messenger_verify' : k === 'status' ? Number.isInteger(v) : typeof v === 'boolean'))));
+}
+
 /* ---------- C. webhook POST security ---------- */
 {
   const h = fresh();

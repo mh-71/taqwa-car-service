@@ -63,11 +63,17 @@ export function timingSafeEqualStr(a, b) {
 
 /* ---------- webhook verification ---------- */
 
-/** The GET handshake: does this verify token match ours? */
+/**
+ * The GET handshake: does this verify token match ours?
+ *
+ * Both sides are trimmed: a token pasted into the Meta dashboard with a
+ * stray space or line break would otherwise never match the secret, which
+ * is trimmed too. The comparison itself stays constant-time.
+ */
 export function verifyTokenMatches(env, supplied) {
   if (!configured(env && env.META_WEBHOOK_VERIFY_TOKEN)) return false;
-  if (typeof supplied !== 'string' || supplied === '') return false;
-  return timingSafeEqualStr(supplied, env.META_WEBHOOK_VERIFY_TOKEN.trim());
+  if (typeof supplied !== 'string' || supplied.trim() === '') return false;
+  return timingSafeEqualStr(supplied.trim(), env.META_WEBHOOK_VERIFY_TOKEN.trim());
 }
 
 const toHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
