@@ -4,8 +4,9 @@
      1. In the sidebar, All Conversations is a link to the demo page, which
         exists; it is active (aria-current) only on that page, and the
         Social Inbox group is open there.
-     2. Comments stays "Not configured"
-        and Book Now still links to Appointments.
+     2. The Social Inbox holds exactly All Conversations, Facebook, WhatsApp
+        and Website Forms; Book Now and Comments are gone from it, and the
+        main Appointments link is untouched.
      3. The page says it is Demo Mode and nothing is sent; its script makes
         no request and touches neither the API, Storage nor browser storage.
      4. The demo filters and reply helper behave, and every sample name is
@@ -52,14 +53,22 @@ console.log('-- 1. the link --');
   check('   ...and it is the only active sub-entry', (shellFor('inbox-conversations', '../').match(/class="nav__sub[^"]*is-active/g) || []).length, 1);
 }
 
-console.log('\n-- 2. the other entries are unchanged --');
+console.log('\n-- 2. the Social Inbox entries --');
 {
-  const group = inboxGroup(shellFor('dashboard'));
-  for (const label of ['Comments']) {
-    const row = subFor(group, label);
-    ok(`${label} is still "Not configured" and not a link`, /^<span class="nav__sub nav__sub--off" aria-disabled="true"/.test(row) && /Not configured/.test(row), row.slice(0, 120));
+  // The Social Inbox holds exactly these four entries, each a Demo link.
+  // Book Now (website bookings live in Appointments) and Comments (Facebook
+  // page comments live in the Facebook inbox) are no longer in it.
+  const html = shellFor('dashboard');
+  const group = inboxGroup(html);
+  const entries = group.split(/(?=<(?:a|span) class="nav__sub[ "])/).slice(1);
+  check('Social Inbox has exactly four entries', entries.length, 4);
+  for (const [label, href] of [['All Conversations', 'inbox-conversations'], ['Facebook', 'inbox-facebook'], ['WhatsApp', 'inbox-whatsapp'], ['Website Forms', 'inbox-website-forms']]) {
+    ok(`${label} links to pages/${href}.html`, new RegExp(`^<a class="nav__sub" href="pages/${href}\\.html"`).test(subFor(group, label)), subFor(group, label).slice(0, 120));
   }
-  ok('Book Now still links to Appointments', /^<a class="nav__sub" href="pages\/appointments\.html"/.test(subFor(group, 'Book Now')), '');
+  ok('Book Now is not in the Social Inbox', !/<span>Book Now<\/span>/.test(group) && !/pages\/appointments\.html/.test(group), '');
+  ok('Comments is not in the Social Inbox', !/<span>Comments<\/span>/.test(group), '');
+  ok('no Social Inbox entry is shown as not configured', !/nav__sub--off/.test(group), '');
+  ok('the main Appointments link is still in the sidebar', /<a class="nav__link[^"]*" href="pages\/appointments\.html">[\s\S]*?<span>Appointments<\/span><\/a>/.test(html), '');
 }
 
 console.log('\n-- 3. demo only --');
