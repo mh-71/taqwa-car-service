@@ -415,7 +415,7 @@ console.log('\n-- 14. Route registration --');
   const b = await res.json();
   const routes = b.data.routes;
 
-  check('health advertises 113 routes', routes.length, 113);
+  check('health advertises 118 routes', routes.length, 118);
   ok_('advertises GET /api/settings', routes.includes('GET /api/settings'));
   ok_('does NOT advertise a settings detail route', !routes.includes('GET /api/settings/:id'));
   // Was "every route is a GET" through Phase B. C-2 made that false by
@@ -424,8 +424,8 @@ console.log('\n-- 14. Route registration --');
   {
     const byMethod = {};
     routes.forEach((r) => { const m = r.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    check('45 GET, 40 POST, 17 PUT, 11 DELETE', byMethod,
-      { GET: 45, POST: 40, PUT: 17, DELETE: 11 });
+    check('47 GET, 42 POST, 18 PUT, 11 DELETE', byMethod,
+      { GET: 47, POST: 42, PUT: 18, DELETE: 11 });
     ok_('no other method is advertised',
       routes.every((r) => ['GET', 'POST', 'PUT', 'DELETE'].includes(r.split(' ')[0])));
     check('settings offers a read and a write, and nothing else',
@@ -469,11 +469,11 @@ console.log('\n-- 15. The existing ten collections are untouched --');
   // order. C-2 interleaved write routes between them but removed none.
   {
     const gets = routes.filter((r) => r.startsWith('GET '));
-    check('all 45 GET routes survive, in order', gets, [
+    check('all 47 GET routes survive, in order', gets, [
       'GET /api/health',
       ...['customers', 'vehicles', 'services', 'mechanics', 'parts', 'appointments',
         'job-cards', 'invoices', 'payments', 'invoice-adjustments', 'expenses', 'inventory-transactions',
-        'follow-ups', 'follow-up-contacts', 'follow-up-tasks', 'estimates', 'staff', 'accounts', 'attendance', 'leave-requests', 'activity-log']
+        'follow-ups', 'follow-up-contacts', 'follow-up-tasks', 'estimates', 'staff', 'accounts', 'attendance', 'leave-requests', 'activity-log', 'tools']
         .flatMap((n) => [`GET /api/${n}`, `GET /api/${n}/:id`]),
       'GET /api/settings',
       'GET /api/session',

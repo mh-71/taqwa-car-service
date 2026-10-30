@@ -81,14 +81,15 @@ const Storage = (() => {
     accounts: 'accounts',
     attendance: 'attendance',
     leaveRequests: 'leave-requests',
-    activityLog: 'activity-log'
+    activityLog: 'activity-log',
+    tools: 'tools'
   };
 
   /**
    * Collections that exist ONLY in the database and are read on demand by the
    * one page that needs them (Customer Follow-up; Follow-up Tasks;
    * Estimates; Staff List; User Accounts; Attendance; Leave Management; Activity
-   * Log), never during hydration.
+   * Log; Tools & Equipment), never during hydration.
    *
    * Deliberately not in COLLECTIONS: hydration reads every entry there and
    * falls back to browser storage if any one fails, so a missing table here
@@ -103,7 +104,7 @@ const Storage = (() => {
   // Worker decides what any caller may do.
   let signedInAccount = null;
 
-  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff', 'accounts', 'attendance', 'leaveRequests', 'activityLog'];
+  const API_ONLY = ['followUps', 'followUpContacts', 'followUpTasks', 'estimates', 'staff', 'accounts', 'attendance', 'leaveRequests', 'activityLog', 'tools'];
   const isApiOnly = c => API_ONLY.includes(c);
   const apiOnlyRefusal = () => ({
     ok: false, code: 'no_api', message: 'This needs the workshop database, which this page is not connected to.',

@@ -49,11 +49,12 @@ const StaffRoles = (() => {
     ['expenses', 'Expenses'], ['follow-ups', 'CRM: Follow-ups'], ['follow-up-contacts', 'CRM: Contact Log'],
     ['follow-up-tasks', 'CRM: Tasks'], ['mechanics', 'Mechanics'], ['staff', 'Staff'],
     ['accounts', 'User Accounts'], ['settings', 'Settings'],
+    ['tools', 'Workshop Assets: Tools & Equipment'],
   ];
   const ACTION_NAMES = {
     status: 'Change status', void: 'Void', link: 'Link to invoice', complete: 'Complete', cancel: 'Cancel',
     contact: 'Log contact', start: 'Start', send: 'Send', approve: 'Approve', reject: 'Reject',
-    convert: 'Convert to job card', password: 'Set new password',
+    convert: 'Convert to job card', password: 'Set new password', retire: 'Retire',
   };
   // Signing in and the health check are open to everyone by design; they are not an area of the app.
   const PUBLIC = ['health', 'session'];

@@ -63,12 +63,12 @@ sec('1. Health');
   t('database reachable', r.body?.data?.database?.reachable === true);
   t('migrated', r.body?.data?.database?.migrated === true);
   const routes = r.body?.data?.routes ?? [];
-  t('advertises 113 routes', routes.length === 113, routes);
+  t('advertises 118 routes', routes.length === 118, routes);
   {
     const byMethod = {};
     routes.forEach((r2) => { const m = r2.split(' ')[0]; byMethod[m] = (byMethod[m] || 0) + 1; });
-    t('45 GET, 40 POST, 17 PUT, 11 DELETE',
-      JSON.stringify(byMethod) === JSON.stringify({ GET: 45, POST: 40, PUT: 17, DELETE: 11 }), byMethod);
+    t('47 GET, 42 POST, 18 PUT, 11 DELETE',
+      JSON.stringify(byMethod) === JSON.stringify({ GET: 47, POST: 42, PUT: 18, DELETE: 11 }), byMethod);
   }
   t('advertises services list', routes.includes('GET /api/services'));
   t('advertises services detail', routes.includes('GET /api/services/:id'));
@@ -92,7 +92,9 @@ sec('1. Health');
         'POST /api/follow-up-tasks/:id/cancel',
         'POST /api/estimates/:id/send', 'POST /api/estimates/:id/approve', 'POST /api/estimates/:id/reject',
         'POST /api/estimates/:id/cancel', 'POST /api/estimates/:id/convert',
-        'POST /api/accounts/:id/password']), routes);
+        'POST /api/accounts/:id/password',
+        'POST /api/leave-requests/:id/approve', 'POST /api/leave-requests/:id/reject',
+        'POST /api/tools/:id/retire']), routes);
   t('advertises invoices routes', routes.includes('GET /api/invoices') && routes.includes('GET /api/invoices/:id'));
   t('advertises payments routes', routes.includes('GET /api/payments') && routes.includes('GET /api/payments/:id'));
   t('advertises expenses routes', routes.includes('GET /api/expenses') && routes.includes('GET /api/expenses/:id'));
