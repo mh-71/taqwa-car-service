@@ -72,12 +72,29 @@ const App = (() => {
   const NOTIFY_ICON = 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z';
   const NOTIFY_PLACEHOLDER_COUNT = 3;
 
-  /* Workshop Tools & Equipment, shown after Customer CRM and before Notifications
-     Center. A DEMO page (pages/workshop-tools.html, sample data only): an ordinary
-     top-level link, drawn and marked active like the links in NAV. The sidebar says
-     "Workshop Tools" (the full name does not fit on one line); the header says it in full. */
-  const TOOLS_LINK = { key: 'workshop-tools', label: 'Workshop Tools', href: 'pages/workshop-tools.html',
-    icon: 'M21.67 18.17l-5.3-5.3h-.99l-2.54 2.54v.99l5.3 5.3c.39.39 1.02.39 1.41 0l2.12-2.12c.39-.38.39-1.02 0-1.41zM17.34 10.19l1.41-1.41 2.12 2.12c1.17-1.17 1.17-3.07 0-4.24l-3.54-3.54-1.41 1.41V1.71l-.7-.71-3.54 3.54.71.71h2.83l-1.41 1.41 1.06 1.06-2.89 2.89-4.13-4.13V5.06L4.83 2.04 2 4.87 5.03 7.9h1.41l4.13 4.13-.85.85H7.6l-5.3 5.3c-.39.39-.39 1.02 0 1.41l2.12 2.12c.39.39 1.02.39 1.41 0l5.3-5.3v-2.12l5.15-5.15 1.06 1.05z' };
+  /* Workshop Assets, shown after Customer CRM and before Notifications Center:
+     an expandable group drawn like Customer CRM and Staff Management. Only
+     Tools & Equipment has a page yet -- the existing DEMO page
+     (pages/workshop-tools.html, sample data only), at its unchanged address.
+     The other five are shown as "Coming soon": plain text, never links, with
+     no page behind them. Each gets an href when its page exists. */
+  const ASSETS_ICON = '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>';
+  const ASSETS = [
+    { key: 'workshop-tools', label: 'Tools & Equipment', href: 'pages/workshop-tools.html',
+      icon: '<path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/>' },
+    { label: 'Equipment Inventory',
+      icon: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>' },
+    { label: 'Maintenance & Repairs',
+      icon: '<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27 7 3.34"/><path d="m20.66 17-1.73-1"/><path d="m3.34 7 1.73 1"/><path d="M14 12h8"/><path d="M2 12h2"/><path d="m20.66 7-1.73 1"/><path d="m3.34 17 1.73-1"/><path d="m17 3.34-1 1.73"/><path d="m11 13.73-4 6.93"/>' },
+    { label: 'Asset Assignment',
+      icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>' },
+    { label: 'Asset History',
+      icon: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>' },
+    { label: 'Asset Reports',
+      icon: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>' },
+  ];
+  // Whether Workshop Assets was left open (display state only, like Customer CRM).
+  const ASSETS_OPEN_KEY = 'taqwa_nav_assets_open';
 
   /* Staff Management, shown after Mechanics. UI PREVIEW ONLY: every page shows
      demo data that is labelled as such; nothing is read from or saved to the
@@ -399,6 +416,23 @@ const App = (() => {
             <div class="nav__subs">${subs}</div>
           </details>`;
     };
+    const assetsHtml = () => {
+      const here = ASSETS.some(s => s.key && s.key === page);
+      let open = here;
+      if (!here) { try { open = sessionStorage.getItem(ASSETS_OPEN_KEY) === '1'; } catch (e) { /* no hint */ } }
+      const subs = ASSETS.map(s => {
+        if (!s.href) {
+          return `<span class="nav__sub nav__sub--off" aria-disabled="true" title="${s.label} is coming soon.">${staffIcon(s.icon, 16)}<span class="nav__sub-text"><span>${s.label}</span><small>Coming soon</small></span></span>`;
+        }
+        const active = s.key === page;
+        return `<a class="nav__sub${active ? ' is-active' : ''}" href="${root}${s.href}"${active ? ' aria-current="page"' : ''}>${staffIcon(s.icon, 16)}<span>${s.label}</span></a>`;
+      }).join('');
+      return `<details class="nav__group${here ? ' has-active' : ''}" id="navAssets"${open ? ' open' : ''}>
+            <summary class="nav__summary">${staffIcon(ASSETS_ICON, 20)}<span>Workshop Assets</span>
+              <svg class="nav__chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="${CHEVRON_ICON}"/></svg></summary>
+            <div class="nav__subs">${subs}</div>
+          </details>`;
+    };
     const notifyHtml = () => {
       const active = page === 'notifications';
       return `<a class="nav__link nav__notify${active ? ' is-active' : ''}" id="navNotify" href="${root}pages/notifications.html"${active ? ' aria-current="page"' : ''}>${icon(NOTIFY_ICON)}<span>Notifications Center</span><span class="nav__count" title="The count is a design placeholder.">${NOTIFY_PLACEHOLDER_COUNT}</span></a>`;
@@ -406,7 +440,7 @@ const App = (() => {
     const navHtml = NAV.map(item => linkHtml(item)
       + (item.key === STAFF_AFTER ? staffHtml() : '')
       + (item.key === INBOX_AFTER ? inboxHtml() : '')
-      + (item.key === CRM_AFTER ? crmHtml() + linkHtml(TOOLS_LINK) + notifyHtml() : '')).join('');
+      + (item.key === CRM_AFTER ? crmHtml() + assetsHtml() + notifyHtml() : '')).join('');
 
     const shell = document.createElement('div');
     shell.className = pending ? 'shell is-pending' : 'shell';
@@ -516,6 +550,12 @@ const App = (() => {
     if (crm) {
       crm.addEventListener('toggle', () => {
         try { sessionStorage.setItem(CRM_OPEN_KEY, crm.open ? '1' : '0'); } catch (e) { /* private mode */ }
+      });
+    }
+    const assets = document.getElementById('navAssets');
+    if (assets) {
+      assets.addEventListener('toggle', () => {
+        try { sessionStorage.setItem(ASSETS_OPEN_KEY, assets.open ? '1' : '0'); } catch (e) { /* private mode */ }
       });
     }
     const staff = document.getElementById('navStaff');

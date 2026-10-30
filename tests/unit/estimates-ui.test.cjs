@@ -61,7 +61,7 @@ console.log('-- 1. sidebar --');
   const html = shellFor('dashboard');
   check('the top-level links, in order (Estimates & Quotations right after Job Cards)', topLinks(html).map(l => l.label),
     ['Dashboard', 'Customers', 'Vehicles', 'Appointments', 'Job Cards', 'Estimates & Quotations', 'Services', 'Mechanics',
-      'Inventory', 'Invoices', 'Payments', 'Expenses', 'Workshop Tools', 'Reports', 'Settings']);
+      'Inventory', 'Invoices', 'Payments', 'Expenses', 'Reports', 'Settings']);
   const est = topLinks(html).find(l => l.label === 'Estimates & Quotations');
   ok('   ...linking to the Overview page, not active elsewhere', est && est.href === 'pages/estimates.html' && !est.active, JSON.stringify(est));
   const on = shellFor('estimates', '../');
