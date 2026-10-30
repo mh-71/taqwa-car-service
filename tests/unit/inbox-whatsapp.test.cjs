@@ -3,8 +3,9 @@
    What must hold:
      1. In the sidebar, WhatsApp is a link to the demo page, which exists,
         marked Demo, and active (aria-current) only on that page.
-     2. All Conversations and Book Now are still links; Comments stays
-        "Not configured".
+     2. The Social Inbox holds exactly All Conversations, Facebook, WhatsApp
+        and Website Forms; Book Now and Comments are gone from it, and the
+        main Appointments link is untouched.
      3. The page shows the DEMO MODE banner and "Not connected"; its script
         makes no request, touches neither the API, Storage nor browser
         storage, and shows only placeholder phone numbers.
@@ -53,15 +54,22 @@ console.log('-- 1. the link --');
   ok('   ...and the header says WhatsApp Inbox', /<h1>WhatsApp Inbox<\/h1>/.test(html), '');
 }
 
-console.log('\n-- 2. the other entries --');
+console.log('\n-- 2. the Social Inbox entries --');
 {
-  const group = inboxGroup(shellFor('dashboard'));
-  ok('All Conversations still links to its page', /^<a class="nav__sub" href="pages\/inbox-conversations\.html"/.test(subFor(group, 'All Conversations')), '');
-  ok('Book Now still links to Appointments', /^<a class="nav__sub" href="pages\/appointments\.html"/.test(subFor(group, 'Book Now')), '');
-  for (const label of ['Comments']) {
-    const row = subFor(group, label);
-    ok(`${label} is still "Not configured"`, /^<span class="nav__sub nav__sub--off" aria-disabled="true"/.test(row) && /Not configured/.test(row), row.slice(0, 120));
+  // The Social Inbox holds exactly these four entries, each a Demo link.
+  // Book Now (website bookings live in Appointments) and Comments (Facebook
+  // page comments live in the Facebook inbox) are no longer in it.
+  const html = shellFor('dashboard');
+  const group = inboxGroup(html);
+  const entries = group.split(/(?=<(?:a|span) class="nav__sub[ "])/).slice(1);
+  check('Social Inbox has exactly four entries', entries.length, 4);
+  for (const [label, href] of [['All Conversations', 'inbox-conversations'], ['Facebook', 'inbox-facebook'], ['WhatsApp', 'inbox-whatsapp'], ['Website Forms', 'inbox-website-forms']]) {
+    ok(`${label} links to pages/${href}.html`, new RegExp(`^<a class="nav__sub" href="pages/${href}\\.html"`).test(subFor(group, label)), subFor(group, label).slice(0, 120));
   }
+  ok('Book Now is not in the Social Inbox', !/<span>Book Now<\/span>/.test(group) && !/pages\/appointments\.html/.test(group), '');
+  ok('Comments is not in the Social Inbox', !/<span>Comments<\/span>/.test(group), '');
+  ok('no Social Inbox entry is shown as not configured', !/nav__sub--off/.test(group), '');
+  ok('the main Appointments link is still in the sidebar', /<a class="nav__link[^"]*" href="pages\/appointments\.html">[\s\S]*?<span>Appointments<\/span><\/a>/.test(html), '');
 }
 
 console.log('\n-- 3. demo only --');
