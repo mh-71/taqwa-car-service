@@ -277,6 +277,67 @@ const wrap = (ev, page = PAGE) => ({ object: 'page', entry: [{ id: page, time: N
   check('PUT on the webhook is 405', (await h.api('PUT', '/api/webhooks/messenger', {}, 'none')).status, 405);
 }
 
+/* ---------- C2. App Secret whitespace, SHA1 header, and the safe delivery log ---------- */
+{
+  const lines = [];
+  const realLog = console.log;
+  const signed = (payload, secret = APP_SECRET) => {
+    const raw = JSON.stringify(payload);
+    return { raw, sig256: `sha256=${createHmac('sha256', secret).update(raw).digest('hex')}`, sha1: `sha1=${createHmac('sha1', secret).update(raw).digest('hex')}` };
+  };
+  const post = async (env, raw, headers) => {
+    const res = await worker.fetch(new Request('http://worker.local/api/webhooks/messenger', { method: 'POST', headers, body: raw }), env, { waitUntil: (p) => p });
+    return res.status;
+  };
+  const META_HEADERS = (s) => ({ 'x-hub-signature': s.sha1, 'x-hub-signature-256': s.sig256, 'content-type': 'application/json', 'user-agent': 'Webhooks/1.0 (https://fb.me/webhooks)' });
+  const results = {};
+  const h = fresh();
+  console.log = (...a) => { lines.push(a.map(String).join(' ')); };
+  try {
+    const ev = signed(msgEvent('m_ws_1', 'Customer text that must never be logged', {}, '900777', NOW));
+    results.crlf = await post({ ...h.env, META_APP_SECRET: `${APP_SECRET}\r\n` }, ev.raw, META_HEADERS(ev));
+    const ev2 = signed(msgEvent('m_ws_2', 'Second', {}, '900777', NOW + 1));
+    results.space = await post({ ...h.env, META_APP_SECRET: ` ${APP_SECRET} ` }, ev2.raw, META_HEADERS(ev2));
+    const ev3 = signed(msgEvent('m_ws_3', 'Third', {}, '900777', NOW + 2), 'some-other-app-secret');
+    results.otherApp = await post(h.env, ev3.raw, META_HEADERS(ev3));
+    const ev4 = signed(msgEvent('m_ws_4', 'Fourth', {}, '900777', NOW + 3));
+    results.sha1Only = await post(h.env, ev4.raw, { 'x-hub-signature': ev4.sha1, 'content-type': 'application/json' });
+    const ev5 = signed({ object: 'page', entry: [{ id: '0', time: NOW, messaging: [{ sender: { id: '12334' }, recipient: { id: '23245' }, timestamp: '1527459824', message: { mid: 'test_message_id', text: 'test_message' } }] }] });
+    results.dashboardTest = await post(h.env, ev5.raw, META_HEADERS(ev5));
+    const ev6 = signed({ object: 'instagram', entry: [] });
+    results.otherObject = await post(h.env, ev6.raw, META_HEADERS(ev6));
+    results.noSecret = await post({ DB: h.DB }, ev.raw, META_HEADERS(ev));
+  } finally {
+    console.log = realLog;
+  }
+  check('a genuine Meta delivery verifies when the App Secret was saved with a trailing line break', results.crlf, 200);
+  check('...and with spaces around it', results.space, 200);
+  check('both were stored, once each', h.one("SELECT count(*) AS n FROM messenger_messages WHERE platform_message_id IN ('m_ws_1','m_ws_2')").n, 2);
+  check('a delivery signed with another app\'s secret is still 401', results.otherApp, 401);
+  check('the SHA1 header alone is not accepted (only X-Hub-Signature-256 counts)', results.sha1Only, 401);
+  check('nothing from a refused delivery was stored', h.one("SELECT count(*) AS n FROM messenger_messages WHERE platform_message_id IN ('m_ws_3','m_ws_4')").n, 0);
+  check('the dashboard Test sample is acknowledged but not stored (another Page id)', [results.dashboardTest, h.one("SELECT count(*) AS n FROM messenger_messages WHERE platform_message_id = 'test_message_id'").n], [200, 0]);
+  check('missing configuration is still 503', results.noSecret, 503);
+
+  const logs = lines.filter((l) => l.includes('messenger_delivery')).map((l) => JSON.parse(l));
+  check('every delivery writes exactly one diagnostic line', logs.length, 7);
+  check('the line holds only the agreed fields', Object.keys(logs[0]),
+    ['event', 'signatureHeader', 'signatureValid', 'objectOk', 'entries', 'otherPage', 'stored', 'duplicate', 'matched', 'updated', 'ignored', 'status']);
+  check('a stored delivery is logged as such', logs[0], { event: 'messenger_delivery', signatureHeader: true, signatureValid: true, objectOk: true,
+    entries: 1, otherPage: 0, stored: 1, duplicate: 0, matched: 0, updated: 0, ignored: 0, status: 200 });
+  check('a wrong secret is logged as an invalid signature', [logs[2].signatureHeader, logs[2].signatureValid, logs[2].status], [true, false, 401]);
+  check('a missing SHA-256 header is logged as such', [logs[3].signatureHeader, logs[3].signatureValid, logs[3].status], [false, false, 401]);
+  check('the dashboard Test sample is logged as another Page', [logs[4].signatureValid, logs[4].entries, logs[4].otherPage, logs[4].stored, logs[4].status], [true, 1, 1, 0, 200]);
+  check('another object type is logged as such', [logs[5].objectOk, logs[5].status], [false, 200]);
+  check('missing configuration is logged with its status', logs[6].status, 503);
+  const all = lines.join('\n');
+  ok_('no log line contains the App Secret, a signature, the Page token or the verify token',
+    ![APP_SECRET, PAGE_TOKEN, VERIFY, 'sha256=', 'sha1=', 'some-other-app-secret'].some((v) => all.includes(v)));
+  ok_('no log line contains customer data: PSID, message id or message text',
+    !['900777', '12334', 'm_ws_1', 'test_message', 'Customer text', 'Second'].some((v) => all.includes(v)), all);
+  ok_('every value in the line is a boolean or a number', logs.every((l) => Object.entries(l).every(([k, v]) => (k === 'event' ? v === 'messenger_delivery' : typeof v === 'boolean' || Number.isInteger(v)))));
+}
+
 /* ---------- D. events ---------- */
 {
   const h = fresh();

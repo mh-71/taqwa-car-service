@@ -95,7 +95,10 @@ export async function signatureValid(env, header, rawBody) {
   if (typeof header !== 'string') return false;
   const m = /^sha256=([0-9a-fA-F]{64})$/.exec(header.trim());
   if (!m) return false;
-  const expected = await signBody(env.META_APP_SECRET, rawBody);
+  // Trimmed like every other use of a Meta secret here: a secret saved with a
+  // stray space or line break would otherwise sign with a different key and
+  // refuse every genuine delivery. The App Secret itself never contains spaces.
+  const expected = await signBody(env.META_APP_SECRET.trim(), rawBody);
   return timingSafeEqualStr(m[1].toLowerCase(), expected);
 }
 
