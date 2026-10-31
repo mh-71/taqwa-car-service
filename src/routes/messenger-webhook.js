@@ -213,37 +213,51 @@ async function handleEvent(env, pageId, ev, ctx) {
 }
 
 async function receive(request, env, ctx) {
+  // One line per delivery, so a refused or empty delivery can be explained from
+  // the Worker log. Booleans, counts and the status only: never a signature,
+  // secret, token, PSID, message text or the body.
+  const diag = { event: 'messenger_delivery', signatureHeader: false, signatureValid: false, objectOk: false,
+    entries: 0, otherPage: 0, stored: 0, duplicate: 0, matched: 0, updated: 0, ignored: 0 };
+  const done = (response) => {
+    console.log(JSON.stringify({ ...diag, status: response.status }));
+    return response;
+  };
+
   if (!metaConfig(env).webhook) {
     console.error('Messenger webhook: refusing a delivery, META_APP_SECRET is not configured.');
-    return fail('webhook_not_configured', 'This webhook is not configured.', 503);
+    return done(fail('webhook_not_configured', 'This webhook is not configured.', 503));
   }
   const raw = new Uint8Array(await request.arrayBuffer());
-  if (raw.byteLength > MAX_BODY_BYTES) return fail('payload_too_large', 'Delivery too large.', 413);
-  if (!(await signatureValid(env, request.headers.get('x-hub-signature-256'), raw))) {
-    return fail('invalid_signature', 'Signature verification failed.', 401);
+  if (raw.byteLength > MAX_BODY_BYTES) return done(fail('payload_too_large', 'Delivery too large.', 413));
+  const signature = request.headers.get('x-hub-signature-256');
+  diag.signatureHeader = typeof signature === 'string' && signature !== '';
+  diag.signatureValid = await signatureValid(env, signature, raw);
+  if (!diag.signatureValid) {
+    return done(fail('invalid_signature', 'Signature verification failed.', 401));
   }
   let payload;
-  try { payload = JSON.parse(new TextDecoder().decode(raw)); } catch { return fail('invalid_body', 'Body is not JSON.', 400); }
-  if (!payload || payload.object !== 'page' || !Array.isArray(payload.entry)) return text('IGNORED');
-  if (!env.DB) return noDatabase();
+  try { payload = JSON.parse(new TextDecoder().decode(raw)); } catch { return done(fail('invalid_body', 'Body is not JSON.', 400)); }
+  diag.objectOk = Boolean(payload && payload.object === 'page' && Array.isArray(payload.entry));
+  if (!diag.objectOk) return done(text('IGNORED'));
+  if (!env.DB) return done(noDatabase());
 
   const ourPage = metaConfig(env).pageId;
-  const outcome = { stored: 0, duplicate: 0, matched: 0, updated: 0, ignored: 0 };
+  diag.entries = Math.min(payload.entry.length, 100);
   try {
     for (const entry of payload.entry.slice(0, 100)) {
       const pageId = entry && typeof entry.id === 'string' ? entry.id : null;
       // Only the configured Page is this inbox's; another Page on the same app is not.
-      if (!pageId || (ourPage && pageId !== ourPage)) { outcome.ignored += 1; continue; }
+      if (!pageId || (ourPage && pageId !== ourPage)) { diag.otherPage += 1; continue; }
       for (const ev of (Array.isArray(entry.messaging) ? entry.messaging.slice(0, 100) : [])) {
-        outcome[await handleEvent(env, pageId, ev, ctx)] += 1;
+        diag[await handleEvent(env, pageId, ev, ctx)] += 1;
       }
     }
   } catch (err) {
     // 500 makes Meta deliver it again; what was already stored is deduplicated then.
     console.error('Messenger webhook: storing an event failed:', err && err.message);
-    return fail('database_error', 'The event could not be stored.', 500);
+    return done(fail('database_error', 'The event could not be stored.', 500));
   }
-  return text('EVENT_RECEIVED');
+  return done(text('EVENT_RECEIVED'));
 }
 
 /** The router hands every /api/webhooks/messenger request here. Public: see the header. */
