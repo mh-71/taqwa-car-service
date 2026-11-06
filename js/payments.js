@@ -84,9 +84,12 @@
     const inv = Storage.getById('invoices', invoiceId);
     if (!inv) return 0;
     const total = Number(inv.total) || 0;
+    // 0026: a post-completion discount lowers what the invoice asks for (the
+    // server's cached figure). A refund never raises what is owed.
+    const payable = total - Math.min(total, Math.max(Number(inv.postDiscount) || 0, 0));
     const paid = Math.min(total, sumActivePayments(invoiceId));
-    const writtenOff = Math.min(total - paid, sumActiveWriteOffs(invoiceId));
-    return Math.max(total - paid - writtenOff, 0);
+    const writtenOff = Math.max(0, Math.min(payable - paid, sumActiveWriteOffs(invoiceId)));
+    return Math.max(payable - paid - writtenOff, 0);
   }
 
   /**
@@ -290,12 +293,16 @@
     const todayCollected = active.filter(p => (p.date || '').slice(0, 10) === today).reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const outstandingAdvances = active.filter(p => !p.invoiceId).reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const voidCount = payments.filter(p => p.status === 'Void').length;
+    // 0026: cash given back. Shown beside what was collected, never netted into a payment.
+    const refunded = Storage.getData('invoiceRefunds').filter(r => r.status !== 'Void')
+      .reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
     const stats = [
       { label: 'Total Payments', value: payments.length, tone: 'info', icon: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z' },
       { label: 'Total Collected', value: money(totalCollected), tone: 'good', icon: 'M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z' },
       { label: "Today's Collections", value: money(todayCollected), tone: 'good', icon: 'M11.8 10.9c-2.3-.6-3-1.2-3-2.1 0-1.1 1-1.9 2.7-1.9 1.8 0 2.4.8 2.5 2.1h2.2c-.1-1.8-1.2-3.4-3.3-3.9V3h-3v2.1c-1.9.4-3.5 1.7-3.5 3.6 0 2.3 1.9 3.5 4.7 4.1 2.5.6 3 1.5 3 2.4 0 .7-.5 1.8-2.7 1.8-2.1 0-2.9-.9-3-2.1H8.1c.1 2.3 1.9 3.6 3.9 4v2.1h3v-2.1c1.9-.4 3.5-1.5 3.5-3.7 0-2.8-2.4-3.7-4.7-4.3z' },
       { label: 'Outstanding Advances', value: money(outstandingAdvances), tone: 'amber', icon: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z' },
+      ...(refunded > 0 ? [{ label: 'Refunded', value: money(refunded), tone: 'bad', icon: 'M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z' }] : []),
       { label: 'Voided', value: voidCount, tone: 'bad', icon: 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm5 13.6L15.6 17 12 13.4 8.4 17 7 15.6 10.6 12 7 8.4 8.4 7 12 10.6 15.6 7 17 8.4 13.4 12 17 15.6z' }
     ];
 
@@ -868,7 +875,9 @@
           <div class="totals-panel totals-panel--view">
             <div class="totals-grand"><span>Amount Paid</span><strong>${money(p.amount)}</strong></div>
             ${invoice ? `<div><span>Invoice Total</span><strong>${money(invoice.total)}</strong></div>
+            ${Number(invoice.postDiscount) > 0 ? `<div><span>Post-completion Discount</span><strong>\u2212 ${money(invoice.postDiscount)}</strong></div>` : ''}
             <div><span>Invoice Paid (all payments)</span><strong>${money(invoice.paid)}</strong></div>
+            ${Number(invoice.refunded) > 0 ? `<div><span>Refunded on this Invoice</span><strong>\u2212 ${money(invoice.refunded)}</strong></div>` : ''}
             <div class="${Number(invoice.due) > 0 ? 'totals-due' : ''}"><span>Invoice Due</span><strong>${money(invoice.due)}</strong></div>` : ''}
           </div>
         </section>
@@ -954,7 +963,9 @@
       ${invoice ? `
       <table class="rcp-inv">
         <tr><td>Invoice Total</td><td>${money(invoice.total)}</td></tr>
-        <tr><td>Invoice Paid to Date</td><td>${money(invoice.paid)}</td></tr>${Number(invoice.writtenOff) > 0 ? `
+        ${Number(invoice.postDiscount) > 0 ? `<tr><td>Post-completion Discount</td><td>\u2212 ${money(invoice.postDiscount)}</td></tr>` : ''}
+        <tr><td>Invoice Paid to Date</td><td>${money(invoice.paid)}</td></tr>${Number(invoice.refunded) > 0 ? `
+        <tr><td>Refunded</td><td>\u2212 ${money(invoice.refunded)}</td></tr>` : ''}${Number(invoice.writtenOff) > 0 ? `
         <tr><td>Adjustment</td><td>\u2212 ${money(invoice.writtenOff)}</td></tr>` : ''}
         <tr class="rcp-inv__due"><td>Invoice Due</td><td>${money(invoice.due)}</td></tr>
       </table>` : ''}

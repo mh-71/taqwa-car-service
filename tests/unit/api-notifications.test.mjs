@@ -53,7 +53,7 @@ if (!DatabaseSync) {
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const MIGRATIONS = readdirSync(join(ROOT, 'migrations')).filter((f) => /^\d{4}_.*\.sql$/.test(f) && f.slice(0, 4) <= '0019').sort();
+const MIGRATIONS = readdirSync(join(ROOT, 'migrations')).filter((f) => /^\d{4}_.*\.sql$/.test(f) && (f.slice(0, 4) <= '0019' || f.slice(0, 4) === '0026')).sort(); // 0026: invoices carry post_discount/refunded
 const TOKEN = 'unit-test-token';
 const PASSPHRASE = 'workshop passphrase for tests';
 const SECRET = 'unit-test-signing-secret-0123456789abcdef';

@@ -207,20 +207,86 @@ export const adjusted = (param) =>
      WHERE invoice_id = ${param} AND status <> '${VOID}')`;
 
 /**
- * Rewrite one invoice's paid/written_off/due/status from its live payments
- * and its live write-offs.
+ * The sum of an invoice's Active post-completion discounts (invoice_discounts,
+ * 0026). Not cash: a discount reduces what the invoice asks for.
+ */
+export const discounted = (param) =>
+  `(SELECT COALESCE(SUM(amount), 0)
+      FROM invoice_discounts
+     WHERE invoice_id = ${param} AND status <> '${VOID}')`;
+
+/**
+ * The sum of an invoice's Active refunds (invoice_refunds, 0026): cash given
+ * back. It never changes `paid` (cash received) or `due`.
+ */
+export const refundedSum = (param) =>
+  `(SELECT COALESCE(SUM(amount), 0)
+      FROM invoice_refunds
+     WHERE invoice_id = ${param} AND status <> '${VOID}')`;
+
+/**
+ * One invoice's live figures, as a SELECT over the invoice bound as `param`,
+ * computed exactly as recomputeInvoice() writes them -- so a route that
+ * checks a balance checks the balance the recompute will store.
  *
- * recomputeInvoiceBalance(), in one statement, extended by the write-off:
+ *   paid           cash received: MIN(total, Active payments)
+ *   post_discount  MIN(total, Active post-completion discounts)
+ *   payable        total - post_discount   (what the invoice now asks for)
+ *   written_off    Active write-offs, capped at what cash left unpaid
+ *   due            payable - paid - written_off, floored at 0
+ *   refunded       MIN(paid, Active refunds)
+ *   refundable     paid - refunded         (cash still held, can be returned)
+ *   credit         paid - refunded - payable, floored at 0
  *
- *   paid         the settled figure above -- cash only, unchanged
- *   written_off  the Active write-offs, capped at what cash left unpaid
- *   due          total - paid - written_off, floored at zero
- *   status       Paid when the total is positive and paid + written_off
- *                cover it; Partial when any cash is paid; else Unpaid
+ * Also returns the raw sums (pay_sum, adj_sum, disc_sum, ref_sum) and the
+ * invoice's id, customer, status, total and date.
+ */
+export const liveInvoice = (param) => `
+  SELECT x.*,
+         MAX(x.payable - x.paid - x.written_off, 0) AS due,
+         x.paid - x.refunded                         AS refundable,
+         MAX(x.paid - x.refunded - x.payable, 0)     AS credit
+    FROM (
+      SELECT y.*, MAX(0, MIN(y.payable - y.paid, MAX(0, y.adj_sum))) AS written_off
+        FROM (
+          SELECT i.id, i.customer_id, i.status, i.total, i.date,
+                 s.pay_sum, s.adj_sum, s.disc_sum, s.ref_sum,
+                 MIN(i.total, MAX(0, s.pay_sum))                                AS paid,
+                 MIN(i.total, MAX(0, s.disc_sum))                               AS post_discount,
+                 i.total - MIN(i.total, MAX(0, s.disc_sum))                     AS payable,
+                 MIN(MIN(i.total, MAX(0, s.pay_sum)), MAX(0, s.ref_sum))        AS refunded
+            FROM invoices i,
+                 (SELECT (SELECT COALESCE(SUM(amount), 0) FROM payments
+                           WHERE invoice_id = ${param} AND status <> '${VOID}') AS pay_sum,
+                         ${adjusted(param)} AS adj_sum,
+                         ${discounted(param)} AS disc_sum,
+                         ${refundedSum(param)} AS ref_sum) s
+           WHERE i.id = ${param}
+        ) y
+    ) x`;
+
+/**
+ * Rewrite one invoice's paid/written_off/post_discount/refunded/due/status
+ * from its live payments, write-offs, post-completion discounts and refunds.
  *
- * With no Active write-off, written_off is MIN(total - paid, 0) = 0 (paid is
- * capped at total), so paid, due and status are exactly what this statement
- * produced before 0002.
+ * recomputeInvoiceBalance(), in one statement, extended by the write-off
+ * (0002) and by discounts and refunds (0026):
+ *
+ *   paid           the settled figure above -- cash only, unchanged
+ *   post_discount  the Active post-completion discounts, capped at the total
+ *   written_off    the Active write-offs, capped at what cash left unpaid of
+ *                  the payable amount (total - post_discount)
+ *   due            payable - paid - written_off, floored at zero
+ *   status         Paid when the total is positive and paid + written_off
+ *                  cover the payable amount; Partial when any cash is paid;
+ *                  else Unpaid
+ *   refunded       the Active refunds, capped at paid. A refund NEVER moves
+ *                  due or status: returning cash does not create a debt.
+ *
+ * With no Active discount, post_discount is 0 and payable is the total, so
+ * written_off is MAX(0, MIN(total - paid, write-offs)) -- the same value as
+ * before (total - paid is never negative, paid being capped at total) -- and
+ * paid, due and status are exactly what this statement produced before 0026.
  *
  * A VOID INVOICE IS NEVER TOUCHED (:86). Its figures are frozen at what it
  * had collected before it was cancelled -- audit Finding 7's other half --
@@ -232,16 +298,20 @@ export const adjusted = (param) =>
  */
 export function recomputeInvoice(env, { invoiceId, at, guard, guardBinds = [] }) {
   const paid = settled('?1');
-  const writtenOff = `MIN(total - ${paid}, MAX(0, ${adjusted('?1')}))`;
+  const postDiscount = `MIN(total, MAX(0, ${discounted('?1')}))`;
+  const payable = `(total - ${postDiscount})`;
+  const writtenOff = `MAX(0, MIN(${payable} - ${paid}, MAX(0, ${adjusted('?1')})))`;
   return env.DB.prepare(
     `UPDATE invoices
-        SET paid        = ${paid},
-            written_off = ${writtenOff},
-            due         = MAX(total - ${paid} - ${writtenOff}, 0),
-            status      = CASE WHEN total > 0 AND ${paid} + ${writtenOff} >= total THEN 'Paid'
-                               WHEN ${paid} > 0                                   THEN 'Partial'
-                               ELSE 'Unpaid' END,
-            updated_at  = ?2
+        SET paid          = ${paid},
+            post_discount = ${postDiscount},
+            written_off   = ${writtenOff},
+            refunded      = MIN(${paid}, MAX(0, ${refundedSum('?1')})),
+            due           = MAX(${payable} - ${paid} - ${writtenOff}, 0),
+            status        = CASE WHEN total > 0 AND ${paid} + ${writtenOff} >= ${payable} THEN 'Paid'
+                                 WHEN ${paid} > 0                                       THEN 'Partial'
+                                 ELSE 'Unpaid' END,
+            updated_at    = ?2
       WHERE id = ?1
         AND status <> '${VOID}'
         AND ${guard}`
@@ -316,7 +386,8 @@ async function explainInvoiceRefusal(env, invoiceId, customerId, amount) {
     `SELECT i.status, i.customer_id, i.total,
             (SELECT COALESCE(SUM(amount), 0) FROM payments
               WHERE invoice_id = ?1 AND status <> '${VOID}') AS settled,
-            ${adjusted('?1')} AS adjusted
+            ${adjusted('?1')} AS adjusted,
+            ${discounted('?1')} AS discounted
        FROM invoices i WHERE i.id = ?1`
   ).bind(invoiceId).first();
 
@@ -332,9 +403,11 @@ async function explainInvoiceRefusal(env, invoiceId, customerId, amount) {
       { reason: 'customer_mismatch', invoiceId });
   }
   // :121-123 — the overpayment refusal, reporting the live outstanding due:
-  // what is left once the payments and the Active write-offs are counted.
+  // what is left once the payments, the Active write-offs and the Active
+  // post-completion discounts (0026) are counted.
   const liveDue = Math.max(
-    (Number(row.total) || 0) - (Number(row.settled) || 0) - (Number(row.adjusted) || 0), 0);
+    (Number(row.total) || 0) - (Number(row.settled) || 0) - (Number(row.adjusted) || 0)
+      - (Number(row.discounted) || 0), 0);
   return conflict(
     `This would overpay the invoice. Outstanding due is ${liveDue}.`,
     { reason: 'overpayment', invoiceId, outstandingDue: liveDue, amount }
@@ -467,7 +540,7 @@ export async function createPayment(request, env) {
              AND i.customer_id = ?3
              AND (SELECT COALESCE(SUM(amount), 0) FROM payments
                    WHERE invoice_id = ?2 AND status <> '${VOID}')
-                 + ${adjusted('?2')} + ?6 <= i.total)
+                 + ${adjusted('?2')} + ${discounted('?2')} + ?6 <= i.total)
          AND ${jobCardOwned}`
     ).bind(...values));
     statements.push(recomputeInvoice(env, {
@@ -651,7 +724,7 @@ export async function linkPayment(request, env, rawId) {
                  AND i.customer_id = payments.customer_id
                  AND (SELECT COALESCE(SUM(amount), 0) FROM payments p2
                        WHERE p2.invoice_id = ?2 AND p2.status <> '${VOID}')
-                     + ${adjusted('?2')} + payments.amount <= i.total
+                     + ${adjusted('?2')} + ${discounted('?2')} + payments.amount <= i.total
                  -- a payment that names a job card may only reach an invoice
                  -- of that job card's customer
                  AND (payments.job_card_id IS NULL OR EXISTS (
@@ -728,9 +801,17 @@ export async function voidPayment(request, env, rawId) {
   const at = nowIso();
   const statements = [
     // THE GATE.
+    // 0026: a payment cannot be voided if the invoice's remaining payments
+    // would then be less than the cash already refunded on it -- that would
+    // leave a refund of money the books no longer show as received.
     env.DB.prepare(
       `UPDATE payments SET status = '${VOID}', updated_at = ?2
-        WHERE id = ?1 AND status <> '${VOID}'`
+        WHERE id = ?1 AND status <> '${VOID}'
+          AND (invoice_id IS NULL
+               OR ROUND((SELECT COALESCE(SUM(p2.amount), 0) FROM payments p2
+                          WHERE p2.invoice_id = payments.invoice_id AND p2.status <> '${VOID}')
+                        - payments.amount, 2)
+                  >= ROUND(${refundedSum('payments.invoice_id')}, 2))`
     ).bind(id.value, at),
   ];
   // :181 — only a linked payment moves an invoice.
@@ -753,6 +834,17 @@ export async function voidPayment(request, env, rawId) {
   }
 
   if ((results[0]?.meta?.changes ?? 0) !== 1) {
+    if (payment.invoice_id) {
+      const refunds = await env.DB.prepare(
+        `SELECT ${refundedSum('?1')} AS refunded`
+      ).bind(payment.invoice_id).first();
+      if (refunds && Number(refunds.refunded) > 0) {
+        return conflict(
+          `This payment cannot be voided: ${payment.invoice_id} has refunds against it that its other payments would no longer cover. Reverse the refund first.`,
+          { reason: 'refunds_exceed_payments', invoiceId: payment.invoice_id, refunded: Number(refunds.refunded) }
+        );
+      }
+    }
     return conflict('This payment was changed by another request. Reload it and try again.',
       { reason: 'concurrent_modification' });
   }

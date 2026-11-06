@@ -51,7 +51,7 @@ import {
   readJsonBody, readString, readNumber, readEnum,
   nowIso, todayInDhaka, allocateId, constraintFailure,
 } from '../lib/write.js';
-import { recomputeInvoice } from './payments.js';
+import { recomputeInvoice, liveInvoice } from './payments.js';
 
 const VOID = 'Void';
 const ACTIVE = 'Active';
@@ -117,20 +117,12 @@ const SERVER_OWNED = {
 
 /**
  * One invoice's live balance, as SQL, for the invoice the statement binds as
- * `param`. pay_sum/adj_sum are the Active payments and write-offs; `due` is
- * recomputeInvoice()'s formula exactly, so the due this route checks is the
- * due the recompute will write.
+ * `param`: payments.js liveInvoice(), the recompute's own formula, so the due
+ * this route checks is the due the recompute will write. Since 0026 it counts
+ * post-completion discounts too (disc_sum): a discounted invoice owes less,
+ * and the room a discount took cannot also be written off.
  */
-const liveBalance = (param) => `
-  SELECT i.id, i.customer_id, i.status, i.total, b.pay_sum, b.adj_sum,
-         MAX(i.total - MIN(i.total, MAX(0, b.pay_sum))
-                     - MIN(i.total - MIN(i.total, MAX(0, b.pay_sum)), MAX(0, b.adj_sum)), 0) AS due
-    FROM invoices i,
-         (SELECT (SELECT COALESCE(SUM(amount), 0) FROM payments
-                   WHERE invoice_id = ${param} AND status <> '${VOID}') AS pay_sum,
-                 (SELECT COALESCE(SUM(amount), 0) FROM invoice_adjustments
-                   WHERE invoice_id = ${param} AND status <> '${VOID}') AS adj_sum) b
-   WHERE i.id = ${param}`;
+const liveBalance = (param) => liveInvoice(param);
 
 /** The record a successful write reports — identical to what a GET returns. */
 async function respondWithAdjustment(env, id, status) {
@@ -164,7 +156,8 @@ async function explainRefusal(env, invoiceId, amount, expectedDue) {
     );
   }
   if (amount > due
-      || (Number(row.pay_sum) || 0) + (Number(row.adj_sum) || 0) + amount > (Number(row.total) || 0)) {
+      || (Number(row.pay_sum) || 0) + (Number(row.adj_sum) || 0) + (Number(row.disc_sum) || 0) + amount
+         > (Number(row.total) || 0)) {
     return conflict(
       `The write-off cannot exceed the outstanding due of ${due}.`,
       { reason: 'over_adjustment', invoiceId, outstandingDue: due, amount }
@@ -235,7 +228,7 @@ export async function createInvoiceAdjustment(request, env) {
         WHERE l.status <> '${VOID}'
           AND ABS(l.due - ?9) < ${MONEY_EPSILON}
           AND ?4 <= l.due
-          AND l.pay_sum + l.adj_sum + ?4 <= l.total`
+          AND l.pay_sum + l.adj_sum + l.disc_sum + ?4 <= l.total`
     ).bind(
       allocated.id, invoiceId.value, type.value, amount.value, reason.value,
       todayInDhaka(), recordedBy.value || null, at, expectedDue.value,

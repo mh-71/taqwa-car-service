@@ -33,7 +33,9 @@
     const activeJobs = jobCards.filter(j => ACTIVE.includes(j.status)).length;
     const completedJobs = jobCards.filter(j => ['Completed', 'Delivered'].includes(j.status)).length;
     const todaysAppts = appts.filter(a => a.date === today && a.status !== 'Cancelled').length;
-    const todayRevenue = todaysPayments().reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    // 0026: money refunded today was not kept, so it is not today's revenue.
+    const todayRevenue = todaysPayments().reduce((s, p) => s + (Number(p.amount) || 0), 0)
+      - refundsOn(Utils.todayStr());
     const todayExpenseTotal = todaysExpenses().reduce((s, e) => s + (Number(e.amount) || 0), 0);
     // Live balance, not the Job Cards' frozen pre-invoice snapshot: once a
     // job is invoiced its Invoice carries the current due (see Utils).
@@ -70,6 +72,13 @@
 
   /* ---------- revenue chart (last 7 days, pure HTML/CSS) ---------- */
 
+  /** Active refunds made on one calendar day (0026): cash given back, so not revenue. */
+  function refundsOn(day) {
+    return Storage.getData('invoiceRefunds')
+      .filter(r => r.status !== 'Void' && (r.date || '').slice(0, 10) === day)
+      .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  }
+
   function renderRevenueChart() {
     if (typeof Storage.isDenied === 'function' && Storage.isDenied('payments')) {
       document.getElementById('revChart').innerHTML = '<p class="muted" style="margin:auto">Your role does not include payments, so revenue is not shown.</p>';
@@ -86,7 +95,7 @@
       const key = Utils.toDateStr(d);   // local calendar, never UTC
       const total = payments
         .filter(p => (p.date || '').slice(0, 10) === key)
-        .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+        .reduce((s, p) => s + (Number(p.amount) || 0), 0) - refundsOn(key);
       days.push({
         key,
         label: d.toLocaleDateString('en-GB', { weekday: 'short' }),
@@ -101,7 +110,7 @@
     document.getElementById('revChart').innerHTML = days.map(d => `
       <div class="rev-col${d.isToday ? ' rev-col--today' : ''}">
         <div class="rev-col__bar-wrap">
-          <div class="rev-col__bar" style="height:${Math.round(d.total / max * 100)}%"
+          <div class="rev-col__bar" style="height:${Math.max(0, Math.round(d.total / max * 100))}%"
                data-amount="${Utils.money(d.total)}"
                role="img" aria-label="${d.label}: ${Utils.money(d.total)}"></div>
         </div>

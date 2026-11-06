@@ -776,7 +776,7 @@ console.log('\n-- 10. The money and the links are left alone --');
 {
   const routes = (await (await call('/api/health', { DB: stubDB() }, 'GET')).json()).data.routes;
   check('health advertises the status route', routes.includes('POST /api/job-cards/:id/status'), true);
-  check('   ...and the registry is 190 routes', routes.length, 190);
+  check('   ...and the registry is 198 routes (0026 added four refund and four discount routes)', routes.length, 198);
   // C-7 added voiding an invoice and C-8 voiding and linking a payment.
   // Every action route is a POST under a record, and no collection has more
   // than the ones it declares.
@@ -785,6 +785,8 @@ console.log('\n-- 10. The money and the links are left alone --');
     ['POST /api/job-cards/:id/status', 'POST /api/invoices/:id/void',
       'POST /api/payments/:id/void', 'POST /api/payments/:id/link',
       'POST /api/invoice-adjustments/:id/void',
+      // 0026: reversing a refund and a post-completion discount.
+      'POST /api/invoice-refunds/:id/void', 'POST /api/invoice-discounts/:id/void',
       // 0005: closing a follow-up, recording a contact, voiding a contact.
       'POST /api/follow-ups/:id/complete', 'POST /api/follow-ups/:id/cancel',
       'POST /api/follow-ups/:id/contact', 'POST /api/follow-up-contacts/:id/void',

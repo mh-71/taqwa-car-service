@@ -22,6 +22,7 @@ export const LOGGED = {
   customers: 'customers', vehicles: 'vehicles', appointments: 'appointments', 'job-cards': 'jobCards',
   services: 'services', mechanics: 'mechanics', parts: 'parts', invoices: 'invoices', payments: 'payments',
   expenses: 'expenses', 'inventory-transactions': 'inventoryTransactions', 'invoice-adjustments': 'invoiceAdjustments',
+  'invoice-refunds': 'invoiceRefunds', 'invoice-discounts': 'invoiceDiscounts',
 };
 
 /** What else a write to a collection can change, read again in full by a device. */
@@ -30,6 +31,8 @@ const ALSO = {
   invoices: ['jobCards', 'payments'],
   payments: ['invoices', 'jobCards'],
   'invoice-adjustments': ['invoices'],
+  'invoice-refunds': ['invoices'],
+  'invoice-discounts': ['invoices'],
   'inventory-transactions': ['parts'],
   appointments: ['jobCards'],
   estimates: ['jobCards'],

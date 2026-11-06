@@ -118,12 +118,19 @@
 
   function computeRevenueReport(range) {
     const payments = Storage.getData('payments').filter(p => p.status !== 'Void' && inRange(p.date, range));
-    const total = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    // 0026: Active refunds, on the day the money went back. Revenue is what
+    // was collected minus what was returned -- counted once, on its own date,
+    // and never by editing a payment.
+    const refunds = Storage.getData('invoiceRefunds').filter(r => r.status !== 'Void' && inRange(r.date, range));
+    const gross = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const refunded = refunds.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     const byMethod = {};
     payments.forEach(p => { byMethod[p.method] = (byMethod[p.method] || 0) + (Number(p.amount) || 0); });
+    refunds.forEach(r => { byMethod[r.method] = (byMethod[r.method] || 0) - (Number(r.amount) || 0); });
     const byDay = {};
     payments.forEach(p => { const d = (p.date || '').slice(0, 10); byDay[d] = (byDay[d] || 0) + (Number(p.amount) || 0); });
-    return { total, count: payments.length, byMethod, byDay, payments };
+    refunds.forEach(r => { const d = (r.date || '').slice(0, 10); byDay[d] = (byDay[d] || 0) - (Number(r.amount) || 0); });
+    return { total: gross - refunded, gross, refunded, refundCount: refunds.length, count: payments.length, byMethod, byDay, payments };
   }
 
   function computeExpenseReport(range) {
@@ -182,12 +189,17 @@
       // or Revenue. They only reduce what is still owed, capped at what cash
       // left unpaid -- the server's recompute exactly. A Void invoice is never
       // owed, so its write-offs are not counted either.
-      const writtenOff = inv.status === 'Void' ? 0 : Math.min(total - paid, allAdjustments
+      // 0026: a post-completion discount lowers what the invoice asks for
+      // (the server's cached figure); a refund never raises what is owed.
+      const postDiscount = inv.status === 'Void' ? 0 : Math.min(total, Math.max(Number(inv.postDiscount) || 0, 0));
+      const payable = total - postDiscount;
+      const writtenOff = inv.status === 'Void' ? 0 : Math.max(0, Math.min(payable - paid, allAdjustments
         .filter(a => a.invoiceId === inv.id && a.status !== 'Void')
-        .reduce((s, a) => s + (Number(a.amount) || 0), 0));
+        .reduce((s, a) => s + (Number(a.amount) || 0), 0)));
       return {
-        ...inv, livePaid: paid, liveWrittenOff: writtenOff,
-        liveDue: inv.status === 'Void' ? 0 : Math.max(total - paid - writtenOff, 0)
+        ...inv, livePaid: paid, liveWrittenOff: writtenOff, livePostDiscount: postDiscount,
+        liveRefunded: inv.status === 'Void' ? 0 : Math.min(paid, Number(inv.refunded) || 0),
+        liveDue: inv.status === 'Void' ? 0 : Math.max(payable - paid - writtenOff, 0)
       };
     });
     return {
@@ -195,6 +207,8 @@
       totalBilled: rows.reduce((s, r) => s + (Number(r.total) || 0), 0),
       totalCollected: rows.reduce((s, r) => s + (Number(r.livePaid) || 0), 0),
       totalWrittenOff: rows.reduce((s, r) => s + (Number(r.liveWrittenOff) || 0), 0),
+      totalPostDiscount: rows.reduce((s, r) => s + (Number(r.livePostDiscount) || 0), 0),
+      totalRefunded: rows.reduce((s, r) => s + (Number(r.liveRefunded) || 0), 0),
       totalDue: rows.reduce((s, r) => s + (Number(r.liveDue) || 0), 0)
     };
   }
@@ -362,7 +376,7 @@
     const cols = days.map(d => `
       <div class="rev-col${d === today ? ' rev-col--today' : ''}">
         <div class="rev-col__bar-wrap">
-          <div class="rev-col__bar" style="height:${Math.round((byDay[d] || 0) / max * 100)}%"
+          <div class="rev-col__bar" style="height:${Math.max(0, Math.round((byDay[d] || 0) / max * 100))}%"
                data-amount="${money(byDay[d] || 0)}" role="img" aria-label="${d}: ${money(byDay[d] || 0)}"></div>
         </div>
         <span class="rev-col__label">${d.slice(5)}</span>
@@ -377,7 +391,7 @@
     return `<div class="bar-list">${rows.map(r => `
       <div class="bar-list__row">
         <span class="bar-list__label">${esc(r.label)}</span>
-        <div class="bar-list__track"><div class="bar-list__fill" style="width:${Math.round(r.value / max * 100)}%"></div></div>
+        <div class="bar-list__track"><div class="bar-list__fill" style="width:${Math.max(0, Math.round(r.value / max * 100))}%"></div></div>
         <span class="bar-list__value">${r.display || money(r.value)}</span>
       </div>`).join('')}</div>`;
   }
@@ -397,7 +411,10 @@
   function renderRevenueReport(range) {
     const r = computeRevenueReport(range);
     const stats = statCardsHtml([
-      { label: 'Collected Revenue', value: money(r.total), tone: 'good', icon: ICONS.money },
+      { label: r.refunded > 0 ? 'Net Revenue (after refunds)' : 'Collected Revenue', value: money(r.total), tone: 'good', icon: ICONS.money },
+      ...(r.refunded > 0 ? [
+        { label: 'Gross Collected', value: money(r.gross), tone: 'info', icon: ICONS.money },
+        { label: `Refunded (${r.refundCount})`, value: money(r.refunded), tone: 'bad', icon: ICONS.money }] : []),
       { label: 'Payments Counted', value: r.count, tone: 'info', icon: ICONS.card }
     ]);
     const byMethodRows = Object.entries(r.byMethod).sort((a, b) => b[1] - a[1])
@@ -411,7 +428,7 @@
         <h3 class="detail-section-title">Revenue by Method</h3>
         ${barListHtml(byMethodRows)}
       </div></section>
-      <p class="muted-note">Based on ${r.count} non-Void payment${r.count === 1 ? '' : 's'} in the selected range. Excludes Job Card and Invoice totals -- only money actually collected counts as revenue.</p>`;
+      <p class="muted-note">Based on ${r.count} non-Void payment${r.count === 1 ? '' : 's'} in the selected range${r.refundCount ? `, less ${r.refundCount} active refund${r.refundCount === 1 ? '' : 's'} made in it` : ''}. Excludes Job Card and Invoice totals -- only money actually collected (and not given back) counts as revenue. Post-completion discounts are not cash, so they change what is owed, not revenue.</p>`;
   }
 
   function renderExpenseReport(range) {
@@ -441,12 +458,12 @@
   function renderNetResultReport(range) {
     const r = computeNetResultReport(range);
     const stats = statCardsHtml([
-      { label: 'Collected Revenue', value: money(r.revenue.total), tone: 'good', icon: ICONS.money },
+      { label: r.revenue.refunded > 0 ? 'Collected Revenue (after refunds)' : 'Collected Revenue', value: money(r.revenue.total), tone: 'good', icon: ICONS.money },
       { label: 'Total Expenses', value: money(r.expense.total), tone: 'bad', icon: ICONS.money },
       { label: 'Net Result', value: money(r.net), tone: r.net >= 0 ? 'good' : 'bad', icon: ICONS.check }
     ]);
     return `${stats}
-      <div class="warn-banner">Net Result = Collected Revenue \u2212 Active Expenses. This is a management-level indicator, not a full accounting profit figure (it does not account for accruals, depreciation, inventory valuation changes, or taxes).</div>`;
+      <div class="warn-banner">Net Result = Collected Revenue (less active refunds) \u2212 Active Expenses. This is a management-level indicator, not a full accounting profit figure (it does not account for accruals, depreciation, inventory valuation changes, or taxes).</div>`;
   }
 
   function renderPaymentReport(range) {
@@ -482,6 +499,8 @@
       { label: 'Total Billed', value: money(r.totalBilled), tone: 'info', icon: ICONS.doc },
       { label: 'Collected (live)', value: money(r.totalCollected), tone: 'good', icon: ICONS.money },
       { label: 'Written Off', value: money(r.totalWrittenOff), tone: 'info', icon: ICONS.doc },
+      ...(r.totalPostDiscount > 0 ? [{ label: 'Post-completion Discounts', value: money(r.totalPostDiscount), tone: 'info', icon: ICONS.doc }] : []),
+      ...(r.totalRefunded > 0 ? [{ label: 'Refunded', value: money(r.totalRefunded), tone: 'bad', icon: ICONS.money }] : []),
       { label: 'Outstanding Due', value: money(r.totalDue), tone: 'bad', icon: ICONS.warn }
     ]);
     const custName = id => (Storage.getById('customers', id) || {}).name || 'Unknown Customer';

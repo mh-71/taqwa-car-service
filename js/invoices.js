@@ -943,30 +943,76 @@
     }));
   }
 
-  /* ---------- post-completion discount & refund: DESIGN PREVIEW ----------
-     A preview of the screens, not the feature: nothing here calls the API or
-     writes to Storage. Figures are read from the stored invoice and its
-     linked payments; the dialogs check their fields and then say plainly
-     that nothing was saved. Example history rows are labelled as examples. */
+  /* ---------- post-completion discounts & refunds (0026) ----------
+     Real records: POST /api/invoice-discounts and /api/invoice-refunds, each
+     reversed with POST .../:id/void. The server decides every figure (what is
+     refundable, what is still discountable, a percentage's amount, who acted)
+     and checks the figure the user was shown (expectedPayable /
+     expectedRefundable), so a balance that moved in the meantime -- or the
+     same form submitted twice -- is refused instead of applied blind.
 
-  const PCA_NOTICE = 'Post-completion discounts and refunds will need Owner/Admin approval, and every change will be kept in the adjustment history for audit.';
-  const pcaPreviewTag = '<span class="pca-tag">Preview</span>';
-  // no refund is ever recorded yet: the preview has nothing to subtract
-  const pcaRefunded = () => 0;
-  const pcaNetPaid = i => Math.max((Number(i.paid) || 0) - pcaRefunded(i), 0);
-  const pcaRound = n => Math.round(n * 100) / 100;
+     The accounting model, as the invoice record carries it:
+       payable    total - postDiscount       what the invoice now asks for
+       paid       cash received              (payments; a refund never changes it)
+       refunded   cash given back            (never raises due: no new debt)
+       retained   paid - refunded
+       due        payable - paid - writtenOff, floored at 0
+       credit     paid - refunded - payable, floored at 0
+                  (a discount after payment; returned only by an explicit refund)
 
-  function pcaPaymentsCard(i, payments) {
+     Online only: offline the buttons are hidden and the offline queue has no
+     path for these records. */
+
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  /** An invoice's money figures, from the stored (server-computed) record. */
+  function moneyFigures(i) {
+    const total = Number(i.total) || 0;
+    const postDiscount = Number(i.postDiscount) || 0;
+    const payable = r2(total - postDiscount);
+    const paid = Number(i.paid) || 0;
+    const refunded = Number(i.refunded) || 0;
+    const writtenOff = Number(i.writtenOff) || 0;
+    return {
+      total, originalDiscount: Number(i.discount) || 0, postDiscount, payable, paid, refunded, writtenOff,
+      retained: r2(paid - refunded),
+      refundable: Math.max(r2(paid - refunded), 0),
+      discountable: Math.max(r2(payable - writtenOff), 0),
+      due: Number(i.due) || 0,
+      credit: Math.max(r2(paid - refunded - payable), 0),
+    };
+  }
+
+  /** An invoice's refunds or discounts, reversed ones included, newest first. */
+  const pcaRecords = (collection, invoiceId) => Storage.getData(collection)
+    .filter(r => r.invoiceId === invoiceId)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || String(b.id).localeCompare(String(a.id)));
+
+  /** Who the server will record as having acted (display only -- the server decides). */
+  function actingAs() {
+    const a = Storage.account;
+    return a ? (a.username || a.name || 'This account') : 'Shared workshop login';
+  }
+
+  /** Can this be used here: the backend is reachable and the role allows it. */
+  const pcaCan = perm => Storage.isApi() && (typeof Storage.can !== 'function' || Storage.can(perm));
+
+  function pcaPaymentsCard(i, payments, refunds) {
+    const rows = [
+      ...payments.map(p => ({ kind: 'payment', id: p.id, date: p.date, method: p.method, status: p.status, amount: p.amount, href: paymentDetailsHref(p, i.id) })),
+      ...refunds.map(r => ({ kind: 'refund', id: r.id, date: r.date, method: r.method, status: r.status, amount: r.amount })),
+    ].sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id));
     return `<section class="inv-view__card inv-view__card--pca-pay">
-      ${cardHead('Payments', `<span class="inv-view__count">${payments.length} payment${payments.length === 1 ? '' : 's'}</span>`)}
-      <div class="inv-view__card-body">${payments.length
+      ${cardHead('Payments & Refunds', `<span class="inv-view__count">${payments.length} payment${payments.length === 1 ? '' : 's'}${refunds.length ? `, ${refunds.length} refund${refunds.length === 1 ? '' : 's'}` : ''}</span>`)}
+      <div class="inv-view__card-body">${rows.length
         ? `<div class="table-wrap"><table class="table table--compact pca-table pca-pay">
-            <thead><tr><th scope="col">Payment</th><th scope="col">Method</th><th scope="col">Status</th><th scope="col" class="num">Amount</th></tr></thead>
-            <tbody>${payments.map(p => `<tr${p.status === 'Void' ? ' class="pca-row--void"' : ''}>
-              <td class="pca-pay__id"><a class="cell-main" href="${paymentDetailsHref(p, i.id)}">${esc(p.id)}</a><span class="cell-sub">${fmtDate(p.date)}</span></td>
-              <td data-label="Method">${esc(p.method || '—')}</td>
-              <td data-label="Status">${badge(p.status)}</td>
-              <td class="num pca-amt" data-label="Amount">${money(p.amount)}</td>
+            <thead><tr><th scope="col">Record</th><th scope="col">Method</th><th scope="col">Status</th><th scope="col" class="num">Amount</th></tr></thead>
+            <tbody>${rows.map(r => `<tr${r.status === 'Void' ? ' class="pca-row--void"' : ''}>
+              <td class="pca-pay__id">${r.kind === 'payment'
+                ? `<a class="cell-main" href="${r.href}">${esc(r.id)}</a>`
+                : `<span class="cell-main">${esc(r.id)}</span>`}<span class="cell-sub">${r.kind === 'refund' ? 'Refund · ' : ''}${fmtDate(r.date)}</span></td>
+              <td data-label="Method">${esc(r.method || '—')}</td>
+              <td data-label="Status">${r.kind === 'refund' ? badge(r.status === 'Void' ? 'Reversed' : 'Refunded') : badge(r.status)}</td>
+              <td class="num pca-amt" data-label="Amount">${r.kind === 'refund' ? '− ' : ''}${money(r.amount)}</td>
             </tr>`).join('')}</tbody>
           </table></div>`
         : `<p class="muted-note">${Number(i.paid) > 0 ? `No payment records. The ${money(i.paid)} paid was carried over from the Job Card.` : 'No payments are recorded for this invoice.'}</p>`}
@@ -974,50 +1020,58 @@
     </section>`;
   }
 
-  function pcaBillSummary(i) {
-    const canRefund = pcaNetPaid(i) > 0;
+  function pcaBillSummary(i, counts) {
+    const f = moneyFigures(i);
+    const canDiscount = pcaCan('discounts.create') && f.discountable > 0;
+    const canRefund = pcaCan('refunds.create') && f.refundable > 0;
+    const offline = !Storage.isApi();
     return `<section class="inv-view__card inv-view__card--pca-bill">
       ${cardHead('Bill Summary')}
       <div class="inv-view__card-body">
         <div class="pca-bill">
           <div><span>Subtotal</span><strong>${money(i.subtotal)}</strong></div>
-          <div><span>Original Discount</span><strong>− ${money(i.discount)}</strong></div>
-          <div class="pca-bill__total"><span>Invoice Total</span><strong>${money(i.total)}</strong></div>
-          <div><span>Total Paid</span><strong>${money(i.paid)}</strong></div>
-          <div><span>Total Refund</span><strong>− ${money(pcaRefunded(i))}</strong></div>
-          <div class="pca-bill__net"><span>Net Paid by Customer</span><strong>${money(pcaNetPaid(i))}</strong></div>
+          <div><span>Original Discount</span><strong>− ${money(f.originalDiscount)}</strong></div>
+          <div class="pca-bill__total"><span>Original Invoice Amount</span><strong>${money(f.total)}</strong></div>
+          <div><span>Post-completion Discount</span><strong>− ${money(f.postDiscount)}</strong></div>
+          <div class="pca-bill__total"><span>Adjusted Invoice Amount</span><strong>${money(f.payable)}</strong></div>
+          <div><span>Total Payments</span><strong>${money(f.paid)}</strong></div>
+          <div><span>Total Refunds</span><strong>− ${money(f.refunded)}</strong></div>
+          <div class="pca-bill__net"><span>Net Amount Retained</span><strong>${money(f.retained)}</strong></div>
+          ${f.writtenOff > 0 ? `<div><span>Written Off</span><strong>− ${money(f.writtenOff)}</strong></div>` : ''}
+          <div><span>Outstanding Due</span><strong>${money(f.due)}</strong></div>
+          ${f.credit > 0 ? `<div class="pca-bill__net"><span>Customer Credit</span><strong>${money(f.credit)}</strong></div>` : ''}
         </div>
         <div class="pca-actions">
-          <button type="button" class="btn btn--primary" data-pca-discount>Add Post-Completion Discount</button>
-          <button type="button" class="btn btn--ghost" data-pca-refund${canRefund ? '' : ' disabled title="Nothing has been paid on this invoice."'}>Issue Refund</button>
-          <button type="button" class="btn btn--ghost" data-pca-history>View Adjustment History</button>
+          ${pcaCan('discounts.create') ? `<button type="button" class="btn btn--primary" data-pca-discount${canDiscount ? '' : ' disabled title="Nothing is left to discount on this invoice."'}>Add Post-Completion Discount</button>` : ''}
+          ${pcaCan('refunds.create') ? `<button type="button" class="btn btn--ghost" data-pca-refund${canRefund ? '' : ' disabled title="No collected money is left to refund on this invoice."'}>Issue Refund</button>` : ''}
+          <button type="button" class="btn btn--ghost" data-pca-history>Refund &amp; Discount History${counts ? ` (${counts})` : ''}</button>
         </div>
-        <p class="pca-notice" role="note">${PCA_NOTICE}</p>
+        ${f.credit > 0 ? `<p class="pca-notice" role="note">The customer has paid ${money(f.credit)} more than the adjusted amount. It is not returned automatically: issue a refund to give it back.</p>` : ''}
+        ${offline ? '<p class="pca-notice" role="note">Discounts and refunds need the internet: they are recorded on the server only.</p>' : ''}
       </div>
     </section>`;
   }
 
   function pcaSection(i, payments) {
+    const refunds = pcaRecords('invoiceRefunds', i.id);
+    const discounts = pcaRecords('invoiceDiscounts', i.id);
     return `<section class="pca" aria-labelledby="pca-title">
       <div class="pca__head">
         <h3 class="pca__title" id="pca-title">Post-Completion Discount &amp; Refund</h3>
-        ${pcaPreviewTag}
-        <p class="pca__sub">Design preview. These actions are not connected yet and do not change the invoice, its payments or its balance.</p>
+        <p class="pca__sub">A discount reduces what the invoice asks for. A refund returns money already collected. Both are kept on record and can only be reversed, never edited or deleted.</p>
       </div>
       <div class="inv-view__cols inv-view__cols--end pca__cols">
-        ${pcaPaymentsCard(i, payments)}
-        ${pcaBillSummary(i)}
+        ${pcaPaymentsCard(i, payments, refunds)}
+        ${pcaBillSummary(i, refunds.length + discounts.length)}
       </div>
     </section>`;
   }
 
-  const pcaBanner = () => `<p class="pca-banner" role="note"><strong>Preview only.</strong> This form is not connected to the system yet. Nothing you enter here is saved.</p>`;
-
-  /** Shared field-error display for the preview dialogs. */
+  /** Shared field-error display for the dialogs. */
   function pcaShowErrors(ov, errs) {
     ov.querySelectorAll('.field').forEach(f => f.classList.remove('field--error'));
     ov.querySelectorAll('[data-err]').forEach(el => { el.textContent = ''; });
-    Object.entries(errs).forEach(([k, msg]) => {
+    Object.entries(errs || {}).forEach(([k, msg]) => {
       const el = ov.querySelector(`[data-err="${k}"]`);
       if (!el) return;
       el.textContent = msg;
@@ -1026,56 +1080,85 @@
     });
   }
 
-  /** After a valid preview submit: say that nothing was saved (never a success message). */
-  function pcaNotSaved(ov, what) {
-    const out = ov.querySelector('[data-pca-result]');
-    out.innerHTML = `<strong>Not saved.</strong> This is a preview, so no ${what} was created. The invoice, its payments and its balance are unchanged.`;
-    out.hidden = false;
+  /** The invoice's identity lines, at the top of every dialog. */
+  const pcaWho = i => `
+    <div class="pca-context">
+      <div><span>Invoice</span><strong>${esc(i.id)}</strong></div>
+      <div><span>Customer</span><strong>${esc(custName(i.customerId))}</strong></div>
+      <div><span>Vehicle</span><strong>${esc(vehText(i.vehicleId))} · ${esc(vehReg(i.vehicleId))}</strong></div>
+    </div>`;
+
+  /** After a refused write (409): re-read the figures and tell the user what changed. */
+  async function pcaReloadAfterConflict(id, collection) {
+    await Storage.refreshAll('invoices', collection);
+    return Storage.getById('invoices', id);
   }
 
   function openPcaDiscountModal(id) {
     const i = Storage.getById('invoices', id);
-    if (!i || i.status === 'Void') return;
-    const base = Number(i.total) || 0;
+    if (!i || i.status === 'Void' || !pcaCan('discounts.create')) return;
+    let f = moneyFigures(i);
+    const previous = pcaRecords('invoiceDiscounts', id).filter(d => d.status !== 'Void');
     const ov = Modal.open({
       title: `Add Post-Completion Discount — ${i.id}`,
       body: `
-        ${pcaBanner()}
+        ${pcaWho(i)}
         <div class="pca-context">
-          <div><span>Invoice Total</span><strong>${money(base)}</strong></div>
-          <div><span>Net Paid by Customer</span><strong>${money(pcaNetPaid(i))}</strong></div>
+          <div><span>Original Invoice Amount</span><strong>${money(f.total)}</strong></div>
+          <div><span>Existing (original) Discount</span><strong>${money(f.originalDiscount)}</strong></div>
+          <div><span>Previous Post-completion Discounts</span><strong data-pca-prev>${money(f.postDiscount)}${previous.length ? ` (${previous.length})` : ''}</strong></div>
+          <div><span>Can still be discounted</span><strong data-pca-eligible>${money(f.discountable)}</strong></div>
         </div>
         <div class="form-grid pca-pair" data-pca-mode="fixed">
           <div class="field">
             <label for="pca-amount">Discount Amount (BDT)</label>
-            <input class="input" id="pca-amount" type="number" min="0" step="any" inputmode="decimal" placeholder="0">
+            <input class="input" id="pca-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0">
             <div class="field__error" data-err="amount"></div>
           </div>
           <div class="field">
-            <label for="pca-pct">Discount Percentage (%)</label>
+            <label for="pca-pct">Or Percentage of Original Amount (%)</label>
             <input class="input" id="pca-pct" type="number" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0">
-            <div class="field__error" data-err="pct"></div>
+            <div class="field__error" data-err="rate"></div>
+          </div>
+          <div class="field">
+            <label for="pca-date">Applied Date</label>
+            <input class="input" id="pca-date" type="date" value="${esc(Utils.todayStr())}" max="${esc(Utils.todayStr())}" min="${esc(i.date || '')}">
+            <div class="field__error" data-err="date"></div>
+          </div>
+          <div class="field">
+            <label>Approved By</label>
+            <input class="input" value="${esc(actingAs())}" readonly aria-readonly="true" tabindex="-1">
           </div>
           <div class="field span-2">
             <label for="pca-reason">Reason</label>
-            <textarea class="input" id="pca-reason" rows="3" maxlength="500" placeholder="Why is this discount being given after completion?"></textarea>
+            <textarea class="input" id="pca-reason" rows="2" maxlength="500" placeholder="Why is this discount being given after completion?"></textarea>
             <div class="field__error" data-err="reason"></div>
+          </div>
+          <div class="field span-2">
+            <label for="pca-notes">Notes (optional)</label>
+            <textarea class="input" id="pca-notes" rows="2" maxlength="1000"></textarea>
+            <div class="field__error" data-err="notes"></div>
           </div>
         </div>
         <p class="pca-hint" id="pca-preview" aria-live="polite"></p>
-        <p class="pca-notice" role="note">${PCA_NOTICE}</p>
-        <p class="pca-result" data-pca-result role="status" hidden></p>`,
+        <p class="field__error" data-err="expectedPayable" role="alert"></p>`,
       footer: `<button class="btn btn--ghost" data-pca-back>Cancel</button>
                <button class="btn btn--primary" data-pca-save>Add Discount</button>`
     });
     const amountEl = ov.querySelector('#pca-amount');
     const pctEl = ov.querySelector('#pca-pct');
     const pair = ov.querySelector('.pca-pair');
+    // The figure a percentage turns into, exactly as the server rounds it.
+    const pctAmount = v => r2(f.total * v / 100);
     const preview = () => {
-      const amt = Number(amountEl.value);
-      ov.querySelector('#pca-preview').textContent = amt > 0 && amt <= base
-        ? `For reference: ${money(amt)} off an invoice total of ${money(base)} leaves ${money(pcaRound(base - amt))}.`
-        : '';
+      const percent = pair.dataset.pcaMode === 'percent';
+      const amt = percent ? pctAmount(Number(pctEl.value)) : Number(amountEl.value);
+      const out = ov.querySelector('#pca-preview');
+      if (!(amt > 0) || amt > f.discountable + 0.005) { out.textContent = ''; return; }
+      const payable = r2(f.payable - amt);
+      const credit = Math.max(r2(f.paid - f.refunded - payable), 0);
+      out.textContent = `Adjusted invoice amount: ${money(f.payable)} → ${money(payable)}. Outstanding due becomes ${money(Math.max(r2(payable - f.paid - f.writtenOff), 0))}.`
+        + (credit > 0 ? ` The customer will have a credit of ${money(credit)} (refund it separately if it should be returned).` : '');
     };
     // two-way: the box being typed in leads, the other one follows
     const sync = from => {
@@ -1083,9 +1166,9 @@
       const fromAmount = from === 'fixed';
       const src = fromAmount ? amountEl : pctEl, dst = fromAmount ? pctEl : amountEl;
       const v = Number(src.value);
-      dst.value = src.value === '' || !Number.isFinite(v) || base <= 0
+      dst.value = src.value === '' || !Number.isFinite(v) || f.total <= 0
         ? ''
-        : String(fromAmount ? Math.min(pcaRound(v / base * 100), 100) : pcaRound(base * v / 100));
+        : String(fromAmount ? Math.min(r2(v / f.total * 100), 100) : pctAmount(v));
       src.classList.remove('is-derived');
       dst.classList.add('is-derived');
       preview();
@@ -1093,100 +1176,247 @@
     amountEl.addEventListener('input', () => sync('fixed'));
     pctEl.addEventListener('input', () => sync('percent'));
     ov.querySelector('[data-pca-back]').addEventListener('click', () => openDetailModal(id));
-    ov.querySelector('[data-pca-save]').addEventListener('click', () => {
-      const amount = Number(amountEl.value), pct = Number(pctEl.value);
+    ov.querySelector('[data-pca-save]').addEventListener('click', Utils.saving(async () => {
+      const percent = pair.dataset.pcaMode === 'percent';
+      const amount = Number(amountEl.value), rate = Number(pctEl.value);
+      const reason = ov.querySelector('#pca-reason').value.trim();
+      const notes = ov.querySelector('#pca-notes').value.trim();
+      const date = ov.querySelector('#pca-date').value;
+      const value = percent ? pctAmount(rate) : amount;
       const errs = {};
-      if (!(amount > 0)) errs.amount = 'Enter a discount greater than 0.';
-      else if (amount > base) errs.amount = `The discount cannot exceed the invoice total of ${money(base)}.`;
-      if (pctEl.value !== '' && !(pct >= 0 && pct <= 100)) errs.pct = 'Enter a percentage from 0 to 100.';
-      if (!ov.querySelector('#pca-reason').value.trim()) errs.reason = 'A reason is required.';
+      if (percent) {
+        if (!(rate > 0 && rate <= 100)) errs.rate = 'Enter a percentage more than 0 and at most 100.';
+        else if (!(value > 0)) errs.rate = 'That percentage comes to less than one paisa.';
+        else if (value > f.discountable + 0.005) errs.rate = `That is ${money(value)}; the most that can be discounted is ${money(f.discountable)}.`;
+      } else if (!(amount > 0)) errs.amount = 'Enter a discount greater than 0.';
+      else if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) errs.amount = 'Use at most 2 decimal places.';
+      else if (amount > f.discountable + 0.005) errs.amount = `The discount cannot exceed ${money(f.discountable)}, what is still payable on this invoice.`;
+      if (!reason) errs.reason = 'A reason is required.';
+      if (!date) errs.date = 'Enter the date.';
+      else if (date > Utils.todayStr()) errs.date = 'The date cannot be in the future.';
       pcaShowErrors(ov, errs);
-      ov.querySelector('[data-pca-result]').hidden = true;
-      if (!Object.keys(errs).length) pcaNotSaved(ov, 'discount');
-    });
+      if (Object.keys(errs).length) return;
+
+      const res = await Storage.create('invoiceDiscounts', {
+        invoiceId: id, reason, date, expectedPayable: f.payable,
+        ...(percent ? { discountType: 'percent', rate } : { discountType: 'amount', amount }),
+        ...(notes ? { notes } : {}),
+      });
+      if (!res.ok) {
+        if (res.status === 409) {
+          const fresh = await pcaReloadAfterConflict(id, 'invoiceDiscounts');
+          if (!fresh || fresh.status === 'Void') {
+            Modal.close(); refresh();
+            toast(res.message || 'This invoice changed and can no longer be discounted.', 'error');
+            return;
+          }
+          f = moneyFigures(fresh);
+          ov.querySelector('[data-pca-eligible]').textContent = money(f.discountable);
+          ov.querySelector('[data-pca-prev]').textContent = money(f.postDiscount);
+          preview();
+          pcaShowErrors(ov, { expectedPayable: `${res.message || 'The invoice changed.'} Review the figures and try again.` });
+          return;
+        }
+        if (res.fields) { pcaShowErrors(ov, res.fields); return; }
+        Utils.wrote(res, ov);
+        return;
+      }
+      const stale = await Storage.refreshAll('invoices');
+      Modal.close();
+      refresh();
+      if (stale.length) Utils.wrote({ ok: true, stale });
+      else toast(`${money(res.record.amount)} post-completion discount added to ${id}.`);
+      openDetailModal(id);
+    }));
   }
 
   function openPcaRefundModal(id) {
     const i = Storage.getById('invoices', id);
-    if (!i || i.status === 'Void') return;
-    const max = pcaNetPaid(i);
+    if (!i || i.status === 'Void' || !pcaCan('refunds.create')) return;
+    let f = moneyFigures(i);
+    const methods = ['Cash', 'Card', 'Mobile Banking', 'Bank Transfer'];
     const ov = Modal.open({
       title: `Issue Refund — ${i.id}`,
       body: `
-        ${pcaBanner()}
+        ${pcaWho(i)}
         <div class="pca-context">
-          <div><span>Net Paid by Customer</span><strong>${money(max)}</strong></div>
-          <div><span>Invoice Total</span><strong>${money(i.total)}</strong></div>
+          <div><span>Original Invoice Amount</span><strong>${money(f.total)}</strong></div>
+          <div><span>Total Payments Received</span><strong data-pca-paid>${money(f.paid)}</strong></div>
+          <div><span>Previous Refunds</span><strong data-pca-refunded>${money(f.refunded)}</strong></div>
+          <div><span>Remaining Refundable</span><strong data-pca-max>${money(f.refundable)}</strong></div>
         </div>
         <div class="form-grid">
           <div class="field">
             <label for="pca-refund">Refund Amount (BDT)</label>
-            <input class="input" id="pca-refund" type="number" min="0" max="${max}" step="any" inputmode="decimal" placeholder="0">
+            <input class="input" id="pca-refund" type="number" min="0" step="0.01" max="${f.refundable}" inputmode="decimal" placeholder="0"${f.credit > 0 ? ` value="${f.credit}"` : ''}>
             <div class="field__error" data-err="amount"></div>
           </div>
           <div class="field">
             <label for="pca-method">Refund Method</label>
-            <select class="select" id="pca-method">${['Cash', 'Card', 'Mobile Banking', 'Bank Transfer'].map(m => `<option>${m}</option>`).join('')}</select>
+            <select class="select" id="pca-method">${methods.map(m => `<option>${m}</option>`).join('')}</select>
+            <div class="field__error" data-err="method"></div>
+          </div>
+          <div class="field">
+            <label for="pca-refund-date">Refund Date</label>
+            <input class="input" id="pca-refund-date" type="date" value="${esc(Utils.todayStr())}" max="${esc(Utils.todayStr())}" min="${esc(i.date || '')}">
+            <div class="field__error" data-err="date"></div>
+          </div>
+          <div class="field">
+            <label>Processed By</label>
+            <input class="input" value="${esc(actingAs())}" readonly aria-readonly="true" tabindex="-1">
           </div>
           <div class="field span-2">
-            <label for="pca-refund-reason">Reason</label>
-            <textarea class="input" id="pca-refund-reason" rows="3" maxlength="500" placeholder="Why is this refund being issued?"></textarea>
+            <label for="pca-refund-reason">Refund Reason</label>
+            <textarea class="input" id="pca-refund-reason" rows="2" maxlength="500" placeholder="Why is this money being returned?"></textarea>
             <div class="field__error" data-err="reason"></div>
           </div>
+          <div class="field span-2">
+            <label for="pca-refund-notes">Notes (optional)</label>
+            <textarea class="input" id="pca-refund-notes" rows="2" maxlength="1000" placeholder="e.g. the bKash transaction number"></textarea>
+            <div class="field__error" data-err="notes"></div>
+          </div>
         </div>
-        <p class="pca-notice" role="note">${PCA_NOTICE}</p>
-        <p class="pca-result" data-pca-result role="status" hidden></p>`,
+        <p class="pca-notice" role="note">A refund returns money already collected. It does not change the invoice amount and does not create a new amount owed.</p>
+        <p class="field__error" data-err="expectedRefundable" role="alert"></p>`,
       footer: `<button class="btn btn--ghost" data-pca-back>Cancel</button>
                <button class="btn btn--primary" data-pca-save>Issue Refund</button>`
     });
     ov.querySelector('[data-pca-back]').addEventListener('click', () => openDetailModal(id));
-    ov.querySelector('[data-pca-save]').addEventListener('click', () => {
+    ov.querySelector('[data-pca-save]').addEventListener('click', Utils.saving(async () => {
       const amount = Number(ov.querySelector('#pca-refund').value);
+      const method = ov.querySelector('#pca-method').value;
+      const reason = ov.querySelector('#pca-refund-reason').value.trim();
+      const notes = ov.querySelector('#pca-refund-notes').value.trim();
+      const date = ov.querySelector('#pca-refund-date').value;
       const errs = {};
       if (!(amount > 0)) errs.amount = 'Enter a refund greater than 0.';
-      else if (amount > max) errs.amount = `The refund cannot exceed the ${money(max)} paid.`;
-      if (!ov.querySelector('#pca-refund-reason').value.trim()) errs.reason = 'A reason is required.';
+      else if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) errs.amount = 'Use at most 2 decimal places.';
+      else if (amount > f.refundable + 0.005) errs.amount = `The refund cannot exceed the ${money(f.refundable)} still refundable.`;
+      if (!reason) errs.reason = 'A reason is required.';
+      if (!date) errs.date = 'Enter the date.';
+      else if (date > Utils.todayStr()) errs.date = 'The date cannot be in the future.';
       pcaShowErrors(ov, errs);
-      ov.querySelector('[data-pca-result]').hidden = true;
-      if (!Object.keys(errs).length) pcaNotSaved(ov, 'refund');
-    });
+      if (Object.keys(errs).length) return;
+
+      const res = await Storage.create('invoiceRefunds', {
+        invoiceId: id, amount, method, reason, date, expectedRefundable: f.refundable,
+        ...(notes ? { notes } : {}),
+      });
+      if (!res.ok) {
+        if (res.status === 409) {
+          const fresh = await pcaReloadAfterConflict(id, 'invoiceRefunds');
+          if (!fresh || fresh.status === 'Void') {
+            Modal.close(); refresh();
+            toast(res.message || 'This invoice changed and can no longer be refunded.', 'error');
+            return;
+          }
+          f = moneyFigures(fresh);
+          ov.querySelector('[data-pca-paid]').textContent = money(f.paid);
+          ov.querySelector('[data-pca-refunded]').textContent = money(f.refunded);
+          ov.querySelector('[data-pca-max]').textContent = money(f.refundable);
+          ov.querySelector('#pca-refund').max = String(f.refundable);
+          pcaShowErrors(ov, { expectedRefundable: `${res.message || 'The invoice changed.'} Review the figures and try again.` });
+          return;
+        }
+        if (res.fields) { pcaShowErrors(ov, res.fields); return; }
+        Utils.wrote(res, ov);
+        return;
+      }
+      const stale = await Storage.refreshAll('invoices');
+      Modal.close();
+      refresh();
+      if (stale.length) Utils.wrote({ ok: true, stale });
+      else toast(`${money(amount)} refunded on ${id} (${res.record.id}).`);
+      openDetailModal(id);
+    }));
   }
 
-  /* Example rows only show the table's layout; they are never data. */
-  const PCA_EXAMPLES = [
-    { type: 'Discount', amount: 500, reason: 'Goodwill discount for a delayed delivery', by: 'Example user', status: ['Pending Approval', 'warn'] },
-    { type: 'Refund', amount: 1000, reason: 'Part returned unused', by: 'Example user', status: ['Approved', 'good'] },
-    { type: 'Discount', amount: 200, reason: 'Duplicate request', by: 'Example user', status: ['Rejected', 'bad'] }
-  ];
+  function pcaHistoryTable(kind, list, canReverse) {
+    const isRefund = kind === 'refund';
+    if (!list.length) return `<p class="pca-empty"><strong>No ${isRefund ? 'refunds' : 'post-completion discounts'} recorded.</strong></p>`;
+    return `<div class="table-wrap"><table class="table table--compact pca-table pca-hist">
+      <thead><tr><th scope="col">${isRefund ? 'Refund' : 'Discount'}</th><th scope="col">${isRefund ? 'Method' : 'Type'}</th><th scope="col" class="num">Amount</th>
+        <th scope="col">Reason</th><th scope="col">${isRefund ? 'Processed By' : 'Approved By'}</th><th scope="col">Status</th>${canReverse ? '<th scope="col" class="num">Action</th>' : ''}</tr></thead>
+      <tbody>${list.map(r => `<tr${r.status === 'Void' ? ' class="pca-row--void"' : ''}>
+        <td class="pca-hist__date" data-label="${isRefund ? 'Refund' : 'Discount'}"><span class="cell-main">${esc(r.id)}</span><span class="cell-sub">${fmtDate(r.date)}</span></td>
+        <td data-label="${isRefund ? 'Method' : 'Type'}">${isRefund ? esc(r.method) : (r.discountType === 'percent' ? `${esc(String(r.rate))}% of the original amount` : 'Fixed amount')}</td>
+        <td class="num pca-amt" data-label="Amount">− ${money(r.amount)}${isRefund ? '' : `<span class="cell-sub">${money(r.payableBefore)} → ${money(r.payableAfter)}</span>`}</td>
+        <td class="pca-hist__reason" data-label="Reason">${esc(r.reason)}${r.notes ? `<span class="cell-sub">${esc(r.notes)}</span>` : ''}${r.status === 'Void' ? `<span class="cell-sub">Reversed by ${esc(r.voidedBy || '—')}: ${esc(r.voidReason || '')}</span>` : ''}</td>
+        <td data-label="By">${esc(isRefund ? r.processedBy : r.approvedBy)}</td>
+        <td data-label="Status">${badge(r.status === 'Void' ? 'Reversed' : 'Active')}</td>
+        ${canReverse ? `<td class="num pca-hist__act" data-label="Action">${r.status === 'Active' ? `<button type="button" class="btn btn--ghost btn--sm" data-pca-reverse="${esc(r.id)}" data-pca-kind="${kind}">Reverse</button>` : ''}</td>` : ''}
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
 
   function openPcaHistoryModal(id) {
     const i = Storage.getById('invoices', id);
     if (!i) return;
+    const live = i.status !== 'Void';
+    const refunds = pcaRecords('invoiceRefunds', id);
+    const discounts = pcaRecords('invoiceDiscounts', id);
+    const deniedNote = c => Storage.isDenied && Storage.isDenied(c)
+      ? '<p class="muted-note">Your role does not include this list.</p>' : '';
     const ov = Modal.open({
-      title: `Adjustment History — ${i.id}`, size: 'lg',
+      title: `Refund & Discount History — ${i.id}`, size: 'lg',
       body: `
-        <p class="pca-empty"><strong>No post-completion adjustments are recorded for this invoice.</strong>
-          Discounts and refunds will be listed here once the feature is connected.</p>
-        <div class="pca-example-head"><h3 class="pca__title">Example layout</h3><span class="pca-tag">Not real records</span></div>
-        <div class="table-wrap"><table class="table table--compact pca-table pca-hist">
-          <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col" class="num">Amount</th><th scope="col">Reason</th><th scope="col">By</th><th scope="col">Status</th><th scope="col" class="num">Actions</th></tr></thead>
-          <tbody>${PCA_EXAMPLES.map(r => `<tr class="pca-row--example">
-            <td class="pca-hist__date" data-label="Date">${fmtDate(Utils.todayStr())}<span class="pca-tag pca-tag--sm">Example</span></td>
-            <td data-label="Type">${r.type}</td>
-            <td class="num pca-amt" data-label="Amount">− ${money(r.amount)}</td>
-            <td class="pca-hist__reason" data-label="Reason">${esc(r.reason)}</td>
-            <td data-label="By">${esc(r.by)}</td>
-            <td data-label="Status"><span class="badge badge--${r.status[1]}">${r.status[0]}</span></td>
-            <td class="num pca-hist__act" data-label="Actions"><div class="pca-hist__btns">${r.status[0] === 'Pending Approval'
-              ? '<button type="button" class="btn btn--ghost btn--sm" disabled title="Preview only">Approve</button><button type="button" class="btn btn--ghost btn--sm" disabled title="Preview only">Reject</button>'
-              : '<button type="button" class="btn btn--ghost btn--sm" disabled title="Preview only">View</button>'}</div></td>
-          </tr>`).join('')}</tbody>
-        </table></div>
-        <p class="pca-notice" role="note">${PCA_NOTICE}</p>`,
+        <h3 class="pca__title">Post-completion Discounts</h3>
+        ${deniedNote('invoiceDiscounts') || pcaHistoryTable('discount', discounts, live && pcaCan('discounts.manage'))}
+        <h3 class="pca__title" style="margin-top:18px">Refunds</h3>
+        ${deniedNote('invoiceRefunds') || pcaHistoryTable('refund', refunds, live && pcaCan('refunds.manage'))}
+        <p class="pca-notice" role="note">Records are never edited or deleted. A reversed record stays here, marked as reversed, and no longer counts.</p>`,
       footer: `<button class="btn btn--ghost" data-pca-back>Back to Invoice</button>
                <button class="btn btn--ghost" data-modal-close>Close</button>`
     });
     ov.querySelector('[data-pca-back]').addEventListener('click', () => openDetailModal(id));
+    ov.querySelectorAll('[data-pca-reverse]').forEach(btn => btn.addEventListener('click', () =>
+      openPcaReverseModal(btn.dataset.pcaKind, btn.dataset.pcaReverse, id)));
+  }
+
+  function openPcaReverseModal(kind, recordId, invoiceId) {
+    const isRefund = kind === 'refund';
+    const collection = isRefund ? 'invoiceRefunds' : 'invoiceDiscounts';
+    const r = Storage.getById(collection, recordId);
+    if (!r || r.status !== 'Active' || !pcaCan(isRefund ? 'refunds.manage' : 'discounts.manage')) return;
+    const ov = Modal.open({
+      title: `Reverse ${isRefund ? 'Refund' : 'Discount'} — ${r.id}`,
+      body: `
+        <p style="margin:0 0 12px">${isRefund
+          ? `Reversing records that the ${money(r.amount)} refund on <strong>${esc(r.invoiceId)}</strong> did not happen (or the money came back). The invoice's refunded total goes down by that amount.`
+          : `Reversing removes this ${money(r.amount)} discount from <strong>${esc(r.invoiceId)}</strong>, so the adjusted invoice amount goes back up by that amount.`}
+          The record stays on file, marked as reversed, with your reason and name.</p>
+        <div class="field">
+          <label for="pca-void-reason">Reason for reversing</label>
+          <textarea class="input" id="pca-void-reason" rows="2" maxlength="500"></textarea>
+          <div class="field__error" data-err="voidReason"></div>
+        </div>`,
+      footer: `<button class="btn btn--ghost" data-pca-back>Cancel</button>
+               <button class="btn btn--primary" data-save>Reverse ${isRefund ? 'Refund' : 'Discount'}</button>`
+    });
+    ov.querySelector('[data-pca-back]').addEventListener('click', () => openPcaHistoryModal(invoiceId));
+    ov.querySelector('[data-save]').addEventListener('click', Utils.saving(async () => {
+      const voidReason = ov.querySelector('#pca-void-reason').value.trim();
+      if (!voidReason) { pcaShowErrors(ov, { voidReason: 'A reason is required.' }); return; }
+      pcaShowErrors(ov, {});
+      const res = await Storage.action(collection, recordId, 'void', { voidReason }, ['invoices']);
+      if (!res.ok) {
+        if (res.status === 409) {
+          await Storage.refreshAll('invoices', collection);
+          Modal.close(); refresh();
+          toast(res.message || 'This record changed. Review it and try again.', 'error');
+          openPcaHistoryModal(invoiceId);
+          return;
+        }
+        if (res.fields) { pcaShowErrors(ov, res.fields); return; }
+        Utils.wrote(res, ov);
+        return;
+      }
+      Modal.close();
+      refresh();
+      if (res.stale && res.stale.length) Utils.wrote(res);
+      else toast(`${isRefund ? 'Refund' : 'Discount'} ${recordId} reversed.`);
+      openPcaHistoryModal(invoiceId);
+    }));
   }
 
   function openDetailModal(id) {
@@ -1241,7 +1471,10 @@
                 <div><span>Discount</span><strong>\u2212 ${money(i.discount)}</strong></div>
                 <div><span>Tax (${i.taxRate || 0}%)</span><strong>+ ${money(i.tax)}</strong></div>
                 <div class="totals-grand"><span>Grand Total</span><strong>${money(i.total)}</strong></div>
+                ${Number(i.postDiscount) > 0 ? `<div class="inv-view__wo"><span>Post-completion discount</span><strong>\u2212 ${money(i.postDiscount)}</strong></div>
+                <div><span>Adjusted Total</span><strong>${money((Number(i.total) || 0) - (Number(i.postDiscount) || 0))}</strong></div>` : ''}
                 <div class="inv-view__paid"><span>Paid</span><strong>${money(i.paid)}</strong></div>
+                ${Number(i.refunded) > 0 ? `<div class="inv-view__wo"><span>Refunded</span><strong>\u2212 ${money(i.refunded)}</strong></div>` : ''}
                 ${Number(i.writtenOff) > 0 ? `<div class="inv-view__wo"><span>Written off</span><strong>\u2212 ${money(i.writtenOff)}</strong></div>` : ''}
                 <div class="inv-view__due ${Number(i.due) > 0 ? 'totals-due' : ''}"><span>Due</span><strong>${money(i.due)}</strong></div>
               </div>
@@ -1281,7 +1514,7 @@
     if (writeOffBtn) writeOffBtn.addEventListener('click', () => { Modal.close(); openWriteOffModal(id); });
     document.querySelectorAll('[data-reverse-adj]').forEach(btn =>
       btn.addEventListener('click', () => { const adj = btn.dataset.reverseAdj; Modal.close(); openReverseModal(adj, id); }));
-    // design preview: these open dialogs that save nothing
+    // 0026: post-completion discount, refund and their history (each re-checked by the server)
     [['[data-pca-discount]', openPcaDiscountModal], ['[data-pca-refund]', openPcaRefundModal], ['[data-pca-history]', openPcaHistoryModal]]
       .forEach(([sel, open]) => { const btn = ov.querySelector(sel); if (btn) btn.addEventListener('click', () => open(id)); });
   }
@@ -1471,8 +1704,11 @@
           <tr><td>Subtotal</td><td class="pr-num">${money(i.subtotal)}</td></tr>
           <tr><td>Discount</td><td class="pr-num">− ${money(i.discount)}</td></tr>
           <tr><td>Tax (${i.taxRate || 0}%)</td><td class="pr-num">+ ${money(i.tax)}</td></tr>
-          <tr class="ivp-sum__grand"><td>Grand Total</td><td class="pr-num">${money(i.total)}</td></tr>
-          <tr class="ivp-sum__paid"><td>Paid</td><td class="pr-num">${money(i.paid)}</td></tr>${writtenOff > 0 ? `
+          <tr class="ivp-sum__grand"><td>Grand Total</td><td class="pr-num">${money(i.total)}</td></tr>${Number(i.postDiscount) > 0 ? `
+          <tr class="ivp-sum__adj"><td>Post-completion Discount</td><td class="pr-num">− ${money(i.postDiscount)}</td></tr>
+          <tr class="ivp-sum__grand"><td>Adjusted Total</td><td class="pr-num">${money((Number(i.total) || 0) - (Number(i.postDiscount) || 0))}</td></tr>` : ''}
+          <tr class="ivp-sum__paid"><td>Paid</td><td class="pr-num">${money(i.paid)}</td></tr>${Number(i.refunded) > 0 ? `
+          <tr class="ivp-sum__adj"><td>Refunded</td><td class="pr-num">− ${money(i.refunded)}</td></tr>` : ''}${writtenOff > 0 ? `
           <tr class="ivp-sum__adj"><td>Adjustment</td><td class="pr-num">− ${money(writtenOff)}</td></tr>` : ''}
           <tr class="ivp-sum__due${Number(i.due) > 0 && !isVoid ? ' ivp-sum__due--open' : ''}"><td>Due</td><td class="pr-num">${money(i.due)}</td></tr>
         </table>

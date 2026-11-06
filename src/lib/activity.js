@@ -81,8 +81,9 @@ async function sentFieldNames(request) {
   }
 }
 
-/** The caller as the log names them: an account's username and id, or the passphrase / token. */
-function actorOf(request) {
+/** The caller as the log names them: an account's username and id, or the passphrase / token.
+    Also used by the refund and discount routes (0026) to record who acted. */
+export function actorOf(request) {
   const p = principalOf(request);
   if (!p) return null;
   if (p.kind === 'account') {
