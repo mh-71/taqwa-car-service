@@ -165,8 +165,13 @@ console.log('\n-- 4. Service Reminders --');
         '<link rel="stylesheet" href="../css/responsive.css">\n  <link rel="stylesheet" href="../css/crm-reminders.css">'));
   ok('   ...declares its own page key', body.startsWith('<body data-page="crm-reminders" data-root="../">'), body.slice(0, 60));
   ok('   ...no longer claims to be "Coming soon"', !/Coming soon|activated in a future release/.test(body), '');
-  ok('   ...has no form, textarea, static button or inline handler (actions are rendered from data)',
-    !/<form|<textarea|<button|\son[a-z]+=/i.test(body), '');
+  ok('   ...has no form, textarea or inline handler (actions are rendered from data)',
+    !/<form|<textarea|\son[a-z]+=/i.test(body), '');
+  const staticButtons = [...body.matchAll(/<button\b[^>]*>/g)].map(m => m[0]);
+  ok('   ...its only static buttons are the three status filters, disabled until the reminders load',
+    staticButtons.length === 3 && ['Upcoming', 'Due Today', 'Overdue'].every((v, i) =>
+      staticButtons[i].includes(`data-filter="${v}"`) && /type="button"/.test(staticButtons[i])
+        && /aria-pressed="false"/.test(staticButtons[i]) && /\sdisabled\b/.test(staticButtons[i])), JSON.stringify(staticButtons));
   const controls = [...body.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]);
   ok('   ...a search box, a status filter and a due-by date, all disabled until the reminders load',
     controls.length === 3 && /type="search"/.test(controls[0]) && controls[1].startsWith('<select') && /type="date"/.test(controls[2])
@@ -186,9 +191,10 @@ console.log('\n-- 4. Service Reminders --');
   check('   ...the first three wired by id', stats.slice(0, 3).map(x => x.id), ['id="crrUpcoming"', 'id="crrDueToday"', 'id="crrOverdue"']);
   ok('   ...all four start as a "—", never a number',
     stats.length === 4 && stats.every(x => x.value === '<span aria-hidden="true">&#8212;</span>'), JSON.stringify(stats));
-  ok('   ...and "Customers Requiring Follow-up" stays "Not yet connected" (no follow-up data exists)',
-    stats[3] && stats[3].kind === 'crr-pending' && stats[3].note === 'Not yet connected'
-      && /<div class="stat crr-stat crr-stat--pending">/.test(body), JSON.stringify(stats[3]));
+  ok('   ...and "Customers Requiring Follow-up" is wired by id and links to Customer Follow-up',
+    stats[3] && stats[3].id === 'id="crrFollowUp"' && stats[3].kind === 'crr-sub'
+      && !/Not yet connected|crr-stat--pending/.test(body)
+      && /<a class="stat crr-stat crr-followup" id="crrFollowUpCard" href="crm-follow-up.html"/.test(body), JSON.stringify(stats[3]));
   ok('   ...with no digit anywhere in the static visible text',
     !/\d/.test(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')
       .replace(/<[^>]+>/g, ' ').replace(/&#\d+;/g, ' ')), '');
@@ -202,8 +208,10 @@ console.log('\n-- 4. Service Reminders --');
   const js = read('js/crm-reminders.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   ok('the page module reads no browser storage and makes no requests of its own',
     !/localStorage|sessionStorage|fetch\(|Api\.|XMLHttpRequest/.test(js), '');
-  ok('   ...writes nothing: no Storage write, seed or reset call',
-    !/Storage\.(create|update|remove|action|addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings)\b/.test(js), '');
+  const writes = [...js.matchAll(/Storage\.(create|update|remove|action|addData|updateData|deleteData|saveData|seedIfEmpty|resetToSeedData|putSettings|saveSettings)\b[^;]*/g)].map(m => m[0]);
+  ok('   ...its one write is the vehicle\'s next service date (Mark as Completed); no seed or reset call',
+    writes.length === 1 && /^Storage\.update\('vehicles', vehicleId, \{ nextServiceDate: value \}\)/.test(writes[0]), JSON.stringify(writes));
+  check('   ...and loads only the follow-ups on demand', [...js.matchAll(/Storage\.load\('(\w+)'\)/g)].map(m => m[1]), ['followUps']);
   ok('   ...and sends nothing (no SMS, WhatsApp or email links)', !/sms:|mailto:|wa\.me|whatsapp/i.test(js), '');
 }
 
