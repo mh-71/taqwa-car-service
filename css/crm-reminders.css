@@ -24,8 +24,15 @@
 /* ---------- summary cards (shared .stat) ---------- */
 [data-page="crm-reminders"] .crr-stats { margin-bottom: 18px; }
 [data-page="crm-reminders"] .crr-stat { align-items: flex-start; }
-/* Only the card with no data source yet keeps the muted placeholder value. */
-[data-page="crm-reminders"] .crr-stat--pending .stat__value { color: var(--text-3); }
+/* The three status cards are filter buttons; the fourth is a link. */
+[data-page="crm-reminders"] .crr-filter,
+[data-page="crm-reminders"] .crr-followup { font: inherit; color: inherit; text-align: left; width: 100%; cursor: pointer; text-decoration: none; transition: border-color .15s, box-shadow .15s; }
+[data-page="crm-reminders"] .crr-filter:disabled { cursor: default; }
+[data-page="crm-reminders"] .crr-filter:not(:disabled):hover,
+[data-page="crm-reminders"] .crr-followup:hover { border-color: var(--amber); }
+[data-page="crm-reminders"] .crr-filter:focus-visible,
+[data-page="crm-reminders"] .crr-followup:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+[data-page="crm-reminders"] .crr-filter[aria-pressed="true"] { border-color: var(--amber); box-shadow: 0 0 0 2px var(--amber) inset; }
 [data-page="crm-reminders"] .crr-stat .stat__label { font-weight: 600; color: var(--text); }
 [data-page="crm-reminders"] .crr-pending,
 [data-page="crm-reminders"] .crr-sub { margin-top: 2px; font-size: .7rem; color: var(--text-3); }

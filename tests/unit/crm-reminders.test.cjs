@@ -185,8 +185,9 @@ console.log('\n-- 5. the page, connected --');
   ok('   ...and is disabled where no customer is linked', /<button type="button" class="icon-btn icon-btn--sm crr-act--off" disabled title="No customer record is linked/.test(body), '');
   ok('Contact uses a tel: link with the cleaned number, without printing the number',
     body.includes('href="tel:+8801712345678"') && !body.includes('1712-345678'), '');
-  ok('"Create follow-up task" is present but disabled on every row',
-    (body.match(/disabled title="Available once Follow-up Tasks is connected"/g) || []).length === 3, '');
+  ok('"Mark as completed" is disabled on every row without a recent finished job card, with the reason',
+    (body.match(/aria-label="Mark as completed unavailable: /g) || []).length === 3
+      && body.includes('Complete the service through Job Cards first.') && !body.includes('data-action="complete"'), '');
   ok('statuses use the existing badge tones',
     body.includes('badge badge--bad">Overdue') && body.includes('badge badge--warn">Due Today') && body.includes('badge badge--info">Upcoming'), '');
   check('the note reports what is shown, and the skipped vehicle', el('crrToolbarNote').textContent,
@@ -261,6 +262,96 @@ for (const [why, fail] of [
   ok('with no backend at all, the page explains it needs the database', /need the workshop database/.test(body), '');
   ok('   ...shows no demo vehicle', (body.match(/<tr data-id=/g) || []).length === 0, '');
   ok('   ...and offers no Retry (there is nothing to retry)', !/data-action="retry"/.test(body), '');
+}
+
+/* ---------- 9. status buttons, phone search, completion, follow-ups ---------- */
+console.log('\n-- 9. status buttons, phone search, completion rules, follow-ups --');
+{
+  const today = new Date().toISOString().slice(0, 10);
+  const { R: R0 } = page({ origin: '' });
+  const dhaka = R0.dhakaToday();
+  const api = fakeApi({ rows: {
+    customers: [
+      { id: 'CUS-0001', name: 'Rahim Uddin', phone: '+880 1712-345678' },
+      { id: 'CUS-0002', name: 'Karim Mia', phone: '01812-999000' },
+    ],
+    vehicles: [
+      { id: 'VEH-0001', customerId: 'CUS-0001', regNo: 'DHA-1', brand: 'Toyota', model: 'Axio', status: 'Active', nextServiceDate: addDays(dhaka, -5) },
+      { id: 'VEH-0002', customerId: 'CUS-0002', regNo: 'DHA-2', brand: 'Honda', model: 'Civic', status: 'Active', nextServiceDate: dhaka },
+      { id: 'VEH-0003', customerId: 'CUS-0002', regNo: 'DHA-3', brand: 'Nissan', model: 'Sunny', status: 'Active', nextServiceDate: addDays(dhaka, 9) },
+    ],
+    'job-cards': [
+      // A finished visit 2 days ago: VEH-0001's overdue service was done.
+      { id: 'JOB-0001', customerId: 'CUS-0001', vehicleId: 'VEH-0001', status: 'Completed', completedAt: '', actualDelivery: addDays(dhaka, -2), date: addDays(dhaka, -2), services: [], parts: [] },
+    ],
+    'follow-ups': [
+      { id: 'FU-0001', customerId: 'CUS-0001', status: 'Open', dueDate: addDays(dhaka, -1) },
+      { id: 'FU-0002', customerId: 'CUS-0001', status: 'Open', dueDate: dhaka },
+      { id: 'FU-0003', customerId: 'CUS-0002', status: 'Open', dueDate: addDays(dhaka, 4) },
+      { id: 'FU-0004', customerId: 'CUS-0002', status: 'Completed', dueDate: addDays(dhaka, -9) },
+    ],
+  } });
+  const { h, el, R } = page({ api });
+  h.fireReady();
+  await tick(80);
+  const rows = () => (el('crrBody').innerHTML.match(/<tr data-id=/g) || []).length;
+  check('all three reminders are listed', rows(), 3);
+  R.setStatus('Upcoming');
+  check('Upcoming shows only upcoming reminders', [rows(), el('crrBody').innerHTML.includes('DHA-3')], [1, true]);
+  check('   ...and the dropdown follows the card', el('crrStatus').value, 'Upcoming');
+  R.setStatus('Due Today');
+  check('Due Today shows only today\'s', [rows(), el('crrBody').innerHTML.includes('DHA-2')], [1, true]);
+  R.setStatus('Overdue');
+  check('Overdue shows only overdue, with the days counted', [rows(), el('crrBody').innerHTML.includes('5 days overdue')], [1, true]);
+  R.setStatus('all');
+  check('   ...and All shows every reminder again', rows(), 3);
+  R.setStatus('nonsense');
+  check('an unknown status falls back to all', R.state.status, 'all');
+  el('crrSearch').dispatch('input', { target: { value: '01812999' } });
+  check('search finds reminders by phone number', rows(), 2);
+  el('crrSearch').dispatch('input', { target: { value: '+880 1712' } });
+  check('   ...written with spaces or a country code too', rows(), 1);
+  el('crrSearch').dispatch('input', { target: { value: '' } });
+  R.setStatus('Overdue');
+  el('crrSearch').dispatch('input', { target: { value: 'honda' } });
+  check('status and search work together', rows(), 0);
+  el('crrSearch').dispatch('input', { target: { value: '' } });
+  R.setStatus('all');
+
+  const body = el('crrBody').innerHTML;
+  check('Mark as completed is offered only where a finished job card covers the due date',
+    (body.match(/data-action="complete"/g) || []).length, 1);
+  ok('   ...on the serviced vehicle', /data-action="complete" data-id="VEH-0001"/.test(body), '');
+
+  const row = R.state.rows.find(r => r.vehicleId === 'VEH-0001');
+  check('completion check passes for the serviced vehicle', R.completionCheck(row).ok, true);
+  check('   ...and fails without any finished job card', R.completionCheck({ ...row, lastService: '' }).ok, false);
+  check('   ...or with one older than the window', R.completionCheck({ ...row, lastService: addDays(row.next, -31) }).ok, false);
+  check('the new date must be after today', R.nextDateProblem(dhaka, row, dhaka), 'The next service date must be after today.');
+  ok('   ...and at least 30 days after the last service (no double completion)',
+    /at least 30 days after the last service/.test(R.nextDateProblem(addDays(dhaka, 5), row, dhaka)), '');
+  check('   ...a valid date is accepted', R.nextDateProblem(addDays(dhaka, 180), row, dhaka), '');
+  check('   ...an impossible date is refused', R.nextDateProblem('2026-02-30', row, dhaka), 'Enter a valid date.');
+  check('the suggested next date is 6 months on', R.suggestedNext({ lastService: '2026-01-31' }, '2026-01-31'), '2026-07-31');
+  check('addMonths clamps to the end of a short month', R.addMonths('2026-08-31', 6), '2027-02-28');
+  check('after completion the reminder could not be completed twice',
+    R.completionCheck({ ...row, next: R.suggestedNext(row, dhaka) }).ok, false);
+
+  check('Customers Requiring Follow-up counts distinct customers with Open follow-ups due today or overdue',
+    el('crrFollowUp').innerHTML, '1');
+  check('   ...with the number of follow-ups behind it', el('crrFollowUpSub').textContent, '2 follow-ups due today or overdue');
+  check('followUpNeed ignores future and closed follow-ups',
+    R.followUpNeed([{ status: 'Open', dueDate: addDays(dhaka, 1), customerId: 'A' }, { status: 'Completed', dueDate: dhaka, customerId: 'B' }], dhaka),
+    { customers: 0, followUps: 0 });
+  void today;
+}
+{
+  const api = fakeApi({ rows: { vehicles: [], customers: [], 'job-cards': [] }, fail: ({ path }) => (path.startsWith('/follow-ups') ? { status: 500, error: { code: 'server_error', message: 'boom' } } : null) });
+  const { h, el } = page({ api });
+  h.fireReady();
+  await tick(80);
+  ok('a failed follow-up read shows a dash and says so, never a guessed number',
+    el('crrFollowUp').innerHTML.includes('&#8212;') && /Could not be loaded|No access/.test(el('crrFollowUpSub').textContent), el('crrFollowUpSub').textContent);
 }
 
 /* ---------- 8. signed out ---------- */

@@ -38,7 +38,8 @@
   <div id="page-content">
 
     <!-- Service Reminders, filled in by js/crm-reminders.js from the workshop
-         database only (vehicles, customers, job cards). Until the data has
+         database only (vehicles, customers, job cards; follow-ups for the
+         fourth card). The three status cards are filter buttons. Until the data has
          loaded -- or if it cannot be -- the cards show a dash and the controls
          stay disabled; nothing from browser storage is ever shown here. -->
 
@@ -50,43 +51,47 @@
     </div>
 
     <section class="stats-grid crr-stats" aria-label="Service reminder summary">
-      <div class="stat crr-stat">
+      <button type="button" class="stat crr-stat crr-filter" data-filter="Upcoming" aria-pressed="false" disabled
+              title="Show only Upcoming reminders (click again to show all)">
         <div class="stat__icon stat__icon--info"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"/></svg></div>
         <div>
           <div class="stat__value" id="crrUpcoming"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Upcoming Services</div>
           <div class="crr-sub" id="crrUpcomingSub">Loading&#8230;</div>
         </div>
-      </div>
-      <div class="stat crr-stat">
+      </button>
+      <button type="button" class="stat crr-stat crr-filter" data-filter="Due Today" aria-pressed="false" disabled
+              title="Show only Due Today reminders (click again to show all)">
         <div class="stat__icon stat__icon--warn"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm-7-8h5v5h-5v-5z"/></svg></div>
         <div>
           <div class="stat__value" id="crrDueToday"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Due Today</div>
           <div class="crr-sub" id="crrDueTodaySub">Loading&#8230;</div>
         </div>
-      </div>
-      <div class="stat crr-stat">
+      </button>
+      <button type="button" class="stat crr-stat crr-filter" data-filter="Overdue" aria-pressed="false" disabled
+              title="Show only Overdue reminders (click again to show all)">
         <div class="stat__icon stat__icon--bad"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div>
         <div>
           <div class="stat__value" id="crrOverdue"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Overdue Services</div>
           <div class="crr-sub" id="crrOverdueSub">Loading&#8230;</div>
         </div>
-      </div>
-      <div class="stat crr-stat crr-stat--pending">
+      </button>
+      <a class="stat crr-stat crr-followup" id="crrFollowUpCard" href="crm-follow-up.html"
+         title="Open Customer Follow-up">
         <div class="stat__icon stat__icon--good"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg></div>
         <div>
-          <div class="stat__value"><span aria-hidden="true">&#8212;</span></div>
+          <div class="stat__value" id="crrFollowUp"><span aria-hidden="true">&#8212;</span></div>
           <div class="stat__label">Customers Requiring Follow-up</div>
-          <div class="crr-pending">Not yet connected</div>
+          <div class="crr-sub" id="crrFollowUpSub">Loading&#8230;</div>
         </div>
-      </div>
+      </a>
     </section>
 
     <div class="toolbar crr-toolbar" role="search" aria-describedby="crrToolbarNote">
       <input type="search" class="input toolbar__search" id="crrSearch" disabled
-             placeholder="Search customer, registration, brand or model…" aria-label="Search service reminders">
+             placeholder="Search customer, phone, registration, brand or model…" aria-label="Search service reminders">
       <select class="select" id="crrStatus" disabled aria-label="Filter by reminder status">
         <option value="all">All statuses</option>
         <option value="Upcoming">Upcoming</option>
