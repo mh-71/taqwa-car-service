@@ -39,14 +39,15 @@
 
     <!-- All Conversations. Filled in by js/inbox-conversations.js from the workshop database:
          Facebook (GET /api/messenger/conversations), WhatsApp (GET /api/whatsapp/conversations)
-         and Website enquiries (GET /api/website-forms), merged newest first. Each row opens the
+         Website enquiries (GET /api/website-forms) and booking requests (GET /api/bookings, with the
+         bookings.view permission), merged newest first. Each row opens the
          conversation in its own inbox, where it is answered. No sample conversation is ever shown. -->
 
     <div class="inb-head">
       <span class="inb-head__icon"><svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg></span>
       <div class="inb-head__text">
         <h2 class="inb-head__title">All Conversations</h2>
-        <p class="page-subtitle">Facebook, WhatsApp and website enquiries in one list, newest first. Open one to reply from its own inbox.</p>
+        <p class="page-subtitle">Facebook, WhatsApp, website enquiries and booking requests in one list, newest first. Open one to reply from its own inbox.</p>
       </div>
     </div>
 
@@ -56,6 +57,7 @@
         <button type="button" class="inb-chip" data-channel="Facebook" aria-pressed="false">Facebook <span class="inb-chip__n" id="inbCountFacebook"></span></button>
         <button type="button" class="inb-chip" data-channel="WhatsApp" aria-pressed="false">WhatsApp <span class="inb-chip__n" id="inbCountWhatsApp"></span></button>
         <button type="button" class="inb-chip" data-channel="Website" aria-pressed="false">Website <span class="inb-chip__n" id="inbCountWebsite"></span></button>
+        <button type="button" class="inb-chip" data-channel="Bookings" aria-pressed="false">Bookings <span class="inb-chip__n" id="inbCountBookings"></span></button>
       </div>
       <div class="inb-tools">
         <label class="inb-search">
@@ -63,7 +65,7 @@
           <input type="search" class="input" id="inbSearch" placeholder="Search name, phone or message&#8230;" aria-label="Search by customer name, phone number or message" maxlength="100" autocomplete="off">
         </label>
         <select class="select" id="inbStatus" aria-label="Filter by status"
-                title="For website enquiries: Open and Unread = New, Pending = Contacted, Resolved = Confirmed or Rejected">
+                title="Website enquiries: Open and Unread = New, Pending = Contacted, Resolved = Confirmed or Rejected. Bookings: Unread = New, Open = New, Pending, Confirmed or Rescheduled, Pending = Pending or Rescheduled, Resolved = Completed, Cancelled or Rejected">
           <option value="">All statuses</option>
           <option value="unread">Unread</option>
           <option value="Open">Open</option>

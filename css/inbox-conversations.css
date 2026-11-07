@@ -84,6 +84,12 @@
 [data-page="inbox-conversations"] .inb-badge--new { background: var(--amber); }
 [data-page="inbox-conversations"] #inbCountWhatsApp { background: var(--inb-wa); }
 [data-page="inbox-conversations"] #inbCountWebsite { background: var(--amber); }
+/* Booking requests: their own badge and statuses (New / Pending / Confirmed / Rescheduled / Completed / Cancelled / Rejected) */
+[data-page="inbox-conversations"] .inb-plat--bookings { background: var(--info-soft); color: var(--info); }
+[data-page="inbox-conversations"] #inbCountBookings { background: var(--info); }
+[data-page="inbox-conversations"] .inb-status--rescheduled { background: var(--amber-soft); color: var(--amber-text); }
+[data-page="inbox-conversations"] .inb-status--completed { background: var(--good-soft); color: var(--good); }
+[data-page="inbox-conversations"] .inb-status--cancelled { background: var(--paper); color: var(--text-3); }
 [data-page="inbox-conversations"] .inb-chip__n:empty { display: none; }
 /* Website enquiries keep their own statuses: New / Contacted / Confirmed / Rejected */
 [data-page="inbox-conversations"] .inb-status--contacted { background: var(--amber-soft); color: var(--amber-text); }

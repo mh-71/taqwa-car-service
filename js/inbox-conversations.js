@@ -9,16 +9,19 @@
      Facebook   GET /api/messenger/conversations   (FBC-…)
      WhatsApp   GET /api/whatsapp/conversations    (WAC-…)
      Website    GET /api/website-forms             (WEB-…, enquiries)
+     Bookings   GET /api/bookings                  (BKG-…, booking requests;
+                read only with the bookings.view permission)
 
    A row opens the conversation in its own inbox, where it is read and
    answered with that channel's existing reply system:
      inbox-facebook.html?c=FBC-…   inbox-whatsapp.html?c=WAC-…
-     inbox-website-forms.html?id=WEB-…
+     inbox-website-forms.html?id=WEB-…   inbox-bookings.html?id=BKG-…
 
    ---- merging three lists ----
    Each route already returns its own rows newest first. They are read as
    separate "feeds" (Website's Resolved is two feeds: Confirmed and
-   Rejected, because its route takes one status at a time). A row is
+   Rejected, because its route takes one status at a time; a Bookings
+   status filter likewise becomes one feed per booking status). A row is
    shown only when it is newer than the oldest loaded row of every feed
    that still has more to load -- so "Load more" can never slip an older
    conversation above one already shown. Ids are unique per channel and
@@ -26,11 +29,18 @@
    same customer on two channels stays two conversations.
 
    ---- what is not invented ----
-   Website enquiries have no unread count: none is shown (a New enquiry is
-   labelled New instead). A row without a time sorts last and shows none.
-   The status filter is mapped onto Website's own statuses (Open = New,
-   Pending = Contacted, Resolved = Confirmed or Rejected, Unread = New);
-   each row still shows the enquiry's real status.
+   Website enquiries and bookings have no unread count: none is shown (a
+   New one is labelled New instead). A row without a time sorts last and
+   shows none. The status filter is mapped onto each one's own statuses,
+   and each row still shows its real status:
+                 Website enquiry           Booking
+     Unread      New                       New
+     Open        New                       New, Pending, Confirmed, Rescheduled
+     Pending     Contacted                 Pending, Rescheduled
+     Resolved    Confirmed, Rejected       Completed, Cancelled, Rejected
+   (A Confirmed booking is not Resolved: the service may not be done yet.)
+   A website enquiry (WEB-) and a booking (BKG-) are different records, kept
+   apart even for the same customer; nothing is merged.
 
    ---- failures ----
    One channel failing never hides the others: it gets its own note with
@@ -49,10 +59,16 @@ const InboxConversations = (() => {
     { key: 'Facebook', connected: true, path: '/messenger/conversations', href: 'inbox-facebook.html' },
     { key: 'WhatsApp', connected: true, path: '/whatsapp/conversations', href: 'inbox-whatsapp.html' },
     { key: 'Website', connected: true, path: '/website-forms', href: 'inbox-website-forms.html' },
+    { key: 'Bookings', connected: true, path: '/bookings', href: 'inbox-bookings.html', permission: 'bookings.view' },
   ];
 
   /** The unified status filter -> Website's own statuses (null = no status filter). */
   const WEBSITE_STATUS = { '': [null], unread: ['New'], Open: ['New'], Pending: ['Contacted'], Resolved: ['Confirmed', 'Rejected'] };
+  /** The unified status filter -> the booking statuses (the owner's decision). */
+  const BOOKING_STATUS = {
+    '': [null], unread: ['New'], Open: ['New', 'Pending', 'Confirmed', 'Rescheduled'],
+    Pending: ['Pending', 'Rescheduled'], Resolved: ['Completed', 'Cancelled', 'Rejected'],
+  };
   const WEBSITE_TYPE = { booking: 'Booking request', quote: 'Quote request', contact: 'Contact message' };
 
   /* ---------- pure helpers (exported for the unit suite) ---------- */
@@ -83,6 +99,26 @@ const InboxConversations = (() => {
       preview: f.message || [kind, f.service, f.vehicle].filter(Boolean).join(' · '),
       outbound: false, at: f.submittedAt || f.createdAt, unread: 0, isNew: f.status === 'New', status: f.status,
       href: `inbox-website-forms.html?id=${encodeURIComponent(f.id)}`,
+    };
+  }
+
+  /** "12 Nov, 10:00" for a booking's requested day and time ('' if unreadable). */
+  function bookingWhen(date, time) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return '';
+    const [y, m, d] = date.split('-').map(Number);
+    const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' });
+    return /^\d{2}:\d{2}$/.test(time || '') ? `${day}, ${time}` : day;
+  }
+
+  /** A booking request as a row: when it is for, what, and where it came from. No unread count exists. */
+  function fromBooking(b) {
+    const vehicle = [b.vehicleMake, b.vehicleModel].filter(Boolean).join(' ');
+    const when = bookingWhen(b.preferredDate, b.preferredTime);
+    return {
+      platform: 'Bookings', id: b.id, name: b.customerName, phone: b.phone || '',
+      preview: [when ? `For ${when}` : '', b.serviceLabel, vehicle, b.source ? `via ${b.source}` : ''].filter(Boolean).join(' · '),
+      outbound: false, at: b.createdAt, unread: 0, isNew: b.status === 'New', status: b.status,
+      href: `inbox-bookings.html?id=${encodeURIComponent(b.id)}`,
     };
   }
 
@@ -117,13 +153,19 @@ const InboxConversations = (() => {
     return out;
   }
 
-  /** The feeds to read for a channel filter and a status filter. */
-  function feedsFor(channel, status) {
+  /**
+   * The feeds to read for a channel filter and a status filter. `allowed`
+   * says whether the caller may read a permission-gated channel (Bookings):
+   * one it may not is not asked for at all.
+   */
+  function feedsFor(channel, status, allowed = () => true) {
     const feeds = [];
     for (const c of CHANNELS) {
       if (channel !== 'all' && channel !== c.key) continue;
-      if (c.key === 'Website') {
-        for (const formStatus of WEBSITE_STATUS[status] || [null]) feeds.push({ channel: c.key, path: c.path, formStatus });
+      if (c.permission && !allowed(c.permission)) continue;
+      const own = c.key === 'Website' ? WEBSITE_STATUS : c.key === 'Bookings' ? BOOKING_STATUS : null;
+      if (own) {
+        for (const formStatus of own[status] || [null]) feeds.push({ channel: c.key, path: c.path, formStatus });
       } else {
         feeds.push({ channel: c.key, path: c.path, formStatus: null });
       }
@@ -174,7 +216,9 @@ const InboxConversations = (() => {
 
   /* ---------- page ---------- */
 
-  const MAP = { Facebook: fromMessenger, WhatsApp: fromWhatsApp, Website: fromWebsite };
+  const MAP = { Facebook: fromMessenger, WhatsApp: fromWhatsApp, Website: fromWebsite, Bookings: fromBooking };
+  /** May the signed-in caller read this? (The server checks again; this only avoids asking.) */
+  const allowed = (perm) => typeof Storage.can !== 'function' || Storage.can(perm);
   const state = { channel: 'all', q: '', status: '', feeds: [], rows: [], total: 0, error: null, loading: false };
   let seq = 0, searchTimer = null;
   const $ = (id) => document.getElementById(id);
@@ -182,7 +226,7 @@ const InboxConversations = (() => {
 
   /** One feed's next page, through the existing route. */
   async function fetchFeed(feed, offset) {
-    const query = feed.channel === 'Website'
+    const query = feed.channel === 'Website' || feed.channel === 'Bookings'
       ? websiteQuery({ q: state.q, formStatus: feed.formStatus, offset })
       : messengerQuery({ q: state.q, status: state.status, offset });
     return Api.get(`${feed.path}?${new URLSearchParams(query).toString()}`);
@@ -198,10 +242,11 @@ const InboxConversations = (() => {
       if (failed) {
         // Only reached when some other channel answered (all failing is the page's own error).
         const denied = failed.error.status === 403;
-        notes.push(`<p class="inb-note inb-note--bad" role="note"><strong>${esc(c.key)} conversations could not be loaded.</strong>
+        const what = c.key === 'Bookings' ? 'Booking requests' : `${c.key} conversations`;
+        notes.push(`<p class="inb-note inb-note--bad" role="note"><strong>${esc(what)} could not be loaded.</strong>
           ${denied ? 'Your role does not include them.' : 'The other channels are still shown.'}
           ${denied ? '' : '<button type="button" class="btn btn--ghost btn--sm" data-retry>Retry</button>'}</p>`);
-      } else if (c.key !== 'Website' && feeds[0].connection && feeds[0].connection.webhook === false) {
+      } else if ((c.key === 'Facebook' || c.key === 'WhatsApp') && feeds[0].connection && feeds[0].connection.webhook === false) {
         notes.push(`<p class="inb-note" role="note"><strong>${esc(c.key)} is not set up to receive new messages yet.</strong>
           Conversations already received are shown. <a href="${esc(c.href)}">Open the ${esc(c.key)} inbox</a>.</p>`);
       }
@@ -215,9 +260,11 @@ const InboxConversations = (() => {
       if (!el) continue;
       const feed = state.feeds.find((f) => f.channel === c.key && f.summary);
       if (!feed) continue;   // keep the last known count while that channel is filtered out
-      const n = c.key === 'Website' ? feed.summary.new : feed.summary.unreadConversations;
+      const fresh = c.key === 'Website' || c.key === 'Bookings';
+      const n = fresh ? feed.summary.new : feed.summary.unreadConversations;
       el.textContent = n ? String(n) : '';
-      el.title = n ? (c.key === 'Website' ? `${n} new enquir${n === 1 ? 'y' : 'ies'}` : `${n} unread conversation${n === 1 ? '' : 's'}`) : '';
+      el.title = !n ? '' : c.key === 'Website' ? `${n} new enquir${n === 1 ? 'y' : 'ies'}`
+        : c.key === 'Bookings' ? `${n} new booking${n === 1 ? '' : 's'}` : `${n} unread conversation${n === 1 ? '' : 's'}`;
     }
   }
 
@@ -244,7 +291,7 @@ const InboxConversations = (() => {
     if (!state.rows.length) {
       const filtered = state.q || state.status || state.channel !== 'all';
       box.innerHTML = `<div class="inb-box"><strong>${filtered ? 'No conversations match' : 'No conversations yet'}</strong>
-          <p>${filtered ? 'Try a different channel, search or status.' : 'When a customer messages the Facebook Page or WhatsApp, or sends a website enquiry, it appears here.'}</p></div>`;
+          <p>${filtered ? 'Try a different channel, search or status.' : 'When a customer messages the Facebook Page or WhatsApp, sends a website enquiry or makes a booking request, it appears here.'}</p></div>`;
       $('inbList').hidden = true; $('inbFoot').hidden = true; return;
     }
     box.innerHTML = '';
@@ -268,7 +315,7 @@ const InboxConversations = (() => {
     }
     const my = ++seq;
     state.loading = true; state.error = null;
-    if (!append) { state.feeds = feedsFor(state.channel, state.status).map((f) => ({ ...f, rows: [], total: 0, error: null })); state.rows = []; render(); }
+    if (!append) { state.feeds = feedsFor(state.channel, state.status, allowed).map((f) => ({ ...f, rows: [], total: 0, error: null })); state.rows = []; render(); }
     const work = state.feeds.filter((f) => !append || (!f.error && f.rows.length < f.total));
     const results = await Promise.all(work.map((f) => fetchFeed(f, append ? f.rows.length : 0)));
     if (my !== seq) return false;
@@ -314,13 +361,21 @@ const InboxConversations = (() => {
   function init() {
     if (document.body.dataset.page !== 'inbox-conversations') return;
     bind();
+    // A channel the role may not read has no chip (the server would refuse it anyway).
+    Storage.ready(() => {
+      for (const c of CHANNELS) {
+        if (!c.permission || allowed(c.permission)) continue;
+        const chip = document.querySelector && document.querySelector(`.inb-chip[data-channel="${c.key}"]`);
+        if (chip) chip.hidden = true;
+      }
+    });
     state.loading = true;
     render();
     Storage.ready(() => load());
   }
 
   return {
-    CHANNELS, fromMessenger, fromWhatsApp, fromWebsite, mergeRows, messengerQuery, websiteQuery, feedsFor, visibleRows,
+    CHANNELS, fromMessenger, fromWhatsApp, fromWebsite, fromBooking, bookingWhen, mergeRows, messengerQuery, websiteQuery, feedsFor, visibleRows,
     rowHtml, init, _state: state, load,
   };
 })();
