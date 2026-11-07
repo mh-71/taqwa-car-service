@@ -58,6 +58,14 @@ const FORMS = [
   { id: 'WEB-0002', formType: 'contact', name: 'Old Enquiry', phone: '01811000002', message: 'Price for AC service?',
     status: 'Confirmed', createdAt: iso(86400000 * 3), submittedAt: iso(86400000 * 3), updatedAt: iso(86400000 * 3) },
 ];
+// Booking requests (0023), in the shape GET /api/bookings returns. BKG- ids, a
+// different record from a website enquiry (WEB-) even for the same customer.
+const BOOKINGS = [
+  { id: 'BKG-0002', source: 'Website', customerName: 'Salma Begum', phone: '01811000003', vehicleMake: 'Toyota', vehicleModel: 'Axio',
+    serviceLabel: 'Oil change', preferredDate: '2026-11-12', preferredTime: '10:00', message: '', status: 'New', createdAt: iso(45000) },
+  { id: 'BKG-0001', source: 'Phone', customerName: 'Nasir Ahmed', phone: '01911000009', vehicleMake: 'Honda', vehicleModel: 'Civic',
+    serviceLabel: 'Full service', preferredDate: '2026-11-02', preferredTime: '09:30', message: '', status: 'Confirmed', createdAt: iso(86400000 * 4) },
+];
 const MSGS = [
   { id: 1, conversationId: 'FBC-0002', direction: 'in', senderType: 'customer', sentBy: '', kind: 'message', text: 'Is my car <ready>?',
     attachments: [{ type: 'image', url: 'https://scontent.example/x.jpg', title: null }, { type: 'file', url: null, title: null }], status: 'received', error: '', createdAt: iso(60000) },
@@ -66,7 +74,7 @@ const MSGS = [
 
 /** fakeApi for hydration; /messenger answered as the Worker would. `send` decides the reply's fate. */
 function api({ convs = CONVS, msgs = MSGS, failList = null, failTimes = Infinity, send = 'ok', connection = { send: true, webhook: true },
-  wa = WA, forms = FORMS, failPaths = [] } = {}) {
+  wa = WA, forms = FORMS, bookings = BOOKINGS, failPaths = [] } = {}) {
   const base = fakeApi({ rows: {} });
   const calls = base.calls;
   let failures = 0, nextId = 100;
@@ -76,7 +84,8 @@ function api({ convs = CONVS, msgs = MSGS, failList = null, failTimes = Infinity
     const path = String(url).replace(/^https?:\/\/[^/]+\/api/, '');
     // WhatsApp and Website lists, answered as their routes would (status / q / limit / offset).
     for (const [prefix, rows, summary] of [['/whatsapp/conversations', wa, (r) => ({ unreadConversations: r.filter(c => c.unreadCount).length })],
-      ['/website-forms', forms, (r) => ({ new: r.filter(f => f.status === 'New').length })]]) {
+      ['/website-forms', forms, (r) => ({ new: r.filter(f => f.status === 'New').length })],
+      ['/bookings', bookings, (r) => ({ new: r.filter(b => b.status === 'New').length })]]) {
       if (!path.startsWith(prefix)) continue;
       calls.push({ method: init.method || 'GET', path });
       if (failPaths.some(p => path.startsWith(p))) return res(500, { error: { code: 'database_error', message: 'x' } });
@@ -208,8 +217,22 @@ console.log('\n-- 4. helpers --');
     [row.platform, row.id, row.unread, row.href], ['Facebook', 'FBC-0002', 2, 'inbox-facebook.html?c=FBC-0002']);
   check('rows merge newest first across channels', C.mergeRows([{ id: 'a', at: '2026-10-01' }], [{ id: 'b', at: '2026-10-03' }, { id: 'c', at: '2026-10-02' }]).map(r => r.id), ['b', 'c', 'a']);
   check('the query carries search and status', C.messengerQuery({ q: ' x ', status: 'unread' }), { limit: '50', offset: '0', q: 'x', unread: '1' });
-  check('all three channels are connected, each to its own route',
-    C.CHANNELS.map(c => [c.key, c.connected, c.path]), [['Facebook', true, '/messenger/conversations'], ['WhatsApp', true, '/whatsapp/conversations'], ['Website', true, '/website-forms']]);
+  check('all four channels are connected, each to its own route (Bookings behind bookings.view)',
+    C.CHANNELS.map(c => [c.key, c.connected, c.path, c.permission || '']),
+    [['Facebook', true, '/messenger/conversations', ''], ['WhatsApp', true, '/whatsapp/conversations', ''], ['Website', true, '/website-forms', ''], ['Bookings', true, '/bookings', 'bookings.view']]);
+  const bk = C.fromBooking(BOOKINGS[0]);
+  check('a booking opens that booking, shows when it is for, what and where from, keeps its status and invents no unread count',
+    [bk.platform, bk.id, bk.phone, bk.unread, bk.isNew, bk.status, bk.href, bk.preview],
+    ['Bookings', 'BKG-0002', '01811000003', 0, true, 'New', 'inbox-bookings.html?id=BKG-0002', 'For 12 Nov, 10:00 · Oil change · Toyota Axio · via Website']);
+  check('   ...an unreadable booking date shows no date rather than a guess', [C.bookingWhen('soon', '10:00'), C.bookingWhen('2026-11-12', 'x')], ['', '12 Nov']);
+  check('booking statuses map as the owner decided (Confirmed is Open, never Resolved)',
+    ['', 'unread', 'Open', 'Pending', 'Resolved'].map(st => C.feedsFor('Bookings', st).map(x => x.formStatus)),
+    [[null], ['New'], ['New', 'Pending', 'Confirmed', 'Rescheduled'], ['Pending', 'Rescheduled'], ['Completed', 'Cancelled', 'Rejected']]);
+  check('without bookings.view no booking is asked for, even under All',
+    [C.feedsFor('all', '', p => p !== 'bookings.view').map(x => x.channel), C.feedsFor('Bookings', '', () => false).length],
+    [['Facebook', 'WhatsApp', 'Website'], 0]);
+  check('a website enquiry and a booking for the same customer stay two rows',
+    C.mergeRows([C.fromWebsite(FORMS[0])], [C.fromBooking(BOOKINGS[0])]).map(r => r.id), ['BKG-0002', 'WEB-0003']);
   const w = C.fromWhatsApp(WA[0]);
   check('a WhatsApp conversation opens in the WhatsApp inbox, with its phone and unread count',
     [w.platform, w.id, w.phone, w.unread, w.status, w.href], ['WhatsApp', 'WAC-0001', '+8801711000001', 1, 'Pending', 'inbox-whatsapp.html?c=WAC-0001']);
@@ -225,7 +248,7 @@ console.log('\n-- 4. helpers --');
     ['', 'unread', 'Open', 'Pending', 'Resolved'].map(st => C.feedsFor('Website', st).map(x => x.formStatus)),
     [[null], ['New'], ['New'], ['Contacted'], ['Confirmed', 'Rejected']]);
   check('a channel filter reads only that channel', [C.feedsFor('all', '').map(x => x.channel), C.feedsFor('WhatsApp', 'Open').map(x => x.channel)],
-    [['Facebook', 'WhatsApp', 'Website'], ['WhatsApp']]);
+    [['Facebook', 'WhatsApp', 'Website', 'Bookings'], ['WhatsApp']]);
   const feeds = [
     { channel: 'Facebook', total: 2, rows: [{ platform: 'Facebook', id: 'f1', at: '2026-10-05T00:00:00Z' }] },
     { channel: 'Website', total: 1, rows: [{ platform: 'Website', id: 'w1', at: '2026-10-01T00:00:00Z' }] },
@@ -244,18 +267,23 @@ console.log('\n-- 5. the page --');
   h.fireReady();
   await tick(80);
   const list = el('inbList').innerHTML;
-  check('all three channels are listed together: 2 Facebook, 1 WhatsApp, 2 Website',
-    [(list.match(/<li>/g) || []).length, (list.match(/inb-plat--facebook/g) || []).length, (list.match(/inb-plat--whatsapp/g) || []).length, (list.match(/inb-plat--website/g) || []).length],
-    [5, 2, 1, 2]);
+  check('All lists every channel together: 2 Facebook, 1 WhatsApp, 2 Website, 2 Bookings',
+    [(list.match(/<li>/g) || []).length, (list.match(/inb-plat--facebook/g) || []).length, (list.match(/inb-plat--whatsapp/g) || []).length,
+      (list.match(/inb-plat--website/g) || []).length, (list.match(/inb-plat--bookings/g) || []).length],
+    [7, 2, 1, 2, 2]);
   check('   ...newest first across channels', [...list.matchAll(/href="inbox-[a-z-]+\.html\?(?:c|id)=([A-Z]+-\d+)"/g)].map(m => m[1]),
-    ['WAC-0001', 'FBC-0002', 'WEB-0003', 'FBC-0001', 'WEB-0002']);
-  ok('   ...each opening its own inbox on that conversation',
-    list.includes('href="inbox-facebook.html?c=FBC-0002"') && list.includes('href="inbox-whatsapp.html?c=WAC-0001"') && list.includes('href="inbox-website-forms.html?id=WEB-0003"'), '');
+    ['WAC-0001', 'BKG-0002', 'FBC-0002', 'WEB-0003', 'FBC-0001', 'WEB-0002', 'BKG-0001']);
+  ok('   ...each opening its own inbox on that conversation or booking',
+    list.includes('href="inbox-facebook.html?c=FBC-0002"') && list.includes('href="inbox-whatsapp.html?c=WAC-0001"')
+      && list.includes('href="inbox-website-forms.html?id=WEB-0003"') && list.includes('href="inbox-bookings.html?id=BKG-0002"'), '');
+  ok('   ...a booking row shows its date, service, vehicle, source and real status',
+    list.includes('For 12 Nov, 10:00 · Oil change · Toyota Axio · via Website') && /inb-status--confirmed">Confirmed</.test(list), '');
   ok('   ...the WhatsApp phone is shown, and a New enquiry is marked New (no unread number invented)',
     list.includes('+8801711000001') && /inb-badge--new[^>]*>New</.test(list), '');
   check('no channel shows a "not connected" note', el('inbNotes').innerHTML, '');
-  check('the footer counts every channel', el('inbCount').textContent, '5 of 5 conversations');
-  check('each channel chip shows its own count (unread, or new enquiries)', [el('inbCountFacebook').textContent, el('inbCountWhatsApp').textContent, el('inbCountWebsite').textContent], ['1', '1', '1']);
+  check('the footer counts every channel', el('inbCount').textContent, '7 of 7 conversations');
+  check('each channel chip shows its own count (unread, new enquiries, new bookings)',
+    [el('inbCountFacebook').textContent, el('inbCountWhatsApp').textContent, el('inbCountWebsite').textContent, el('inbCountBookings').textContent], ['1', '1', '1', '1']);
   el('inbStatus').value = 'unread'; el('inbStatus').dispatch('change');
   await tick(60);
   ok('a status filter re-queries the Worker', msgCalls(fetch.calls).slice(-1)[0].path.includes('unread=1'), msgCalls(fetch.calls).slice(-1)[0].path);
@@ -266,22 +294,24 @@ console.log('\n-- 5. the page --');
 
 console.log('\n-- 6. failures --');
 {
-  const fetch = api({ failPaths: ['/messenger/conversations', '/whatsapp/conversations', '/website-forms'] });
+  const fetch = api({ failPaths: ['/messenger/conversations', '/whatsapp/conversations', '/website-forms', '/bookings'] });
   const { h, el } = page('inbox-conversations', 'js/inbox-conversations.js', [], { fetch, plantDemo: true });
   h.fireReady();
   await tick(80);
   ok('every channel failing shows one error with Retry, and lists nothing', /could not be loaded/.test(el('inbState').innerHTML) && /data-retry/.test(el('inbState').innerHTML) && el('inbList').hidden, el('inbState').innerHTML);
   check('   ...with no per-channel notes on top of it', el('inbNotes').innerHTML, '');
 }
-for (const [down, others] of [['/messenger/conversations', ['whatsapp', 'website']], ['/whatsapp/conversations', ['facebook', 'website']], ['/website-forms', ['facebook', 'whatsapp']]]) {
+for (const [down, others] of [['/messenger/conversations', ['whatsapp', 'website', 'bookings']], ['/whatsapp/conversations', ['facebook', 'website', 'bookings']],
+  ['/website-forms', ['facebook', 'whatsapp', 'bookings']], ['/bookings', ['facebook', 'whatsapp', 'website']]]) {
   const fetch = api({ failPaths: [down] });
   const { h, el } = page('inbox-conversations', 'js/inbox-conversations.js', [], { fetch });
   h.fireReady();
   await tick(80);
   const list = el('inbList').innerHTML;
-  const name = { '/messenger/conversations': 'Facebook', '/whatsapp/conversations': 'WhatsApp', '/website-forms': 'Website' }[down];
+  const name = { '/messenger/conversations': 'Facebook', '/whatsapp/conversations': 'WhatsApp', '/website-forms': 'Website', '/bookings': 'Bookings' }[down];
   ok(`${name} failing: the other channels are still listed`, !el('inbList').hidden && others.every(o => list.includes(`inb-plat--${o}`)) && !list.includes(`inb-plat--${name.toLowerCase()}`), list.slice(0, 200));
-  ok(`   ...and a note says ${name} could not be loaded, with Retry`, new RegExp(`${name} conversations could not be loaded`).test(el('inbNotes').innerHTML) && /data-retry/.test(el('inbNotes').innerHTML), el('inbNotes').innerHTML);
+  const said = name === 'Bookings' ? 'Booking requests' : `${name} conversations`;
+  ok(`   ...and a note says ${name} could not be loaded, with Retry`, new RegExp(`${said} could not be loaded`).test(el('inbNotes').innerHTML) && /data-retry/.test(el('inbNotes').innerHTML), el('inbNotes').innerHTML);
 }
 {
   // The channel and status filters re-read only what they need, through the existing routes.
@@ -298,10 +328,21 @@ for (const [down, others] of [['/messenger/conversations', ['whatsapp', 'website
   check('Website + Resolved asks the Website route twice (Confirmed, Rejected) and nothing else',
     asked.map(p => p.replace(/\?.*status=([A-Za-z]+).*/, ' $1')), ['/website-forms Confirmed', '/website-forms Rejected']);
   check('   ...and lists the one Confirmed enquiry', [...el('inbList').innerHTML.matchAll(/id=(WEB-\d+)/g)].map(m => m[1]), ['WEB-0002']);
+  IC._state.channel = 'Bookings'; IC._state.status = 'Open';
+  const b4 = fetch.calls.length;
+  await IC.load();
+  check('Bookings + Open asks the bookings route once per status (New, Pending, Confirmed, Rescheduled) and nothing else',
+    fetch.calls.slice(b4).map(c => c.path.replace(/\?.*status=([A-Za-z]+).*/, ' $1')),
+    ['/bookings New', '/bookings Pending', '/bookings Confirmed', '/bookings Rescheduled']);
+  check('   ...and lists the New and the Confirmed booking', [...el('inbList').innerHTML.matchAll(/id=(BKG-\d+)/g)].map(m => m[1]), ['BKG-0002', 'BKG-0001']);
+  IC._state.status = 'Resolved';
+  await IC.load();
+  check('   ...a Confirmed booking is not Resolved: nothing listed, the empty state shown',
+    [IC._state.rows.map(r => r.id), el('inbList').hidden, /No conversations match/.test(el('inbState').innerHTML)], [[], true, true]);
   IC._state.channel = 'all'; IC._state.status = ''; IC._state.q = 'karim';
   await IC.load();
   check('search reaches every channel and finds the WhatsApp customer', [...el('inbList').innerHTML.matchAll(/(?:c|id)=([A-Z]+-\d+)/g)].map(m => m[1]), ['WAC-0001']);
-  ok('   ...every channel route was asked with q=karim', ['/messenger/conversations', '/whatsapp/conversations', '/website-forms'].every(p => fetch.calls.some(c => c.path.startsWith(p) && c.path.includes('q=karim'))), '');
+  ok('   ...every channel route was asked with q=karim', ['/messenger/conversations', '/whatsapp/conversations', '/website-forms', '/bookings'].every(p => fetch.calls.some(c => c.path.startsWith(p) && c.path.includes('q=karim'))), '');
 }
 {
   const fetch = api();

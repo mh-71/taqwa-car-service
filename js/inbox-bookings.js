@@ -421,6 +421,11 @@ const InboxBookings = (() => {
     Storage.ready(() => {
       load();
       if (Storage.isApi()) { loadStaff(); startPolling(); }
+      // A deep link from All Conversations (?id=BKG-0001) opens that booking,
+      // as the other inboxes open theirs. The id is checked before use and the
+      // booking is read through the existing detail route.
+      const wanted = new URLSearchParams(location.search || '').get('id');
+      if (Storage.isApi() && wanted && /^BKG-\d{1,10}$/.test(wanted)) open(wanted);
     });
   }
 
