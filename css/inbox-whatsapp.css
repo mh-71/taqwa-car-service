@@ -54,6 +54,17 @@
 [data-page="inbox-whatsapp"] .wa-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
 [data-page="inbox-whatsapp"] .wa-search .input { width: 100%; padding-left: 36px; height: 38px; }
 [data-page="inbox-whatsapp"] .wa-listbar .select { height: 38px; }
+/* Status filter buttons, side by side above the inbox (the same design as Facebook and Website Forms) */
+[data-page="inbox-whatsapp"] .wa-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+[data-page="inbox-whatsapp"] .wa-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--text-2); font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+[data-page="inbox-whatsapp"] .wa-chip:hover { border-color: var(--amber); }
+[data-page="inbox-whatsapp"] .wa-chip.is-active { border-color: var(--amber); color: var(--amber-text); background: var(--amber-soft); }
+[data-page="inbox-whatsapp"] .wa-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+[data-page="inbox-whatsapp"] .wa-chip__n { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--paper); font-size: .72rem; text-align: center; }
+[data-page="inbox-whatsapp"] .wa-chip__n:empty { display: none; }
 [data-page="inbox-whatsapp"] .wa-list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; }
 [data-page="inbox-whatsapp"] .wa-row {
   display: flex; gap: 10px; width: 100%; padding: 10px; border: 0; border-radius: 10px; background: none;

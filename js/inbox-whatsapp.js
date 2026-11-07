@@ -186,9 +186,19 @@ const InboxWhatsApp = (() => {
     $('waList').innerHTML = state.conversations.map((c) => rowHtml(c, state.selectedId)).join('');
     $('waList').hidden = false;
     $('waListMore').hidden = state.conversations.length >= state.total;
+    renderCounts();
     const unread = state.summary ? state.summary.unreadConversations : 0;
     $('waUnreadTotal').hidden = !unread;
     $('waUnreadTotal').textContent = unread ? `${unread} unread` : '';
+  }
+
+  /** Each status button's count, from the list route's summary (every conversation). */
+  function renderCounts() {
+    const s = state.summary || {};
+    document.querySelectorAll('.wa-chip [data-count]').forEach((el) => {
+      const n = s[el.dataset.count];
+      el.textContent = Number.isFinite(n) ? String(n) : '';
+    });
   }
 
   async function loadList({ append = false, quiet = false } = {}) {
@@ -447,7 +457,15 @@ const InboxWhatsApp = (() => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => { state.q = $('waSearch').value; loadList(); }, 300);
     });
-    $('waStatus').addEventListener('change', () => { state.filter = $('waStatus').value; loadList(); });
+    // The status buttons: the same filter values the dropdown had ('', unread, Open, Pending, Resolved, none).
+    document.querySelectorAll('.wa-chip').forEach((chip) => chip.addEventListener('click', () => {
+      state.filter = chip.dataset.filter;
+      document.querySelectorAll('.wa-chip').forEach((c) => {
+        c.classList.toggle('is-active', c === chip);
+        c.setAttribute('aria-pressed', String(c === chip));
+      });
+      loadList();
+    }));
     $('waList').addEventListener('click', (ev) => { const b = ev.target.closest('[data-id]'); if (b) select(b.dataset.id); });
     $('waListMore').addEventListener('click', () => loadList({ append: true }));
     $('waListState').addEventListener('click', (ev) => { if (ev.target.closest('[data-retry-list]')) loadList(); });
