@@ -37,16 +37,16 @@
 
   <div id="page-content">
 
-    <!-- All Conversations. Filled in by js/inbox-conversations.js. Facebook Messenger is the one
-         connected channel: its conversations are read from the workshop database
-         (GET /api/messenger/conversations). WhatsApp and Website Forms are not connected, so they
-         show that plainly and list nothing; no sample conversation is ever shown here. -->
+    <!-- All Conversations. Filled in by js/inbox-conversations.js from the workshop database:
+         Facebook (GET /api/messenger/conversations), WhatsApp (GET /api/whatsapp/conversations)
+         and Website enquiries (GET /api/website-forms), merged newest first. Each row opens the
+         conversation in its own inbox, where it is answered. No sample conversation is ever shown. -->
 
     <div class="inb-head">
       <span class="inb-head__icon"><svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg></span>
       <div class="inb-head__text">
         <h2 class="inb-head__title">All Conversations</h2>
-        <p class="page-subtitle">Customer conversations from every connected channel, newest first.</p>
+        <p class="page-subtitle">Facebook, WhatsApp and website enquiries in one list, newest first. Open one to reply from its own inbox.</p>
       </div>
     </div>
 
@@ -54,15 +54,16 @@
       <div class="inb-channels" role="group" aria-label="Filter by channel">
         <button type="button" class="inb-chip is-active" data-channel="all" aria-pressed="true">All</button>
         <button type="button" class="inb-chip" data-channel="Facebook" aria-pressed="false">Facebook <span class="inb-chip__n" id="inbCountFacebook"></span></button>
-        <button type="button" class="inb-chip" data-channel="WhatsApp" aria-pressed="false">WhatsApp <span class="inb-chip__tag">Not connected</span></button>
-        <button type="button" class="inb-chip" data-channel="Website" aria-pressed="false">Website <span class="inb-chip__tag">Not connected</span></button>
+        <button type="button" class="inb-chip" data-channel="WhatsApp" aria-pressed="false">WhatsApp <span class="inb-chip__n" id="inbCountWhatsApp"></span></button>
+        <button type="button" class="inb-chip" data-channel="Website" aria-pressed="false">Website <span class="inb-chip__n" id="inbCountWebsite"></span></button>
       </div>
       <div class="inb-tools">
         <label class="inb-search">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-          <input type="search" class="input" id="inbSearch" placeholder="Search name or message&#8230;" aria-label="Search by customer name or message" maxlength="100" autocomplete="off">
+          <input type="search" class="input" id="inbSearch" placeholder="Search name, phone or message&#8230;" aria-label="Search by customer name, phone number or message" maxlength="100" autocomplete="off">
         </label>
-        <select class="select" id="inbStatus" aria-label="Filter by status">
+        <select class="select" id="inbStatus" aria-label="Filter by status"
+                title="For website enquiries: Open and Unread = New, Pending = Contacted, Resolved = Confirmed or Rejected">
           <option value="">All statuses</option>
           <option value="unread">Unread</option>
           <option value="Open">Open</option>
