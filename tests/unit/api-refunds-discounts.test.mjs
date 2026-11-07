@@ -139,6 +139,22 @@ const fig = (o) => [o.paid, o.postDiscount, o.writtenOff, o.refunded, o.due, o.s
 const reason = (r) => [r.status, r.body?.error?.reason ?? r.body?.error?.code];
 
 /* ============================================================
+   0. The migration itself
+   ============================================================ */
+console.log('\n=== 0. Migration 0026 ===');
+{
+  const sql = readFileSync(join(ROOT, 'migrations', '0026_refunds_discounts.sql'), 'utf8').replace(/--.*$/gm, '');
+  // Cloudflare D1 allows far fewer compound-SELECT terms than SQLite's default
+  // of 500 that node:sqlite uses, so a long UNION ALL passes here and fails in
+  // production ("too many terms in compound SELECT"). This migration uses none.
+  ok_('no compound SELECT (UNION / INTERSECT / EXCEPT): D1 rejects long ones', !/\b(UNION|INTERSECT|EXCEPT)\b/i.test(sql));
+  ok_('additive only: no DROP, DELETE FROM or UPDATE ... SET (ON DELETE RESTRICT is a foreign-key rule)',
+    !/\bDROP\s|\bDELETE\s+FROM\b|\bUPDATE\s+\w+\s+SET\b/i.test(sql));
+  ok_('the two ALTERs come last, after everything that can fail',
+    sql.trimEnd().split(';').filter((x) => x.trim()).slice(-2).every((x) => /^\s*ALTER TABLE invoices ADD COLUMN/.test(x)));
+}
+
+/* ============================================================
    A. Refunds
    ============================================================ */
 console.log('\n=== A. Refunds ===');
