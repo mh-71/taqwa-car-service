@@ -179,6 +179,119 @@
       </li>`).join('')}</ul>`;
   }
 
+  /* ---------- Customer CRM overview ----------
+     The same data and rules as Service Reminders (js/crm-reminders.js) and
+     its follow-up card, so the numbers here always match those pages:
+       - only Active vehicles with a real YYYY-MM-DD next service date;
+       - "today" is the Asia/Dhaka calendar day (as the Worker uses);
+       - every count is of distinct vehicles / customers, never repeated.
+     Upcoming Reminders   next service after today, up to 30 days ahead
+                          (Service Reminders' "Upcoming", due by today+30)
+     Overdue Services     next service before today
+     Vehicles Due         next service today or within the next 7 days
+     Customers to Follow  distinct customers with an Open follow-up due today
+                          or earlier (GET /api/follow-ups)
+     Online and offline the vehicle cards use the data the app already holds
+     (the offline copy when offline). Follow-ups are read only online; offline
+     that card says so. Without the workshop database, or without access, a
+     card shows "—" and why -- never a guessed number. */
+
+  let dhakaFormat = null;
+  try {
+    dhakaFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch (e) { dhakaFormat = null; }
+  /** The Dhaka calendar day of an instant, YYYY-MM-DD. */
+  function dhakaDay(at = new Date()) {
+    if (dhakaFormat) return dhakaFormat.format(at);
+    return new Date(at.getTime() + 6 * 3600 * 1000).toISOString().slice(0, 10);   // UTC+6, no DST
+  }
+  /** A real calendar date written as YYYY-MM-DD. */
+  function isDateOnly(v) {
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+    const [y, m, d] = v.split('-').map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d));
+    return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+  }
+  const plusDays = (day, n) => {
+    const [y, m, d] = day.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  };
+
+  /** The three vehicle counts, each of distinct vehicles. Pure. */
+  function crmVehicleCounts(vehicles, today) {
+    const in30 = plusDays(today, 30), in7 = plusDays(today, 7);
+    const upcoming = new Set(), overdue = new Set(), due7 = new Set();
+    for (const v of vehicles || []) {
+      if (!v || v.status !== 'Active' || !isDateOnly(v.nextServiceDate)) continue;
+      const next = v.nextServiceDate;
+      if (next < today) overdue.add(v.id);
+      if (next > today && next <= in30) upcoming.add(v.id);
+      if (next >= today && next <= in7) due7.add(v.id);
+    }
+    return { upcoming: upcoming.size, overdue: overdue.size, due7: due7.size, in30, in7 };
+  }
+
+  /** Distinct customers with an Open follow-up due today or earlier (Service Reminders' rule). Pure. */
+  function crmFollowUpCustomers(followUps, today) {
+    const people = new Set();
+    for (const f of followUps || []) {
+      if (!f || f.status !== 'Open' || !isDateOnly(f.dueDate) || f.dueDate > today) continue;
+      if (f.customerId) people.add(f.customerId);
+    }
+    return people.size;
+  }
+
+  function setCrmCard(id, value, sub) {
+    const v = document.getElementById(id), n = document.getElementById(`${id}Sub`);
+    if (v) v.innerHTML = value === null ? '<span aria-hidden="true">—</span>' : Utils.esc(String(value));
+    if (n) n.textContent = sub;
+  }
+
+  function renderCrmVehicles(today) {
+    const live = Storage.isApi() || (typeof Storage.isOffline === 'function' && Storage.isOffline());
+    if (!live) {
+      for (const id of ['crmUpcoming', 'crmOverdue', 'crmDue7']) setCrmCard(id, null, 'Needs the workshop database');
+      return;
+    }
+    if (typeof Storage.isDenied === 'function' && Storage.isDenied('vehicles')) {
+      for (const id of ['crmUpcoming', 'crmOverdue', 'crmDue7']) setCrmCard(id, null, 'Your role does not include vehicles');
+      return;
+    }
+    const c = crmVehicleCounts(Storage.getData('vehicles'), today);
+    setCrmCard('crmUpcoming', c.upcoming, 'Due in the next 30 days');
+    setCrmCard('crmOverdue', c.overdue, 'Next service date has passed');
+    setCrmCard('crmDue7', c.due7, `Vehicle${c.due7 === 1 ? '' : 's'} due today or in the next 7 days`);
+    // Each card opens Service Reminders with the matching filter already set.
+    const up = document.getElementById('crmUpcomingCard');
+    if (up) up.href = `pages/crm-reminders.html?status=Upcoming&dueBy=${c.in30}`;
+    const due = document.getElementById('crmDue7Card');
+    if (due) due.href = `pages/crm-reminders.html?dueBy=${c.in7}`;
+  }
+
+  let followSeq = 0;
+  async function renderCrmFollowUps(today) {
+    const my = ++followSeq;
+    if (typeof Storage.isOffline === 'function' && Storage.isOffline()) { setCrmCard('crmFollowUp', null, 'Unavailable offline'); return; }
+    if (!Storage.isApi()) { setCrmCard('crmFollowUp', null, 'Needs the workshop database'); return; }
+    setCrmCard('crmFollowUp', null, 'Loading…');
+    let res;
+    try { res = await Storage.load('followUps'); } catch (e) { res = { ok: false }; }
+    if (my !== followSeq) return;
+    if (!res || !res.ok) {
+      const denied = res && (res.status === 403 || res.code === 'forbidden');
+      setCrmCard('crmFollowUp', null, denied ? 'Your role does not include follow-ups' : 'Could not be loaded');
+      return;
+    }
+    const n = crmFollowUpCustomers(Storage.getData('followUps'), today);
+    setCrmCard('crmFollowUp', n, n ? 'Follow-up due today or overdue' : 'No follow-up due today or overdue');
+  }
+
+  function renderCrmOverview(now = new Date()) {
+    const today = dhakaDay(now);
+    renderCrmVehicles(today);
+    renderCrmFollowUps(today);
+  }
+
   /* ---------- init ---------- */
 
   Storage.ready(() => {
@@ -187,6 +300,10 @@
     renderRevenueChart();
     renderRecentJobs();
     renderTodaysAppointments();
+    renderCrmOverview();
   });
+
+  // For the unit suite: the pure counting rules.
+  if (typeof globalThis !== 'undefined') globalThis.DashboardCrm = { crmVehicleCounts, crmFollowUpCustomers, dhakaDay, renderCrmOverview };
 
 })();

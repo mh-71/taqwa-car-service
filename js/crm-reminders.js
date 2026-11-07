@@ -581,8 +581,26 @@ const CrmReminders = (() => {
     });
   }
 
+  /**
+   * Filters handed over in the address (the Dashboard's CRM cards link here):
+   * ?status=Upcoming|Due Today|Overdue and ?dueBy=YYYY-MM-DD. Anything else is
+   * ignored, so a bad link simply shows every reminder.
+   */
+  function applyUrlFilters() {
+    const params = new URLSearchParams((typeof location !== 'undefined' && location.search) || '');
+    const status = params.get('status');
+    if (STATUSES.includes(status)) state.status = status;
+    const dueBy = params.get('dueBy');
+    if (isDateOnly(dueBy)) {
+      state.dueBy = dueBy;
+      const input = $('crrDueBy');
+      if (input) input.value = dueBy;
+    }
+  }
+
   Storage.ready(outcome => {
     bindEvents();
+    applyUrlFilters();
     render(outcome);
     if (!outcome || outcome.mode !== 'locked') loadFollowUps();
   });
