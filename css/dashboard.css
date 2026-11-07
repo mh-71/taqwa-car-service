@@ -527,24 +527,16 @@
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 1.15;
-  color: var(--text-3);
+  color: var(--text);
 }
+/* The "—" shown before a figure is known (loading, offline, no access) stays muted. */
+[data-page="dashboard"] .crm-card__value > span[aria-hidden="true"] { color: var(--text-3); }
 [data-page="dashboard"] .crm-card__sub { font-size: .75rem; color: var(--text-3); }
 [data-page="dashboard"] .crm-card__row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 4px 10px;
-}
-[data-page="dashboard"] .crm-card__soon {
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  font-size: .66rem;
-  font-weight: 600;
-  color: var(--text-2);
-  white-space: nowrap;
 }
 @media (max-width: 1359px) {
   [data-page="dashboard"] .crm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }

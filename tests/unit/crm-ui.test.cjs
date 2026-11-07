@@ -133,17 +133,20 @@ const overview = (index.match(/<section class="card crm-overview"[\s\S]*?<\/sect
 ok('the Dashboard has a Customer CRM Overview section', /<h2 id="crmOverviewTitle">Customer CRM Overview<\/h2>/.test(overview), '');
 ok('   ...between the KPI cards and Revenue Overview',
   index.indexOf('id="statsGrid"') < index.indexOf('crm-overview') && index.indexOf('crm-overview') < index.indexOf('Revenue Overview'), '');
-const cards = [...overview.matchAll(/<a class="crm-card crm-card--\w+" href="([^"]+)">[\s\S]*?<span class="crm-card__title">([^<]+)<\/span>[\s\S]*?<span class="crm-card__value">([\s\S]*?)<\/span><span class="crm-card__soon">([^<]+)<\/span>/g)]
-  .map(m => ({ href: m[1], title: m[2], value: m[3], soon: m[4] }));
+const cards = [...overview.matchAll(/<a class="crm-card crm-card--\w+" id="(\w+)Card" href="([^"]+)">[\s\S]*?<span class="crm-card__title">([^<]+)<\/span>[\s\S]*?<span class="crm-card__value" id="(\w+)">([\s\S]*?)<\/span><\/span>\s*<span class="crm-card__sub" id="(\w+)Sub">([^<]+)<\/span>/g)]
+  .map(m => ({ card: m[1], href: m[2], title: m[3], id: m[4], value: m[5], sub: m[7] }));
 check('   ...with the four cards', cards.map(c => c.title), ['Upcoming Reminders', 'Overdue Services', 'Customers to Follow Up', 'Vehicles Due for Service']);
-ok('   ...each showing a "—" placeholder and "Coming soon", never a number',
-  cards.length === 4 && cards.every(c => c.value === '<span aria-hidden="true">—</span>' && c.soon === 'Coming soon'), JSON.stringify(cards));
-ok('   ...with no digit anywhere in the section\'s visible text',
+check('   ...each wired by id for dashboard.js', cards.map(c => [c.card, c.id]),
+  [['crmUpcoming', 'crmUpcoming'], ['crmOverdue', 'crmOverdue'], ['crmFollowUp', 'crmFollowUp'], ['crmDue7', 'crmDue7']]);
+ok('   ...each starting as a "—" and "Loading…" (no number before the data is read), no longer "Coming soon"',
+  cards.length === 4 && cards.every(c => c.value === '<span aria-hidden="true">—</span>' && c.sub === 'Loading…') && !/Coming soon|future release|Nothing is calculated/.test(overview), JSON.stringify(cards));
+ok('   ...with no digit anywhere in the section\'s static visible text',
   !/\d/.test(overview.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ')), '');
-ok('   ...each card opening a CRM page that exists', cards.every(c => fs.existsSync(path.join(ROOT, c.href))), JSON.stringify(cards.map(c => c.href)));
-ok('   ...and saying nothing is calculated or sent yet', /Nothing is calculated or sent yet\./.test(overview), '');
-const dash = read('js/dashboard.js');
-ok('dashboard.js does not compute anything for the CRM (untouched)', !/crm|nextServiceDate|follow/i.test(dash), '');
+ok('   ...each card opening a CRM page that exists', cards.every(c => fs.existsSync(path.join(ROOT, c.href.split('?')[0]))), JSON.stringify(cards.map(c => c.href)));
+const dash = read('js/dashboard.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+ok('dashboard.js reads the CRM data only through Storage (no fetch, no browser storage)',
+  /Storage\.getData\('vehicles'\)/.test(dash) && /Storage\.load\('followUps'\)/.test(dash) && !/fetch\(|localStorage|sessionStorage|Api\./.test(dash), '');
+ok('   ...and writes nothing', !/Storage\.(create|update|remove|action|saveData|addData|updateData|deleteData)\b/.test(dash), '');
 ok('the existing Dashboard sections are all still there',
   ['id="statsGrid"', 'Revenue Overview', 'id="revChart"', "Today's Appointments", 'id="apptList"', 'Recent Service Jobs', 'id="recentJobsBody"']
     .every(s => index.includes(s)), '');
