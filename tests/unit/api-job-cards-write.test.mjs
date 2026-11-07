@@ -1086,7 +1086,7 @@ for (const [path, method] of [
   ok_('health advertises the three new routes',
     ['POST /api/job-cards', 'PUT /api/job-cards/:id', 'DELETE /api/job-cards/:id']
       .every((r) => routes.includes(r)), routes);
-  check('   ...and the registry is 190 routes', routes.length, 190);
+  check('   ...and the registry is 198 routes (0026 added four refund and four discount routes)', routes.length, 198);
 }
 
 console.log(`\nJob card writes unit: ${pass} passed, ${fail} failed`);

@@ -31,7 +31,7 @@
 
    Needs node:sqlite (Node 22.5+). Without it the suite says SKIPPED and
    checks nothing -- it never reports a pass it did not earn. */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { recomputeInvoice } from '../../src/routes/payments.js';
@@ -112,10 +112,10 @@ loud('   ...and names no job card', !/job_card/.test(NEW.sql), NEW.sql);
    ------------------------------------------------------------ */
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON;');
-db.exec(migration('0001_initial_schema.sql'));
-db.exec(migration('0002_invoice_adjustments.sql'));
-db.exec(migration('0003_job_card_discount_type.sql'));
-db.exec(migration('0004_job_card_discount_rate.sql'));
+// Every migration, as Production has them: since 0026 the recompute also
+// reads post-completion discounts and refunds.
+for (const f of readdirSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'migrations'))
+  .filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort()) db.exec(migration(f));
 db.exec(`INSERT INTO customers (id, name, phone, created_at) VALUES ('CUS-P', 'Prop', '01900000000', 't');
          INSERT INTO vehicles (id, customer_id, reg_no, brand, model, created_at)
               VALUES ('VEH-P', 'CUS-P', 'PROP-1', 'B', 'M', 't');`);

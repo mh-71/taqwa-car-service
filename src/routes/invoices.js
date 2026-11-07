@@ -85,7 +85,7 @@ const ID_CHUNK = 500;
 const PARENT_COLUMNS = `
   id, job_card_id, customer_id, vehicle_id, date,
   labour_cost, discount, tax_rate, subtotal, tax, total, paid, due,
-  written_off, status, notes, created_at, updated_at
+  written_off, post_discount, refunded, status, notes, created_at, updated_at
 `;
 
 // Child rows carry invoice_id so a batched result can be grouped by parent.
@@ -158,6 +158,10 @@ function toRecord(row, services, partsUsed) {
     paid: row.paid,                 // stored, never derived from payments
     // 0002: the Active write-offs' total, cached like paid. Not cash.
     writtenOff: row.written_off ?? 0,
+    // 0026, cached like paid. postDiscount is not cash: payable = total - postDiscount.
+    // refunded is cash given back; it never raises due. Net retained = paid - refunded.
+    postDiscount: row.post_discount ?? 0,
+    refunded: row.refunded ?? 0,
     due: row.due,                   // stored, never derived from payments
     status: row.status,             // stored, never re-derived from paid/total
 
@@ -384,6 +388,8 @@ const SERVER_OWNED = {
   total: '`total` is copied from the job card.',
   paid: '`paid` starts at 0 and afterwards follows the invoice\u2019s payments.',
   writtenOff: '`writtenOff` follows the invoice\u2019s write-offs. Use /api/invoice-adjustments.',
+  postDiscount: '`postDiscount` follows the invoice\u2019s post-completion discounts. Use /api/invoice-discounts.',
+  refunded: '`refunded` follows the invoice\u2019s refunds. Use /api/invoice-refunds.',
   due: '`due` is calculated from the total, the payments and the write-offs.',
   status: '`status` is derived from the amount paid. Use the void operation to cancel an invoice.',
 };
@@ -880,9 +886,14 @@ export async function voidInvoice(request, env, rawId) {
   const at = nowIso();
   const statements = [
     // THE GATE.
+    // 0026: not while an Active refund stands -- voiding releases the
+    // invoice's payments as advances, and cash already given back would then
+    // be counted as credit twice. Reverse the refund first.
     env.DB.prepare(
       `UPDATE invoices SET status = '${VOID}', updated_at = ?2
-        WHERE id = ?1 AND status <> '${VOID}'`
+        WHERE id = ?1 AND status <> '${VOID}'
+          AND NOT EXISTS (SELECT 1 FROM invoice_refunds
+                           WHERE invoice_id = ?1 AND status <> '${VOID}')`
     ).bind(id.value, at),
     // :202-209 — Finding 7. One statement for every linked Active payment:
     // the link is released, the job card inherited only where the payment has
@@ -918,6 +929,15 @@ export async function voidInvoice(request, env, rawId) {
   }
 
   if ((results[0]?.meta?.changes ?? 0) !== 1) {
+    const refund = await env.DB.prepare(
+      `SELECT id FROM invoice_refunds WHERE invoice_id = ?1 AND status <> '${VOID}' LIMIT 1`
+    ).bind(id.value).first();
+    if (refund) {
+      return conflict(
+        'This invoice has an active refund. Reverse the refund before voiding the invoice.',
+        { reason: 'invoice_has_refunds', refundId: refund.id }
+      );
+    }
     return conflict('This invoice was changed by another request. Reload it and try again.',
       { reason: 'concurrent_modification' });
   }
@@ -976,6 +996,18 @@ export async function deleteInvoice(request, env, rawId) {
   if (adjustment) {
     return conflict(
       'This invoice has write-offs recorded against it and must be kept for the audit trail.',
+      { reason: 'invoice_has_adjustments' }
+    );
+  }
+  // 0026 — refunds and post-completion discounts, Active or reversed, too.
+  const moneyRecord = await env.DB.prepare(
+    `SELECT 'refunds' AS kind FROM invoice_refunds WHERE invoice_id = ?1
+     UNION ALL SELECT 'post-completion discounts' FROM invoice_discounts WHERE invoice_id = ?1
+     LIMIT 1`
+  ).bind(id.value).first();
+  if (moneyRecord) {
+    return conflict(
+      `This invoice has ${moneyRecord.kind} recorded against it and must be kept for the audit trail.`,
       { reason: 'invoice_has_adjustments' }
     );
   }

@@ -228,10 +228,10 @@ console.log('\n-- 3. The recompute is arithmetic in SQL --');
     /paid\s*= MIN\(total, MAX\(0, \(SELECT COALESCE\(SUM\(amount\), 0\)/.test(rec.sql), rec.sql);
   ok_('   ...counting only this invoice\'s non-Void payments',
     /WHERE invoice_id = \?1 AND status <> 'Void'/.test(rec.sql), rec.sql);
-  ok_('   ...due is total minus paid, floored at zero',
-    /due\s*= MAX\(total - MIN\(total/.test(rec.sql), rec.sql);
-  ok_('   ...status is Paid when a positive total is covered',
-    /WHEN total > 0 AND MIN\(total[\s\S]*?>= total THEN 'Paid'/.test(rec.sql), rec.sql);
+  ok_('   ...due is the payable amount (total minus post-completion discounts, 0026) minus paid, floored at zero',
+    /due\s*= MAX\(\(total - MIN\(total, MAX\(0, \(SELECT COALESCE\(SUM\(amount\), 0\)\s*FROM invoice_discounts[\s\S]*?\)\)\)\) - MIN\(total/.test(rec.sql), rec.sql);
+  ok_('   ...status is Paid when a positive total is covered (the payable amount, 0026)',
+    /WHEN total > 0 AND MIN\(total[\s\S]*?>= \(total - MIN\(total[\s\S]*?THEN 'Paid'/.test(rec.sql), rec.sql);
   ok_('   ...Partial when anything is paid', /> 0\s*THEN 'Partial'/.test(rec.sql), rec.sql);
   ok_('   ...and Unpaid otherwise', /ELSE 'Unpaid'/.test(rec.sql), rec.sql);
   ok_('A VOID INVOICE IS NEVER RECOMPUTED — its figures are frozen',
@@ -701,11 +701,11 @@ for (const [path, method, body] of [
     ['POST /api/payments', 'PUT /api/payments/:id', 'DELETE /api/payments/:id',
       'POST /api/payments/:id/void', 'POST /api/payments/:id/link'].every((r) => routes.includes(r)),
     routes);
-  check('   ...and the registry is 190 routes', routes.length, 190);
+  check('   ...and the registry is 198 routes (0026 added four refund and four discount routes)', routes.length, 198);
   ok_('   ...with no PUT or DELETE on either action path',
     !routes.some((r) => /\/(void|link)$/.test(r) && !r.startsWith('POST ')), routes);
-  check('   ...forty-one action routes in all (0025 returning and cancelling an assignment; 0024 a maintenance status; 0023 changing a booking status and adding a note; 0021 reactivating equipment; 0002 added reversing a write-off; 0005 four follow-up actions; 0006 three task actions; 0007 five estimate actions; 0009 setting an account password; 0011 approving and rejecting leave; 0013 retiring a tool; 0014 four per-conversation Messenger routes; 0015 five per-conversation WhatsApp routes; 0017 marking a notification read or unread, 0020 resolving a sync conflict and finalizing or discarding an invoice draft)',
-    routes.filter((r) => /\/:id\/[a-z-]+$/.test(r)).length, 41);
+  check('   ...forty-three action routes in all (0026 reversing a refund and a post-completion discount; 0025 returning and cancelling an assignment; 0024 a maintenance status; 0023 changing a booking status and adding a note; 0021 reactivating equipment; 0002 added reversing a write-off; 0005 four follow-up actions; 0006 three task actions; 0007 five estimate actions; 0009 setting an account password; 0011 approving and rejecting leave; 0013 retiring a tool; 0014 four per-conversation Messenger routes; 0015 five per-conversation WhatsApp routes; 0017 marking a notification read or unread, 0020 resolving a sync conflict and finalizing or discarding an invoice draft)',
+    routes.filter((r) => /\/:id\/[a-z-]+$/.test(r)).length, 43);
 }
 {
   const res = await call('/api/payments/PAY-0001/unlink', { DB: stubDB() }, 'POST', {});

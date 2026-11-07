@@ -364,6 +364,11 @@ console.log('\n-- 11. Routing --');
     // 0002: write-offs -- list, create, detail and the void action; never PUT or DELETE.
     'GET /api/invoice-adjustments', 'POST /api/invoice-adjustments',
     'GET /api/invoice-adjustments/:id', 'POST /api/invoice-adjustments/:id/void',
+    // 0026: refunds and post-completion discounts -- the same shape: never PUT or DELETE.
+    'GET /api/invoice-refunds', 'POST /api/invoice-refunds',
+    'GET /api/invoice-refunds/:id', 'POST /api/invoice-refunds/:id/void',
+    'GET /api/invoice-discounts', 'POST /api/invoice-discounts',
+    'GET /api/invoice-discounts/:id', 'POST /api/invoice-discounts/:id/void',
     'GET /api/expenses', 'POST /api/expenses',
     'GET /api/expenses/:id', 'PUT /api/expenses/:id', 'DELETE /api/expenses/:id',
     'GET /api/inventory-transactions', 'POST /api/inventory-transactions',
@@ -432,7 +437,7 @@ console.log('\n-- 11. Routing --');
   const res = await call('/api/nope', { DB: stubDB({ rows: [] }) });
   const body = await res.json();
   check('unknown collection -> 404', res.status, 404);
-  check('404 advertises every route', body.error.available.length, 190);
+  check('404 advertises every route', body.error.available.length, 198);
 }
 
 console.log(`\nGET /api/services unit: ${pass} passed, ${fail} failed`);

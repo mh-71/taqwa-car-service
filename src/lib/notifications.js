@@ -208,6 +208,24 @@ const EVENTS = {
     recordType: 'payment', recordId: d.id,
   }),
 
+  // 0026. Filed against the invoice (record type 'invoice'), so they are seen by
+  // whoever may see invoices -- the same people who see its refunded total.
+  'invoice-refunds.create': async (env, d) => ({
+    key: `refund.created:${d.id}`, type: 'refund.issued', category: 'Finance', priority: 'important',
+    title: 'Refund issued',
+    message: `${money(d.amount)}${d.method ? ` (${d.method})` : ''} refunded to ${(await customerName(env, d.customerId)) || 'a customer'}`
+      + ` on ${d.invoiceId} (${d.id}) by ${d.processedBy}.`,
+    recordType: 'invoice', recordId: d.invoiceId,
+  }),
+
+  'invoice-discounts.create': async (env, d) => ({
+    key: `discount.created:${d.id}`, type: 'discount.given', category: 'Finance',
+    title: 'Post-completion discount given',
+    message: `${money(d.amount)}${d.discountType === 'percent' ? ` (${d.rate}%)` : ''} off ${d.invoiceId} for ${(await customerName(env, d.customerId)) || 'a customer'}`
+      + ` (${d.id}), approved by ${d.approvedBy}.`,
+    recordType: 'invoice', recordId: d.invoiceId,
+  }),
+
   'leave-requests.create': async (env, d) => ({
     key: `leave.created:${d.id}`, type: 'leave.requested', category: 'Staff',
     title: 'Leave request submitted',

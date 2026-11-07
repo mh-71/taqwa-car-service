@@ -66,6 +66,15 @@ import {
   listInvoiceAdjustments, getInvoiceAdjustment,
   createInvoiceAdjustment, voidInvoiceAdjustment,
 } from './routes/invoice-adjustments.js';
+// Refunds and post-completion discounts (0026): like write-offs, each write
+// recomputes the invoice in the same batch, and a reversal is a void action.
+// No update and no remove -- they are never edited or deleted.
+import {
+  listInvoiceRefunds, getInvoiceRefund, createInvoiceRefund, voidInvoiceRefund,
+} from './routes/invoice-refunds.js';
+import {
+  listInvoiceDiscounts, getInvoiceDiscount, createInvoiceDiscount, voidInvoiceDiscount,
+} from './routes/invoice-discounts.js';
 import {
   listExpenses, getExpense, createExpense, updateExpense, deleteExpense,
 } from './routes/expenses.js';
@@ -231,6 +240,16 @@ const COLLECTIONS = {
     list: listInvoiceAdjustments, detail: getInvoiceAdjustment,
     create: createInvoiceAdjustment,
     actions: { void: voidInvoiceAdjustment },
+  },
+  'invoice-refunds': {
+    list: listInvoiceRefunds, detail: getInvoiceRefund,
+    create: createInvoiceRefund,
+    actions: { void: voidInvoiceRefund },
+  },
+  'invoice-discounts': {
+    list: listInvoiceDiscounts, detail: getInvoiceDiscount,
+    create: createInvoiceDiscount,
+    actions: { void: voidInvoiceDiscount },
   },
   expenses: {
     list: listExpenses, detail: getExpense,

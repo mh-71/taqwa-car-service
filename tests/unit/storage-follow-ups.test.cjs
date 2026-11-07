@@ -64,9 +64,11 @@ console.log('-- 1. hydration is untouched --');
   const { ctx, f } = online();
   const r = await ctx.Storage.hydrate();
   check('a live Worker -> api mode', r.mode, 'api');
-  check('COLLECTIONS is still the same twelve, in order', [...ctx.Storage.COLLECTIONS],
+  // 0026 added refunds and post-completion discounts: read with the invoices
+  // they change, so Invoices, Payments, Reports and the Dashboard can use them.
+  check('COLLECTIONS is the same twelve plus the two money records of 0026, in order', [...ctx.Storage.COLLECTIONS],
     ['customers', 'vehicles', 'appointments', 'jobCards', 'services', 'mechanics', 'parts', 'invoices',
-      'payments', 'expenses', 'inventoryTransactions', 'invoiceAdjustments']);
+      'payments', 'expenses', 'inventoryTransactions', 'invoiceAdjustments', 'invoiceRefunds', 'invoiceDiscounts']);
   ok('   ...and hydration never asks for follow-ups', !f.calls.some(c => c.path.startsWith('/follow-up')),
     JSON.stringify(f.calls.map(c => c.path)));
   check('   ...so they read as empty until loaded', ctx.Storage.getData('followUps'), []);

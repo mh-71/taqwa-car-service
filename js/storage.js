@@ -60,7 +60,11 @@ const Storage = (() => {
     'customers', 'vehicles', 'appointments', 'jobCards', 'services',
     'mechanics', 'parts', 'invoices', 'payments', 'expenses',
     'inventoryTransactions',  // stock movement audit trail (added with Inventory module)
-    'invoiceAdjustments'      // invoice write-offs (0002); read-only here, written through action()/create()
+    'invoiceAdjustments',     // invoice write-offs (0002); read-only here, written through action()/create()
+    // 0026: refunds and post-completion discounts. Read-only here and in the
+    // offline copy; written online only, through create()/action() -- the
+    // offline queue (sync.js) has no path for them, so they are refused offline.
+    'invoiceRefunds', 'invoiceDiscounts'
   ];
 
   /**
@@ -74,6 +78,7 @@ const Storage = (() => {
     parts: 'parts', invoices: 'invoices', payments: 'payments',
     expenses: 'expenses', inventoryTransactions: 'inventory-transactions',
     invoiceAdjustments: 'invoice-adjustments',
+    invoiceRefunds: 'invoice-refunds', invoiceDiscounts: 'invoice-discounts',
     followUps: 'follow-ups', followUpContacts: 'follow-up-contacts',
     followUpTasks: 'follow-up-tasks',
     estimates: 'estimates',

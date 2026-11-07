@@ -153,6 +153,7 @@ const PATHS = {
   customers: 'customers', vehicles: 'vehicles', appointments: 'appointments', jobCards: 'job-cards',
   services: 'services', mechanics: 'mechanics', parts: 'parts', invoices: 'invoices', payments: 'payments',
   expenses: 'expenses', inventoryTransactions: 'inventory-transactions', invoiceAdjustments: 'invoice-adjustments',
+  invoiceRefunds: 'invoice-refunds', invoiceDiscounts: 'invoice-discounts',
   tools: 'tools',
 };
 /** What may be created or edited offline (the rest is online-only). Equipment (tools, 0021): add and edit only --

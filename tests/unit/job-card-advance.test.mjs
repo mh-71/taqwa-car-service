@@ -21,7 +21,7 @@
    integration suite's job. Needs node:sqlite (Node 22.5+); says SKIPPED
    without it. */
 import worker from '../../src/index.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,7 +59,7 @@ if (!DatabaseSync) {
   function makeD1() {
     const raw = new DatabaseSync(':memory:');
     raw.exec('PRAGMA foreign_keys = ON;');
-    for (const f of ['0001_initial_schema.sql', '0002_invoice_adjustments.sql', '0003_job_card_discount_type.sql', '0004_job_card_discount_rate.sql']) {
+    for (const f of readdirSync(join(ROOT, 'migrations')).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort() /* every migration, as Production has them (0026 recomputes with refunds/discounts) */) {
       raw.exec(readFileSync(join(ROOT, 'migrations', f), 'utf8'));
     }
     const returnsRows = (sql) => /^\s*(SELECT|WITH)\b/i.test(sql) || /\bRETURNING\b/i.test(sql);

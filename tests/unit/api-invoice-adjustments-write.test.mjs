@@ -19,7 +19,7 @@
    concurrent requests -- is the integration suite's job (section 24).
    Part B needs node:sqlite (Node 22.5+) and says SKIPPED without it. */
 import worker from '../../src/index.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -176,8 +176,8 @@ console.log('\n-- A2. The write is one guarded batch --');
   ok_('   ...guard: the invoice is not Void', /l\.status <> 'Void'/.test(ins.sql), ins.sql);
   ok_('   ...guard: the due the user saw is still the due', /ABS\(l\.due - \?9\) < 0\.005/.test(ins.sql), ins.sql);
   ok_('   ...guard: the amount is no more than the due', /\?4 <= l\.due/.test(ins.sql), ins.sql);
-  ok_('   ...guard: cash + write-offs + this one stay within the total',
-    /l\.pay_sum \+ l\.adj_sum \+ \?4 <= l\.total/.test(ins.sql), ins.sql);
+  ok_('   ...guard: cash + write-offs + post-completion discounts (0026) + this one stay within the total',
+    /l\.pay_sum \+ l\.adj_sum \+ l\.disc_sum \+ \?4 <= l\.total/.test(ins.sql), ins.sql);
   ok_('   ...the balance it checks counts only Active payments and write-offs',
     (ins.sql.match(/status <> 'Void'/g) ?? []).length >= 3, ins.sql);
   ok_('   ...customer, due_before and due_after come from the invoice row, not the body',
@@ -369,7 +369,7 @@ if (!DatabaseSync) {
   function makeD1() {
     const raw = new DatabaseSync(':memory:');
     raw.exec('PRAGMA foreign_keys = ON;');
-    for (const f of ['0001_initial_schema.sql', '0002_invoice_adjustments.sql', '0003_job_card_discount_type.sql', '0004_job_card_discount_rate.sql']) {
+    for (const f of readdirSync(join(ROOT, 'migrations')).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort() /* every migration, as Production has them (0026 recomputes with refunds/discounts) */) {
       raw.exec(readFileSync(join(ROOT, 'migrations', f), 'utf8'));
     }
     const returnsRows = (sql) => /^\s*(SELECT|WITH)\b/i.test(sql) || /\bRETURNING\b/i.test(sql);
