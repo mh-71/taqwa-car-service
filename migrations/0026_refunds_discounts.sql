@@ -154,17 +154,33 @@ INSERT OR IGNORE INTO id_counters (collection, prefix, last_value) VALUES ('invo
 -- Admin needs no rows (full access). Admin and Accountant receive them only
 -- while they still hold invoices.manage (void invoices, write off balances) --
 -- a role the owner has narrowed is not widened. Manager may only see them.
+-- One statement per permission, with no compound SELECT: Cloudflare D1 limits
+-- the terms of a compound SELECT far below SQLite's default (a six-term
+-- UNION ALL here failed on D1 with "too many terms in compound SELECT").
 INSERT OR IGNORE INTO role_permissions (role_id, permission)
-  SELECT rp.role_id, p.permission
-    FROM role_permissions rp
-    JOIN (SELECT 'refunds.view' AS permission UNION ALL SELECT 'refunds.create' UNION ALL SELECT 'refunds.manage'
-          UNION ALL SELECT 'discounts.view' UNION ALL SELECT 'discounts.create' UNION ALL SELECT 'discounts.manage') p
-   WHERE rp.permission = 'invoices.manage' AND rp.role_id IN ('ROL-0002', 'ROL-0004');
+  SELECT role_id, 'refunds.view' FROM role_permissions
+   WHERE permission = 'invoices.manage' AND role_id IN ('ROL-0002', 'ROL-0004');
 INSERT OR IGNORE INTO role_permissions (role_id, permission)
-  SELECT rp.role_id, p.permission
-    FROM role_permissions rp
-    JOIN (SELECT 'refunds.view' AS permission UNION ALL SELECT 'discounts.view') p
-   WHERE rp.permission = 'invoices.view' AND rp.role_id = 'ROL-0003';
+  SELECT role_id, 'refunds.create' FROM role_permissions
+   WHERE permission = 'invoices.manage' AND role_id IN ('ROL-0002', 'ROL-0004');
+INSERT OR IGNORE INTO role_permissions (role_id, permission)
+  SELECT role_id, 'refunds.manage' FROM role_permissions
+   WHERE permission = 'invoices.manage' AND role_id IN ('ROL-0002', 'ROL-0004');
+INSERT OR IGNORE INTO role_permissions (role_id, permission)
+  SELECT role_id, 'discounts.view' FROM role_permissions
+   WHERE permission = 'invoices.manage' AND role_id IN ('ROL-0002', 'ROL-0004');
+INSERT OR IGNORE INTO role_permissions (role_id, permission)
+  SELECT role_id, 'discounts.create' FROM role_permissions
+   WHERE permission = 'invoices.manage' AND role_id IN ('ROL-0002', 'ROL-0004');
+INSERT OR IGNORE INTO role_permissions (role_id, permission)
+  SELECT role_id, 'discounts.manage' FROM role_permissions
+   WHERE permission = 'invoices.manage' AND role_id IN ('ROL-0002', 'ROL-0004');
+INSERT OR IGNORE INTO role_permissions (role_id, permission)
+  SELECT role_id, 'refunds.view' FROM role_permissions
+   WHERE permission = 'invoices.view' AND role_id IN ('ROL-0003');
+INSERT OR IGNORE INTO role_permissions (role_id, permission)
+  SELECT role_id, 'discounts.view' FROM role_permissions
+   WHERE permission = 'invoices.view' AND role_id IN ('ROL-0003');
 
 
 -- 5. The cached totals on the invoice ------------------------------------------
