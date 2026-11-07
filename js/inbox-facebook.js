@@ -173,9 +173,19 @@ const InboxFacebook = (() => {
     $('fbList').innerHTML = state.conversations.map((c) => rowHtml(c, state.selectedId)).join('');
     $('fbList').hidden = false;
     $('fbListMore').hidden = state.conversations.length >= state.total;
+    renderCounts();
     const unread = state.summary ? state.summary.unreadConversations : 0;
     $('fbUnreadTotal').hidden = !unread;
     $('fbUnreadTotal').textContent = unread ? `${unread} unread` : '';
+  }
+
+  /** Each status button's count, from the list route's summary (every conversation). */
+  function renderCounts() {
+    const s = state.summary || {};
+    document.querySelectorAll('.fb-chip [data-count]').forEach((el) => {
+      const n = s[el.dataset.count];
+      el.textContent = Number.isFinite(n) ? String(n) : '';
+    });
   }
 
   async function loadList({ append = false, quiet = false } = {}) {
@@ -392,7 +402,15 @@ const InboxFacebook = (() => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => { state.q = $('fbSearch').value; loadList(); }, 300);
     });
-    $('fbStatus').addEventListener('change', () => { state.filter = $('fbStatus').value; loadList(); });
+    // The status buttons: the same filter values the dropdown had ('', unread, Open, Pending, Resolved).
+    document.querySelectorAll('.fb-chip').forEach((chip) => chip.addEventListener('click', () => {
+      state.filter = chip.dataset.filter;
+      document.querySelectorAll('.fb-chip').forEach((c) => {
+        c.classList.toggle('is-active', c === chip);
+        c.setAttribute('aria-pressed', String(c === chip));
+      });
+      loadList();
+    }));
     $('fbList').addEventListener('click', (ev) => { const b = ev.target.closest('[data-id]'); if (b) select(b.dataset.id); });
     $('fbListMore').addEventListener('click', () => loadList({ append: true }));
     $('fbListState').addEventListener('click', (ev) => { if (ev.target.closest('[data-retry-list]')) loadList(); });
