@@ -88,9 +88,33 @@
     }
   }
 
-  /** Inclusive range check against a stored YYYY-MM-DD (or ISO timestamp) string. */
+  /*
+   * The workshop's calendar is Asia/Dhaka (UTC+6, no daylight saving), as the
+   * Worker's todayInDhaka() uses. A stored date-only value (a payment's or an
+   * expense's YYYY-MM-DD) is already a workshop day and is used as it is. A
+   * timestamp (createdAt, an ISO instant in UTC) is turned into its Dhaka day:
+   * taking its first ten characters would read the UTC date, and anything
+   * recorded between 00:00 and 06:00 Dhaka time would land on the day before
+   * (audit L1).
+   */
+  let dhakaFormat = null;
+  try {
+    dhakaFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch (e) { dhakaFormat = null; }
+  /** The workshop day (YYYY-MM-DD) a stored date or timestamp belongs to, or '' if unreadable. */
+  function dayOf(value) {
+    const s = String(value || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);   // not a timestamp: as before
+    const t = new Date(s);
+    if (isNaN(t)) return s.slice(0, 10);
+    if (dhakaFormat) return dhakaFormat.format(t);
+    return new Date(t.getTime() + 6 * 3600 * 1000).toISOString().slice(0, 10);
+  }
+
+  /** Inclusive range check against a stored YYYY-MM-DD date or ISO timestamp, by workshop (Dhaka) day. */
   function inRange(dateStr, range) {
-    const d = (dateStr || '').slice(0, 10);
+    const d = dayOf(dateStr);
     return !!d && d >= range.from && d <= range.to;
   }
 
@@ -631,6 +655,165 @@
       <p class="muted-note">Uses each Job Card's frozen service snapshot at the time it was billed -- not the current service catalog price. This is billed value, not collected revenue (Payments are recorded per invoice, not itemized per service line), so it won't match the Revenue Report.</p>`;
   }
 
+  /* ============================================================
+     CSV export -- one file per report, built from the SAME compute*()
+     results the screen shows, for the same report type and date range.
+     UTF-8 with a byte-order mark so Excel reads Bangla correctly. A text
+     cell that a spreadsheet would run as a formula (= + - @, or a leading
+     tab / carriage return) is prefixed with an apostrophe; real numbers
+     stay numbers (a refund's -500 is an amount, not a formula).
+     Money is written as a plain number to the paisa, without the symbol,
+     so the columns add up in Excel. Read-only: nothing is written.
+     ============================================================ */
+
+  function csvCell(value) {
+    if (typeof value === 'number') return Number.isFinite(value) ? String(Math.round(value * 100) / 100) : '';
+    let s = value === null || value === undefined ? '' : String(value);
+    if (/^[\s\u0000-\u001f]*[=+\-@]/.test(s) || /^[\t\r]/.test(s)) s = `'${s}`;
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  function toCsv(headers, rows) {
+    return '﻿' + [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  }
+  const amount = n => Math.round((Number(n) || 0) * 100) / 100;
+
+  /** report type -> { headers, rows } for the range. */
+  const CSV_BUILDERS = {
+    revenue(range) {
+      const r = computeRevenueReport(range);
+      const L = buildLookups();
+      const cust = id => (L.customersById.get(id) || {}).name || '';
+      const refunds = Storage.getData('invoiceRefunds').filter(x => x.status !== 'Void' && inRange(x.date, range));
+      const rows = [
+        ...r.payments.map(p => [dayOf(p.date), 'Payment', p.id, cust(p.customerId), p.invoiceId || '', p.method || '', amount(p.amount)]),
+        ...refunds.map(x => [dayOf(x.date), 'Refund', x.id, cust(x.customerId), x.invoiceId || '', x.method || '', -amount(x.amount)]),
+      ].sort((a, b) => a[0].localeCompare(b[0]) || a[2].localeCompare(b[2]));
+      rows.push(['', 'Total', '', '', '', '', amount(r.total)]);
+      return { headers: ['Date', 'Type', 'Reference', 'Customer', 'Invoice', 'Method', 'Amount (BDT)'], rows };
+    },
+    expense(range) {
+      const r = computeExpenseReport(range);
+      const rows = r.expenses.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .map(e => [dayOf(e.date), e.id, e.category || '', e.description || '', e.payee || '', e.method || '', e.reference || '', amount(e.amount)]);
+      rows.push(['', 'Total', '', '', '', '', '', amount(r.total)]);
+      return { headers: ['Date', 'Expense #', 'Category', 'Description', 'Payee', 'Method', 'Reference', 'Amount (BDT)'], rows };
+    },
+    net(range) {
+      const r = computeNetResultReport(range);
+      const refundsByDay = {};
+      Storage.getData('invoiceRefunds').filter(x => x.status !== 'Void' && inRange(x.date, range))
+        .forEach(x => { const d = dayOf(x.date); refundsByDay[d] = (refundsByDay[d] || 0) + (Number(x.amount) || 0); });
+      const grossByDay = {};
+      r.revenue.payments.forEach(p => { const d = dayOf(p.date); grossByDay[d] = (grossByDay[d] || 0) + (Number(p.amount) || 0); });
+      const days = [...new Set([...Object.keys(grossByDay), ...Object.keys(refundsByDay), ...Object.keys(r.expense.byDay)])].sort();
+      const rows = days.map(d => {
+        const gross = grossByDay[d] || 0, refunded = refundsByDay[d] || 0, expense = r.expense.byDay[d] || 0;
+        return [d, amount(gross), amount(refunded), amount(gross - refunded), amount(expense), amount(gross - refunded - expense)];
+      });
+      rows.push(['Total', amount(r.revenue.gross), amount(r.revenue.refunded), amount(r.revenue.total), amount(r.expense.total), amount(r.net)]);
+      return { headers: ['Date', 'Collected (BDT)', 'Refunded (BDT)', 'Collected after refunds (BDT)', 'Expenses (BDT)', 'Net Result (BDT)'], rows };
+    },
+    payment(range) {
+      const r = computePaymentReport(range);
+      const L = buildLookups();
+      const rows = r.payments.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .map(p => [p.id, dayOf(p.date), (L.customersById.get(p.customerId) || {}).name || '', p.invoiceId || 'Advance',
+          p.jobCardId || '', p.method || '', amount(p.amount), p.status || '']);
+      return { headers: ['Payment #', 'Date', 'Customer', 'Invoice', 'Job Card', 'Method', 'Amount (BDT)', 'Status'], rows };
+    },
+    invoice(range) {
+      const r = computeInvoiceReport(range);
+      const L = buildLookups();
+      const rows = r.rows.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .map(i => [i.id, dayOf(i.date), (L.customersById.get(i.customerId) || {}).name || '', i.jobCardId || '',
+          amount(i.total), amount(i.livePostDiscount), amount(i.livePaid), amount(i.liveRefunded), amount(i.liveWrittenOff), amount(i.liveDue),
+          Utils.invoiceStatusLabel(i)]);
+      return { headers: ['Invoice #', 'Date', 'Customer', 'Job Card', 'Total (BDT)', 'Post-completion Discount (BDT)', 'Paid (BDT)',
+        'Refunded (BDT)', 'Written Off (BDT)', 'Due (BDT)', 'Status'], rows };
+    },
+    jobcard(range) {
+      const r = computeJobCardReport(range);
+      const L = buildLookups();
+      const rows = r.jobs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .map(j => [j.id, dayOf(j.date), (L.customersById.get(j.customerId) || {}).name || '', (L.vehiclesById.get(j.vehicleId) || {}).regNo || '',
+          (L.mechanicsById.get(j.mechanicId) || {}).name || '', j.status || '', amount(j.total)]);
+      return { headers: ['Job Card #', 'Date', 'Customer', 'Vehicle', 'Mechanic', 'Status', 'Total (BDT)'], rows };
+    },
+    inventory(range) {
+      const r = computeInventoryReport(range);
+      const IN_TYPES = ['purchase', 'adjustment-in', 'return', 'initial-stock'];
+      const OUT_TYPES = ['sale', 'job-card-use', 'adjustment-out', 'damaged'];
+      const moved = {};
+      Storage.getData('inventoryTransactions').filter(t => inRange(t.createdAt, range)).forEach(t => {
+        const m = moved[t.partId] || (moved[t.partId] = { in: 0, out: 0 });
+        if (IN_TYPES.includes(t.type)) m.in += Number(t.quantity) || 0;
+        if (OUT_TYPES.includes(t.type)) m.out += Number(t.quantity) || 0;
+      });
+      const rows = Storage.getData('parts').slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+        .map(p => {
+          const m = moved[p.id] || { in: 0, out: 0 };
+          return [p.partNo || p.id, p.name || '', p.category || '', p.status || 'Active', Number(p.stock) || 0, Number(p.minStock) || 0,
+            Utils.Inventory.stockStatus(p), amount(p.purchasePrice), amount(p.sellingPrice), amount((Number(p.stock) || 0) * (Number(p.purchasePrice) || 0)),
+            r.usageByPart[p.id] || 0, m.in, m.out];
+        });
+      return { headers: ['Part #', 'Part', 'Category', 'Status', 'Stock (now)', 'Minimum Stock', 'Stock Status', 'Purchase Price (BDT)',
+        'Selling Price (BDT)', 'Stock Value (BDT)', 'Used on Job Cards (range)', 'Moved In (range)', 'Moved Out (range)'], rows };
+    },
+    customer(range) {
+      const r = computeCustomerReport(range);
+      const L = buildLookups();
+      const rows = r.rows.map(c => {
+        const cu = L.customersById.get(c.id) || {};
+        return [c.id, c.name || '', cu.phone || '', inRange(cu.createdAt, range) ? 'Yes' : 'No', c.jobsInRange, amount(c.paymentsInRange)];
+      });
+      return { headers: ['Customer #', 'Customer', 'Phone', 'New in Range', 'Jobs (range)', 'Payments (BDT, range)'], rows };
+    },
+    mechanic(range) {
+      const r = computeMechanicReport(range, buildLookups());
+      const rows = r.rows.slice().sort((a, b) => b.collectedRevenue - a.collectedRevenue)
+        .map(m => [m.name || '', m.jobsAssigned, m.active, m.completed, amount(m.billedValue), amount(m.collectedRevenue)]);
+      if (r.unattributed > 0) rows.push(['Unattributed payments', '', '', '', '', amount(r.unattributed)]);
+      return { headers: ['Mechanic', 'Jobs Assigned', 'Active', 'Completed', 'Billed Value (BDT)', 'Collected Revenue (BDT)'], rows };
+    },
+    service(range) {
+      const r = computeServiceReport(range);
+      const rows = r.rows.map(x => [x.name || '', x.count, amount(x.revenue)]);
+      return { headers: ['Service', 'Times Performed', 'Billed Value (BDT)'], rows };
+    },
+  };
+
+  /** May the signed-in user export reports? (The button is hidden otherwise; this checks again.) */
+  const canExport = () => typeof Storage.can !== 'function' || Storage.can('reports.export');
+
+  /** The CSV file of a report for a range: { name, csv }. Pure apart from reading Storage. */
+  function buildReportCsv(type, range) {
+    const build = CSV_BUILDERS[type];
+    if (!build) return null;
+    const { headers, rows } = build(range);
+    return { name: `taqwa-${type}-report_${range.from}_to_${range.to}.csv`, csv: toCsv(headers, rows), rowCount: rows.length };
+  }
+
+  function exportCsv() {
+    if (!canExport()) { Utils.toast('Your role does not include exporting reports.', 'error'); return null; }
+    const range = currentRange();
+    const file = buildReportCsv(repType, range);
+    if (!file) return null;
+    try {
+      const url = URL.createObjectURL(new Blob([file.csv], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      Utils.toast('The CSV file could not be created.', 'error');
+      return null;
+    }
+    return file.name;
+  }
+
   const RENDERERS = {
     revenue: renderRevenueReport, expense: renderExpenseReport, net: renderNetResultReport,
     payment: renderPaymentReport, invoice: renderInvoiceReport, jobcard: renderJobCardReport,
@@ -701,6 +884,11 @@
     document.getElementById('repFrom').addEventListener('change', e => { customFrom = e.target.value; if (quickRange === 'custom') refresh(); });
     document.getElementById('repTo').addEventListener('change', e => { customTo = e.target.value; if (quickRange === 'custom') refresh(); });
     document.getElementById('printReportBtn').addEventListener('click', printReport);
+    const exportBtn = document.getElementById('exportCsvBtn');
+    if (exportBtn) {
+      exportBtn.hidden = !canExport();
+      exportBtn.addEventListener('click', exportCsv);
+    }
   }
 
   Storage.ready(() => {
@@ -713,5 +901,8 @@
     syncCustomVisibility();
     refresh();
   });
+
+  // For the unit suite: the date rule and the CSV builders.
+  if (typeof globalThis !== 'undefined') globalThis.ReportsCsv = { dayOf, inRange, csvCell, buildReportCsv, TYPES: Object.keys(CSV_BUILDERS) };
 
 })();
