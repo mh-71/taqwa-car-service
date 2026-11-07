@@ -47,6 +47,17 @@ const CONVS = [
   conv('FBC-0002', { customerName: '<img src=x onerror=alert(1)>', unreadCount: 2, lastMessage: 'Brake noise <b>loud</b>' }),
   conv('FBC-0001', { customerName: 'Rahim Uddin', lastMessage: 'Thanks', lastDirection: 'out', lastMessageAt: iso(7200000) }),
 ];
+// WhatsApp conversations and website enquiries, in the shapes their routes return.
+const WA = [
+  { id: 'WAC-0001', platform: 'WhatsApp', customerWaId: '8801711000001', customerPhone: '+8801711000001', customerName: 'Karim Mia', nameKnown: true,
+    status: 'Pending', unreadCount: 1, lastMessage: 'Is the car ready?', lastMessageAt: iso(30000), lastDirection: 'in', createdAt: iso(9000000) },
+];
+const FORMS = [
+  { id: 'WEB-0003', formType: 'booking', name: 'Salma Begum', phone: '01811000003', service: 'Oil change', vehicle: 'Axio', message: '',
+    status: 'New', createdAt: iso(90000), submittedAt: iso(90000), updatedAt: iso(90000) },
+  { id: 'WEB-0002', formType: 'contact', name: 'Old Enquiry', phone: '01811000002', message: 'Price for AC service?',
+    status: 'Confirmed', createdAt: iso(86400000 * 3), submittedAt: iso(86400000 * 3), updatedAt: iso(86400000 * 3) },
+];
 const MSGS = [
   { id: 1, conversationId: 'FBC-0002', direction: 'in', senderType: 'customer', sentBy: '', kind: 'message', text: 'Is my car <ready>?',
     attachments: [{ type: 'image', url: 'https://scontent.example/x.jpg', title: null }, { type: 'file', url: null, title: null }], status: 'received', error: '', createdAt: iso(60000) },
@@ -54,7 +65,8 @@ const MSGS = [
 ];
 
 /** fakeApi for hydration; /messenger answered as the Worker would. `send` decides the reply's fate. */
-function api({ convs = CONVS, msgs = MSGS, failList = null, failTimes = Infinity, send = 'ok', connection = { send: true, webhook: true } } = {}) {
+function api({ convs = CONVS, msgs = MSGS, failList = null, failTimes = Infinity, send = 'ok', connection = { send: true, webhook: true },
+  wa = WA, forms = FORMS, failPaths = [] } = {}) {
   const base = fakeApi({ rows: {} });
   const calls = base.calls;
   let failures = 0, nextId = 100;
@@ -62,14 +74,35 @@ function api({ convs = CONVS, msgs = MSGS, failList = null, failTimes = Infinity
   const res = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
   const fn = async (url, init = {}) => {
     const path = String(url).replace(/^https?:\/\/[^/]+\/api/, '');
+    // WhatsApp and Website lists, answered as their routes would (status / q / limit / offset).
+    for (const [prefix, rows, summary] of [['/whatsapp/conversations', wa, (r) => ({ unreadConversations: r.filter(c => c.unreadCount).length })],
+      ['/website-forms', forms, (r) => ({ new: r.filter(f => f.status === 'New').length })]]) {
+      if (!path.startsWith(prefix)) continue;
+      calls.push({ method: init.method || 'GET', path });
+      if (failPaths.some(p => path.startsWith(p))) return res(500, { error: { code: 'database_error', message: 'x' } });
+      const q = new URL('http://x' + path).searchParams;
+      const want = q.get('status'), needle = (q.get('q') || '').toLowerCase();
+      const limit = Number(q.get('limit') || 50), offset = Number(q.get('offset') || 0);
+      const hit = rows.filter(r => (!want || r.status === want) && (!q.get('unread') || r.unreadCount)
+        && (!needle || JSON.stringify(r).toLowerCase().includes(needle)));
+      return res(200, { data: hit.slice(offset, offset + limit), count: Math.min(limit, hit.length), total: hit.length, limit, offset,
+        summary: summary(rows), ...(prefix.startsWith('/whatsapp') ? { connection } : {}) });
+    }
     if (!path.startsWith('/messenger')) return base(url, init);
+    if (failPaths.some(p => path.startsWith(p)) && path.startsWith('/messenger/conversations?')) {
+      calls.push({ method: 'GET', path });
+      return res(500, { error: { code: 'database_error', message: 'x' } });
+    }
     const method = init.method || 'GET';
     const body = init.body ? JSON.parse(init.body) : undefined;
     calls.push({ method, path, body });
     const [p] = path.split('?');
     if (p === '/messenger/conversations' && method === 'GET') {
       if (failList && failures < failTimes) { failures++; return res(failList.status, { error: failList.error }); }
-      return res(200, { data: convs, count: convs.length, total: convs.length, limit: 50, offset: 0,
+      // Searched as the Worker does (name, message); the summary still covers every conversation.
+      const needle = (new URL('http://x' + path).searchParams.get('q') || '').toLowerCase();
+      const hit = convs.filter(c => !needle || `${c.customerName} ${c.lastMessage}`.toLowerCase().includes(needle));
+      return res(200, { data: hit, count: hit.length, total: hit.length, limit: 50, offset: 0,
         summary: { total: convs.length, unreadConversations: convs.filter(c => c.unreadCount).length, unreadMessages: 2, open: 2, pending: 0, resolved: 0 }, connection });
     }
     const m = /^\/messenger\/conversations\/(FBC-\d+)(?:\/([a-z]+))?$/.exec(p);
@@ -127,7 +160,7 @@ console.log('-- 1. the link --');
   const row = subFor(inboxGroup(shellFor('dashboard')), 'All Conversations');
   ok('All Conversations is a link to pages/inbox-conversations.html', /^<a class="nav__sub" href="pages\/inbox-conversations\.html"/.test(row), row.slice(0, 160));
   ok('   ...a page that exists', fs.existsSync(path.join(ROOT, 'pages/inbox-conversations.html')), '');
-  ok('   ...labelled Facebook, no longer Demo', /<small>Facebook<\/small>/.test(row) && !/<small>Demo<\/small>/.test(row), row.slice(0, 200));
+  ok('   ...labelled All channels, no longer Facebook only or Demo', /<small>All channels<\/small>/.test(row) && !/<small>(Demo|Facebook)<\/small>/.test(row) && !/not connected/i.test(row), row.slice(0, 200));
   ok('   ...not active on another page', !/is-active|aria-current/.test(row), row.slice(0, 160));
 }
 {
@@ -157,7 +190,7 @@ const src = fs.readFileSync(path.join(ROOT, 'js/inbox-conversations.js'), 'utf8'
 {
   ok('the page declares data-page="inbox-conversations"', html.includes('<body data-page="inbox-conversations" data-root="../">'), '');
   ok('the page has no Demo banner', !/Demo Mode|sample data/i.test(html), '');
-  ok('WhatsApp and Website are marked Not connected', (html.match(/Not connected/g) || []).length >= 2, '');
+  ok('no channel is marked Not connected or demo only any more', !/Not connected/i.test(html) && !/demo only/i.test(src), '');
   const code = codeOf(src);
   ok('the script reads the Worker through Api', /\bApi\.get\(/.test(code), '');
   for (const [what, re] of [['a direct fetch', /\bfetch\s*\(/], ['localStorage', /localStorage/], ['sessionStorage', /sessionStorage/], ['sample data', /SAMPLE|\(Demo\)/]]) {
@@ -175,7 +208,31 @@ console.log('\n-- 4. helpers --');
     [row.platform, row.id, row.unread, row.href], ['Facebook', 'FBC-0002', 2, 'inbox-facebook.html?c=FBC-0002']);
   check('rows merge newest first across channels', C.mergeRows([{ id: 'a', at: '2026-10-01' }], [{ id: 'b', at: '2026-10-03' }, { id: 'c', at: '2026-10-02' }]).map(r => r.id), ['b', 'c', 'a']);
   check('the query carries search and status', C.messengerQuery({ q: ' x ', status: 'unread' }), { limit: '50', offset: '0', q: 'x', unread: '1' });
-  check('only Facebook is connected', C.CHANNELS.map(c => [c.key, c.connected]), [['Facebook', true], ['WhatsApp', false], ['Website', false]]);
+  check('all three channels are connected, each to its own route',
+    C.CHANNELS.map(c => [c.key, c.connected, c.path]), [['Facebook', true, '/messenger/conversations'], ['WhatsApp', true, '/whatsapp/conversations'], ['Website', true, '/website-forms']]);
+  const w = C.fromWhatsApp(WA[0]);
+  check('a WhatsApp conversation opens in the WhatsApp inbox, with its phone and unread count',
+    [w.platform, w.id, w.phone, w.unread, w.status, w.href], ['WhatsApp', 'WAC-0001', '+8801711000001', 1, 'Pending', 'inbox-whatsapp.html?c=WAC-0001']);
+  const f = C.fromWebsite(FORMS[0]);
+  check('a website enquiry opens that enquiry, keeps its own status, and invents no unread count',
+    [f.platform, f.id, f.phone, f.unread, f.isNew, f.status, f.href, f.preview], ['Website', 'WEB-0003', '01811000003', 0, true, 'New', 'inbox-website-forms.html?id=WEB-0003', 'Booking request · Oil change · Axio']);
+  check('a row without a time sorts last and shows no time',
+    [C.mergeRows([{ platform: 'Website', id: 'x', at: null }], [{ platform: 'WhatsApp', id: 'y', at: '2026-10-01T00:00:00Z' }]).map(r => r.id), C.rowHtml({ ...f, at: 'nonsense' }).includes('<time class="inb-row__time"></time>')],
+    [['y', 'x'], true]);
+  check('the same id on two channels stays two conversations; the same row twice is one',
+    C.mergeRows([{ platform: 'Facebook', id: 'A-1', at: '2026-10-01' }, { platform: 'WhatsApp', id: 'A-1', at: '2026-10-01' }], [{ platform: 'Facebook', id: 'A-1', at: '2026-10-01' }]).length, 2);
+  check('status filters map onto Website statuses (Resolved = Confirmed and Rejected, two feeds)',
+    ['', 'unread', 'Open', 'Pending', 'Resolved'].map(st => C.feedsFor('Website', st).map(x => x.formStatus)),
+    [[null], ['New'], ['New'], ['Contacted'], ['Confirmed', 'Rejected']]);
+  check('a channel filter reads only that channel', [C.feedsFor('all', '').map(x => x.channel), C.feedsFor('WhatsApp', 'Open').map(x => x.channel)],
+    [['Facebook', 'WhatsApp', 'Website'], ['WhatsApp']]);
+  const feeds = [
+    { channel: 'Facebook', total: 2, rows: [{ platform: 'Facebook', id: 'f1', at: '2026-10-05T00:00:00Z' }] },
+    { channel: 'Website', total: 1, rows: [{ platform: 'Website', id: 'w1', at: '2026-10-01T00:00:00Z' }] },
+  ];
+  check('a row older than an unfinished feed\'s oldest loaded row waits for "Load more"', C.visibleRows(feeds).map(r => r.id), ['f1']);
+  feeds[0].total = 1;
+  check('   ...and shows once every feed is finished', C.visibleRows(feeds).map(r => r.id), ['f1', 'w1']);
   const r = C.rowHtml(row);
   ok('a row is escaped and tagged Facebook', r.includes('&lt;img src=x') && !r.includes('<img src=x') && r.includes('inb-plat--facebook" title="Facebook">Facebook'), r);
 }
@@ -187,11 +244,18 @@ console.log('\n-- 5. the page --');
   h.fireReady();
   await tick(80);
   const list = el('inbList').innerHTML;
-  check('real Facebook conversations are listed, each tagged Facebook', [(list.match(/<li>/g) || []).length, (list.match(/inb-plat--facebook/g) || []).length], [2, 2]);
-  ok('   ...linking to the Facebook inbox', list.includes('href="inbox-facebook.html?c=FBC-0002"'), '');
-  ok('   ...and no WhatsApp or Website conversation is invented', !/inb-plat--whatsapp|inb-plat--website/.test(list), '');
-  ok('WhatsApp and Website say they are not connected', /WhatsApp is not connected yet/.test(el('inbNotes').innerHTML) && /Website is not connected yet/.test(el('inbNotes').innerHTML), el('inbNotes').innerHTML);
-  check('the footer counts them', el('inbCount').textContent, '2 of 2 conversations');
+  check('all three channels are listed together: 2 Facebook, 1 WhatsApp, 2 Website',
+    [(list.match(/<li>/g) || []).length, (list.match(/inb-plat--facebook/g) || []).length, (list.match(/inb-plat--whatsapp/g) || []).length, (list.match(/inb-plat--website/g) || []).length],
+    [5, 2, 1, 2]);
+  check('   ...newest first across channels', [...list.matchAll(/href="inbox-[a-z-]+\.html\?(?:c|id)=([A-Z]+-\d+)"/g)].map(m => m[1]),
+    ['WAC-0001', 'FBC-0002', 'WEB-0003', 'FBC-0001', 'WEB-0002']);
+  ok('   ...each opening its own inbox on that conversation',
+    list.includes('href="inbox-facebook.html?c=FBC-0002"') && list.includes('href="inbox-whatsapp.html?c=WAC-0001"') && list.includes('href="inbox-website-forms.html?id=WEB-0003"'), '');
+  ok('   ...the WhatsApp phone is shown, and a New enquiry is marked New (no unread number invented)',
+    list.includes('+8801711000001') && /inb-badge--new[^>]*>New</.test(list), '');
+  check('no channel shows a "not connected" note', el('inbNotes').innerHTML, '');
+  check('the footer counts every channel', el('inbCount').textContent, '5 of 5 conversations');
+  check('each channel chip shows its own count (unread, or new enquiries)', [el('inbCountFacebook').textContent, el('inbCountWhatsApp').textContent, el('inbCountWebsite').textContent], ['1', '1', '1']);
   el('inbStatus').value = 'unread'; el('inbStatus').dispatch('change');
   await tick(60);
   ok('a status filter re-queries the Worker', msgCalls(fetch.calls).slice(-1)[0].path.includes('unread=1'), msgCalls(fetch.calls).slice(-1)[0].path);
@@ -202,11 +266,42 @@ console.log('\n-- 5. the page --');
 
 console.log('\n-- 6. failures --');
 {
-  const fetch = api({ failList: { status: 500, error: { code: 'database_error', message: 'x' } }, failTimes: 1 });
+  const fetch = api({ failPaths: ['/messenger/conversations', '/whatsapp/conversations', '/website-forms'] });
   const { h, el } = page('inbox-conversations', 'js/inbox-conversations.js', [], { fetch, plantDemo: true });
   h.fireReady();
   await tick(80);
-  ok('a failed read shows an error with Retry, and lists nothing', /could not be loaded/.test(el('inbState').innerHTML) && /data-retry/.test(el('inbState').innerHTML) && el('inbList').hidden, el('inbState').innerHTML);
+  ok('every channel failing shows one error with Retry, and lists nothing', /could not be loaded/.test(el('inbState').innerHTML) && /data-retry/.test(el('inbState').innerHTML) && el('inbList').hidden, el('inbState').innerHTML);
+  check('   ...with no per-channel notes on top of it', el('inbNotes').innerHTML, '');
+}
+for (const [down, others] of [['/messenger/conversations', ['whatsapp', 'website']], ['/whatsapp/conversations', ['facebook', 'website']], ['/website-forms', ['facebook', 'whatsapp']]]) {
+  const fetch = api({ failPaths: [down] });
+  const { h, el } = page('inbox-conversations', 'js/inbox-conversations.js', [], { fetch });
+  h.fireReady();
+  await tick(80);
+  const list = el('inbList').innerHTML;
+  const name = { '/messenger/conversations': 'Facebook', '/whatsapp/conversations': 'WhatsApp', '/website-forms': 'Website' }[down];
+  ok(`${name} failing: the other channels are still listed`, !el('inbList').hidden && others.every(o => list.includes(`inb-plat--${o}`)) && !list.includes(`inb-plat--${name.toLowerCase()}`), list.slice(0, 200));
+  ok(`   ...and a note says ${name} could not be loaded, with Retry`, new RegExp(`${name} conversations could not be loaded`).test(el('inbNotes').innerHTML) && /data-retry/.test(el('inbNotes').innerHTML), el('inbNotes').innerHTML);
+}
+{
+  // The channel and status filters re-read only what they need, through the existing routes.
+  const fetch = api();
+  const { h, el } = page('inbox-conversations', 'js/inbox-conversations.js', [], { fetch });
+  vm.runInContext('globalThis.IC = InboxConversations;', h.ctx);
+  h.fireReady();
+  await tick(80);
+  const IC = h.ctx.IC;
+  IC._state.channel = 'Website'; IC._state.status = 'Resolved';
+  const before = fetch.calls.length;
+  await IC.load();
+  const asked = fetch.calls.slice(before).map(c => c.path);
+  check('Website + Resolved asks the Website route twice (Confirmed, Rejected) and nothing else',
+    asked.map(p => p.replace(/\?.*status=([A-Za-z]+).*/, ' $1')), ['/website-forms Confirmed', '/website-forms Rejected']);
+  check('   ...and lists the one Confirmed enquiry', [...el('inbList').innerHTML.matchAll(/id=(WEB-\d+)/g)].map(m => m[1]), ['WEB-0002']);
+  IC._state.channel = 'all'; IC._state.status = ''; IC._state.q = 'karim';
+  await IC.load();
+  check('search reaches every channel and finds the WhatsApp customer', [...el('inbList').innerHTML.matchAll(/(?:c|id)=([A-Z]+-\d+)/g)].map(m => m[1]), ['WAC-0001']);
+  ok('   ...every channel route was asked with q=karim', ['/messenger/conversations', '/whatsapp/conversations', '/website-forms'].every(p => fetch.calls.some(c => c.path.startsWith(p) && c.path.includes('q=karim'))), '');
 }
 {
   const fetch = api();

@@ -77,6 +77,21 @@
 [data-page="inbox-conversations"] .inb-status { flex: none; font-size: .7rem; font-weight: 600; padding: 2px 7px; border-radius: 5px; background: var(--info-soft); color: var(--info); }
 [data-page="inbox-conversations"] .inb-status--pending { background: var(--amber-soft); color: var(--amber-text); }
 [data-page="inbox-conversations"] .inb-status--resolved { background: var(--good-soft); color: var(--good); }
+/* WhatsApp and Website rows (both channels read live data) */
+[data-page="inbox-conversations"] .inb-plat--whatsapp { background: color-mix(in srgb, var(--inb-wa) 14%, var(--surface)); color: var(--inb-wa); }
+[data-page="inbox-conversations"] .inb-plat--website { background: var(--amber-soft); color: var(--amber-text); }
+[data-page="inbox-conversations"] .inb-row__phone { margin-left: 8px; font-weight: 400; font-size: .78rem; color: var(--text-3); }
+[data-page="inbox-conversations"] .inb-badge--new { background: var(--amber); }
+[data-page="inbox-conversations"] #inbCountWhatsApp { background: var(--inb-wa); }
+[data-page="inbox-conversations"] #inbCountWebsite { background: var(--amber); }
+[data-page="inbox-conversations"] .inb-chip__n:empty { display: none; }
+/* Website enquiries keep their own statuses: New / Contacted / Confirmed / Rejected */
+[data-page="inbox-conversations"] .inb-status--contacted { background: var(--amber-soft); color: var(--amber-text); }
+[data-page="inbox-conversations"] .inb-status--confirmed { background: var(--good-soft); color: var(--good); }
+[data-page="inbox-conversations"] .inb-status--rejected { background: var(--paper); color: var(--text-3); }
+[data-page="inbox-conversations"] .inb-note--bad { border-color: var(--bad); }
+[data-page="inbox-conversations"] .inb-note .btn { margin-left: 6px; }
+
 [data-page="inbox-conversations"] .inb-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: .82rem; color: var(--text-2); }
 
 @media (max-width: 760px) {

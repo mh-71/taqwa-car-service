@@ -307,6 +307,11 @@ const InboxWebsiteForms = (() => {
     Storage.ready(() => {
       load();
       if (Storage.isApi()) { loadStaff(); startPolling(); }
+      // A deep link from All Conversations (?id=WEB-0001) opens that enquiry,
+      // the way the Facebook and WhatsApp inboxes open ?c=. The id is checked
+      // before use and the enquiry is read through the existing detail route.
+      const wanted = new URLSearchParams(location.search || '').get('id');
+      if (Storage.isApi() && wanted && /^WEB-\d{1,10}$/.test(wanted)) open(wanted);
     });
   }
 

@@ -39,8 +39,8 @@ const App = (() => {
   const INBOX_ICON = 'M19 3H4.99C3.88 3 3.01 3.89 3.01 5L3 19c0 1.1.88 2 1.99 2H19c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm0 12h-4c0 1.66-1.35 3-3 3s-3-1.34-3-3H4.99V5H19v10z';
   const CHEVRON_ICON = 'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z';
   const INBOX = [
-    { key: 'inbox-conversations', label: 'All Conversations', href: 'pages/inbox-conversations.html', hint: 'Facebook',
-      title: 'Real Facebook Messenger conversations. WhatsApp and Website are not connected yet.', icon: 'M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z' },
+    { key: 'inbox-conversations', label: 'All Conversations', href: 'pages/inbox-conversations.html', hint: 'All channels',
+      title: 'Facebook, WhatsApp and website enquiries in one list, newest first.', icon: 'M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z' },
     { key: 'inbox-facebook', label: 'Facebook', href: 'pages/inbox-facebook.html', hint: 'Messenger',
       title: 'Real Facebook Messenger conversations with the workshop\'s Page.', icon: 'M24 12.07C24 5.41 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.5c-1.5 0-1.96.93-1.96 1.89v2.26h3.32l-.53 3.5h-2.8V24C19.62 23.1 24 18.1 24 12.07z' },
     { key: 'inbox-whatsapp', label: 'WhatsApp', href: 'pages/inbox-whatsapp.html', hint: 'Business',
